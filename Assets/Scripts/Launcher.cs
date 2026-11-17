@@ -94,6 +94,11 @@ public class Launcher : MonoBehaviourPunCallbacks
     public void Connect ()
     {
         PhotonNetwork.GameVersion = "0.0.0";
+        if (PhotonNetwork.IsConnected)
+        {
+            if (!PhotonNetwork.InLobby) PhotonNetwork.JoinLobby();
+            return;
+        }
         PhotonNetwork.ConnectUsingSettings();
     }
 

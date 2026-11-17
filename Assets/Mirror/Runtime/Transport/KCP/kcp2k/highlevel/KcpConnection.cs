@@ -192,6 +192,8 @@ namespace kcp2k
                     Disconnect();
                 }
             }
+
+            message = new ArraySegment<byte>();
             return false;
         }
 

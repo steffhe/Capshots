@@ -1,1 +1,0 @@
-D:\UnityProjects\MultiplayerFPS\multiplayer\obj\Debug\Mirror.Examples.Cloud.Pong.csproj.CoreCompileInputs.cache

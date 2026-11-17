@@ -292,9 +292,9 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         }
 
         Vector3 targetVelocity = direction * adjustedSpeed * Time.deltaTime;
-        targetVelocity.y = rig.velocity.y;
+        targetVelocity.y = rig.linearVelocity.y;
 
-        rig.velocity = targetVelocity;
+        rig.linearVelocity = targetVelocity;
 
         //Sliding
         if (isSliding)
@@ -423,7 +423,7 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
             if (currentHealth <= 0 ) //&& !isDead
             {
                 GameObject dp = PhotonNetwork.Instantiate("Dead Player", transform.position, transform.rotation);
-                dp.GetComponent<Rigidbody>().velocity = rig.velocity;
+                dp.GetComponent<Rigidbody>().linearVelocity = rig.linearVelocity;
 
                 manager.Spawn();
                 manager.ChangeStat_S(PhotonNetwork.LocalPlayer.ActorNumber, 1, 1);
