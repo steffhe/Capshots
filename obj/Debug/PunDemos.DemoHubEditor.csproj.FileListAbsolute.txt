@@ -1,3 +1,0 @@
-D:\UnityProjects\MultiplayerFPS\multiplayer\obj\Debug\PunDemos.DemoHubEditor.csprojAssemblyReference.cache
-D:\UnityProjects\MultiplayerFPS\multiplayer\obj\Debug\PunDemos.DemoHubEditor.csproj.CoreCompileInputs.cache
-D:\UnityProjects\MultiplayerFPS\multiplayer\obj\Debug\PunDemos.DemoHubEditor.csproj.AssemblyReference.cache

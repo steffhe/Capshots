@@ -1,2 +1,0 @@
-D:\UnityProjects\MultiplayerFPS\multiplayer\obj\Debug\PhotonUnityNetworking.csprojAssemblyReference.cache
-D:\UnityProjects\MultiplayerFPS\multiplayer\obj\Debug\PhotonUnityNetworking.csproj.CoreCompileInputs.cache
