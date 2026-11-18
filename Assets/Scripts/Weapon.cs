@@ -22,9 +22,19 @@ public class Weapon : MonoBehaviourPunCallbacks
     public int currentIndex;
     private GameObject currentWeapon;
     private bool isReloading;
+    private Coroutine reloadRoutine;
     #endregion
 
     #region MonoBehaviour Callbacks
+    void Awake()
+    {
+        // Work on per-player copies so ammo state never modifies the shared Gun assets
+        for (int i = 0; i < loadout.Length; i++)
+        {
+            loadout[i] = Instantiate(loadout[i]);
+        }
+    }
+
     // Start is called before the first frame update
     void Start()
     {
@@ -93,33 +103,23 @@ public class Weapon : MonoBehaviourPunCallbacks
             {
 
          Aim(Input.GetMouseButton(1));
-                if(loadout[currentIndex].burst != 1)
-                {
+                bool fireInput = loadout[currentIndex].burst == 1 ? Input.GetMouseButton(0) : Input.GetMouseButtonDown(0);
 
-                if (Input.GetMouseButtonDown(0) && currentCooldown <= 0 )
-            {
-                    if (loadout[currentIndex].FireBullet()) { photonView.RPC("Shoot", RpcTarget.All); }
-                    else
-                    {
-                        StartCoroutine(Reload(loadout[currentIndex].reloadTime));
-                    }
-            }
-                }
-                else
+                if (!isReloading)
                 {
-                    if (Input.GetMouseButton(0) && currentCooldown <= 0)
+                    if (fireInput && currentCooldown <= 0)
                     {
                         if (loadout[currentIndex].FireBullet()) { photonView.RPC("Shoot", RpcTarget.All); }
                         else
                         {
-                            StartCoroutine(Reload(loadout[currentIndex].reloadTime));
+                            StartReload();
                         }
                     }
-                }
 
-                if ( Input.GetKeyDown(KeyCode.R))
-                {
-                    StartCoroutine(Reload(loadout[currentIndex].reloadTime));
+                    if (Input.GetKeyDown(KeyCode.R))
+                    {
+                        StartReload();
+                    }
                 }
 
                 //cooldown
@@ -146,14 +146,28 @@ public class Weapon : MonoBehaviourPunCallbacks
 
     #region Private Methods
 
-    IEnumerator Reload(float reloadTime)
+    void StartReload()
+    {
+        if (isReloading || !loadout[currentIndex].CanReload()) return;
+        reloadRoutine = StartCoroutine(Reload(loadout[currentIndex]));
+    }
+
+    void CancelReload()
+    {
+        if (reloadRoutine != null) StopCoroutine(reloadRoutine);
+        reloadRoutine = null;
+        isReloading = false;
+    }
+
+    IEnumerator Reload(Gun gun)
     {
         isReloading = true;
         currentWeapon.SetActive(false);
-        yield return new WaitForSeconds(reloadTime);
-        loadout[currentIndex].Reload();
+        yield return new WaitForSeconds(gun.reloadTime);
+        gun.Reload();
         currentWeapon.SetActive(true);
         isReloading = false;
+        reloadRoutine = null;
     }
 
     IEnumerator HitPlayer(bool targetIsDead)
@@ -199,7 +213,7 @@ public class Weapon : MonoBehaviourPunCallbacks
     {
         if (currentWeapon != null)
         {
-            if (isReloading) StopCoroutine("Reload");
+            CancelReload();
             Destroy(currentWeapon);
         }
         currentIndex = ind;
@@ -232,34 +246,15 @@ public class Weapon : MonoBehaviourPunCallbacks
         }
     }
   
+    float CurrentBloom()
+    {
+        float bloom = loadout[currentIndex].bloom;
+        if (isAiming) bloom /= (currentIndex == 2) ? 10f : 2f;
+        return bloom;
+    }
+
     void Aim(bool isAiming)
     {
-        if ((this.isAiming != isAiming) && isAiming == true)
-        {
-            if(currentIndex == 2)
-            {
-                loadout[currentIndex].bloom /= 10;
-            }
-            else
-            {
-
-            loadout[currentIndex].bloom /= 2;
-            }
-
-        }
-        else if ((this.isAiming != isAiming) && isAiming == false)
-        {
-            if (currentIndex == 2)
-            {
-                loadout[currentIndex].bloom *= 10;
-            }
-            else
-            {
-
-                loadout[currentIndex].bloom *= 2;
-            }
-        }
-
         this.isAiming = isAiming;
         Transform anchor = currentWeapon.transform.Find("Anchor");
         Transform stateAds = currentWeapon.transform.Find("States/ADS");
@@ -283,9 +278,10 @@ public class Weapon : MonoBehaviourPunCallbacks
         Transform spawn = transform.Find("Cameras/Normal Camera");
 
         //bloom
+        float spread = CurrentBloom();
         Vector3 bloom = spawn.position + spawn.forward * 1000f;
-        bloom += Random.Range(-loadout[currentIndex].bloom, loadout[currentIndex].bloom) * spawn.up;
-        bloom += Random.Range(-loadout[currentIndex].bloom, loadout[currentIndex].bloom) * spawn.right;
+        bloom += Random.Range(-spread, spread) * spawn.up;
+        bloom += Random.Range(-spread, spread) * spawn.right;
         bloom -= spawn.position;
         bloom.Normalize();
 

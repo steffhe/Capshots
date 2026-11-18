@@ -50,6 +50,11 @@ public class Gun : ScriptableObject
         stash -= clip;
     }
 
+    public bool CanReload()
+    {
+        return clip < clipSize && stash > 0;
+    }
+
     public int GetStash()
     {
         return stash;

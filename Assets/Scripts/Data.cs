@@ -1,52 +1,37 @@
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
 using System.IO;
-using System.Runtime.Serialization.Formatters.Binary;
+using UnityEngine;
 
 public class Data : MonoBehaviour
 {
-   public static void SaveProfile(ProfileData profile)
+    private static string ProfilePath => Path.Combine(Application.persistentDataPath, "profile.json");
+
+    public static void SaveProfile(ProfileData profile)
     {
         try
         {
-
-        string path = Application.persistentDataPath + "/profile.dt";
-
-            if (File.Exists(path)) File.Delete(path);
-
-        FileStream file = File.Create(path);
-
-        BinaryFormatter bf = new BinaryFormatter();
-        bf.Serialize(file, profile);
-        file.Close();
+            File.WriteAllText(ProfilePath, JsonUtility.ToJson(profile));
         }
-        catch
+        catch (System.Exception e)
         {
-            Debug.Log("Error: Could not save profile to file.");
+            Debug.LogWarning("Could not save profile to file: " + e.Message);
         }
     }
 
     public static ProfileData LoadProfile()
     {
-            ProfileData ret = new ProfileData();
         try
         {
-            string path = Application.persistentDataPath + "/profile.dt";
-
-            if (File.Exists(path))
+            if (File.Exists(ProfilePath))
             {
-                FileStream file = File.Open(path, FileMode.Open);
-                BinaryFormatter bf = new BinaryFormatter();
-                ret = (ProfileData)bf.Deserialize(file);
+                ProfileData loaded = JsonUtility.FromJson<ProfileData>(File.ReadAllText(ProfilePath));
+                if (loaded != null) return loaded;
             }
         }
-        catch
+        catch (System.Exception e)
         {
-            Debug.Log("Error: Could not load profile from file.");
+            Debug.LogWarning("Could not load profile from file: " + e.Message);
         }
 
-        return ret;
+        return new ProfileData();
     }
 }
- 

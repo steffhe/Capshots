@@ -315,7 +315,7 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         byte amt = (byte)data[2];
 
 
-        for (int i = 0; i < data.Length; i++)
+        for (int i = 0; i < playerInfo.Count; i++)
         {
             if (playerInfo[i].actor == actor)
             {
