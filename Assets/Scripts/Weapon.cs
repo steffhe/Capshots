@@ -23,6 +23,8 @@ public class Weapon : MonoBehaviourPunCallbacks
     private GameObject currentWeapon;
     private bool isReloading;
     private Coroutine reloadRoutine;
+    private bool isBursting;
+    private Coroutine burstRoutine;
     #endregion
 
     #region MonoBehaviour Callbacks
@@ -105,11 +107,15 @@ public class Weapon : MonoBehaviourPunCallbacks
          Aim(Input.GetMouseButton(1));
                 bool fireInput = loadout[currentIndex].burst == 1 ? Input.GetMouseButton(0) : Input.GetMouseButtonDown(0);
 
-                if (!isReloading)
+                if (!isReloading && !isBursting)
                 {
                     if (fireInput && currentCooldown <= 0)
                     {
-                        if (loadout[currentIndex].FireBullet()) { photonView.RPC("Shoot", RpcTarget.All); }
+                        if (loadout[currentIndex].burst == 2)
+                        {
+                            burstRoutine = StartCoroutine(BurstFire(loadout[currentIndex]));
+                        }
+                        else if (loadout[currentIndex].FireBullet()) { photonView.RPC("Shoot", RpcTarget.All); }
                         else
                         {
                             StartReload();
@@ -150,6 +156,39 @@ public class Weapon : MonoBehaviourPunCallbacks
     {
         if (isReloading || !loadout[currentIndex].CanReload()) return;
         reloadRoutine = StartCoroutine(Reload(loadout[currentIndex]));
+    }
+
+    IEnumerator BurstFire(Gun gun)
+    {
+        isBursting = true;
+        int shots = Mathf.Max(1, gun.burstCount);
+
+        for (int i = 0; i < shots; i++)
+        {
+            if (!gun.FireBullet())
+            {
+                // Out of ammo: reload only if the trigger pull didn't fire anything
+                if (i == 0)
+                {
+                    isBursting = false;
+                    StartReload();
+                }
+                break;
+            }
+
+            photonView.RPC("Shoot", RpcTarget.All);
+            if (i < shots - 1) yield return new WaitForSeconds(gun.fireRate);
+        }
+
+        isBursting = false;
+        burstRoutine = null;
+    }
+
+    void CancelBurst()
+    {
+        if (burstRoutine != null) StopCoroutine(burstRoutine);
+        burstRoutine = null;
+        isBursting = false;
     }
 
     void CancelReload()
@@ -214,6 +253,7 @@ public class Weapon : MonoBehaviourPunCallbacks
         if (currentWeapon != null)
         {
             CancelReload();
+            CancelBurst();
             Destroy(currentWeapon);
         }
         currentIndex = ind;
