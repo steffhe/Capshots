@@ -24,6 +24,8 @@ public class Look : MonoBehaviourPunCallbacks
     private Slider yslider;
 
     private ProfileData myProfile;
+    private UnityEngine.Events.UnityAction<float> onXSensChanged;
+    private UnityEngine.Events.UnityAction<float> onYSensChanged;
 
     #endregion
 
@@ -31,12 +33,14 @@ public class Look : MonoBehaviourPunCallbacks
     // Start is called before the first frame update
     void Start()
     {
-        myProfile = Data.LoadProfile();
-        xSensitivity = myProfile.xsens;
-        ySensitivity = myProfile.ysens;
-
         camCenter = cam.localRotation;
 
+        if (!photonView.IsMine) return;
+
+        // Share the profile with the rest of the game so saving sensitivity never overwrites XP or level
+        myProfile = Launcher.myProfile;
+        xSensitivity = myProfile.xsens;
+        ySensitivity = myProfile.ysens;
 
         xslider = GameObject.Find("Canvas/Pause/Anchor/Sensitivity/XSens").GetComponent<Slider>();
         yslider = GameObject.Find("Canvas/Pause/Anchor/Sensitivity/YSens").GetComponent<Slider>();
@@ -44,8 +48,16 @@ public class Look : MonoBehaviourPunCallbacks
         xslider.value = xSensitivity;
         yslider.value = ySensitivity;
 
-        xslider.onValueChanged.AddListener(delegate { SetXSens(); });
-        yslider.onValueChanged.AddListener(delegate { SetYSens(); });
+        onXSensChanged = delegate { SetXSens(); };
+        onYSensChanged = delegate { SetYSens(); };
+        xslider.onValueChanged.AddListener(onXSensChanged);
+        yslider.onValueChanged.AddListener(onYSensChanged);
+    }
+
+    private void OnDestroy()
+    {
+        if (xslider != null && onXSensChanged != null) xslider.onValueChanged.RemoveListener(onXSensChanged);
+        if (yslider != null && onYSensChanged != null) yslider.onValueChanged.RemoveListener(onYSensChanged);
     }
 
 
