@@ -17,6 +17,7 @@ public class Gun : ScriptableObject
     public int clipSize;
     public float reloadTime;
     public int burst;  // 0 semi - 1 auto - 2 burst
+    public int burstCount = 3; // shots per trigger pull in burst mode
     public GameObject prefab;
     public Texture2D image;
     public AudioClip shootingSound;

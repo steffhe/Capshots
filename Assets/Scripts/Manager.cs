@@ -39,6 +39,10 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
     public int killcount = 20;
     public int matchlength = 180;
 
+    [Header("Match start")]
+    public int minPlayersToStart = 2;
+    public int startCountdown = 5;
+
     public GameObject mapcam;
 
     public string playerPrefabString;
@@ -86,6 +90,10 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
     private void Start()
     {
         killcount = (int)PhotonNetwork.CurrentRoom.CustomProperties["killcount"];
+        if (PhotonNetwork.CurrentRoom.CustomProperties.ContainsKey("matchlength"))
+        {
+            matchlength = (int)PhotonNetwork.CurrentRoom.CustomProperties["matchlength"];
+        }
         mapcam.SetActive(false);
         ValidateConnection();
         InitializeUI();
@@ -148,6 +156,12 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
 
     private void RefreshTimerUI()
     {
+        if (state == GameState.Waiting)
+        {
+            timer.text = "WAITING";
+            return;
+        }
+
         string minutes = (currentMatchTime / 60).ToString("00");
         string seconds = (currentMatchTime % 60).ToString("00");
         timer.text = $"{minutes}:{seconds}";
@@ -180,7 +194,7 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
 
 
         lb.Find("Header/Mode").GetComponent<Text>().text = "FREE FOR ALL";
-        lb.Find("Header/Map").GetComponent<Text>().text = "Battlefield";
+        lb.Find("Header/Map").GetComponent<Text>().text = CurrentMapName();
 
         GameObject playerCard = lb.GetChild(1).gameObject;
         playerCard.SetActive(false);
@@ -296,6 +310,7 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
 
     public void UpdatePlayers_R(object[] data)
     {
+        GameState previousState = state;
         state = (GameState)data[0];
         playerInfo = new List<PlayerInfo>();
 
@@ -315,6 +330,7 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         if (myind < 0 && state != GameState.Ending) NewPlayer_S(Launcher.myProfile);
 
         RefreshMyStats();
+        if (previousState != state) OnStateChanged(previousState);
         StateCheck();
 
     }
@@ -333,6 +349,8 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         byte stat = (byte)data[1];
         byte amt = (byte)data[2];
 
+        // Kills and deaths during warmup and the countdown don't count
+        if (stat != 2 && state != GameState.Playing) return;
 
         for (int i = 0; i < playerInfo.Count; i++)
         {
@@ -477,7 +495,7 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
 
         if (detectwin)
         {
-            if (PhotonNetwork.IsMasterClient && state != GameState.Ending)
+            if (PhotonNetwork.IsMasterClient && state == GameState.Playing)
             {
                 UpdatePlayers_S((int)GameState.Ending, playerInfo);
             }
@@ -548,7 +566,7 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         }
 
         if (uiUsername != null) uiUsername.text = UsernameWithLevel(profile);
-        ShowXpPopup(message);
+        ShowMessage(message);
     }
 
     private void CreateXpPopup()
@@ -572,7 +590,7 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         popupObject.SetActive(false);
     }
 
-    private void ShowXpPopup(string message)
+    private void ShowMessage(string message)
     {
         if (xpPopup == null) return;
         if (xpPopupRoutine != null) StopCoroutine(xpPopupRoutine);
@@ -626,20 +644,98 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         PhotonNetwork.Instantiate(playerPrefab, spawn.position, spawn.rotation);
     }
 
+    // Runs on the host only. Drives Waiting -> Starting -> Playing -> Ending.
     private IEnumerator Timer()
     {
         yield return new WaitForSeconds(1);
 
-        currentMatchTime -= 1;
-        if (currentMatchTime < 0)
+        switch (state)
         {
-            timerCoroutine = null;
-            UpdatePlayers_S((int)GameState.Ending, playerInfo);
+            case GameState.Waiting:
+                if (EnoughPlayersToStart())
+                {
+                    currentMatchTime = startCountdown;
+                    UpdatePlayers_S((int)GameState.Starting, playerInfo);
+                    RefreshTimer_S();
+                }
+                break;
+
+            case GameState.Starting:
+                if (!EnoughPlayersToStart())
+                {
+                    currentMatchTime = matchlength;
+                    UpdatePlayers_S((int)GameState.Waiting, playerInfo);
+                    RefreshTimer_S();
+                    break;
+                }
+
+                currentMatchTime -= 1;
+                if (currentMatchTime <= 0)
+                {
+                    // Warmup is over: everyone starts the match on 0 kills and 0 deaths
+                    foreach (PlayerInfo p in playerInfo)
+                    {
+                        p.kills = 0;
+                        p.deaths = 0;
+                    }
+                    currentMatchTime = matchlength;
+                    UpdatePlayers_S((int)GameState.Playing, playerInfo);
+                }
+                RefreshTimer_S();
+                break;
+
+            case GameState.Playing:
+                currentMatchTime -= 1;
+                if (currentMatchTime < 0)
+                {
+                    timerCoroutine = null;
+                    UpdatePlayers_S((int)GameState.Ending, playerInfo);
+                    yield break;
+                }
+                RefreshTimer_S();
+                break;
+
+            default:
+                timerCoroutine = null;
+                yield break;
         }
-        else
+
+        timerCoroutine = StartCoroutine(Timer());
+    }
+
+    private bool EnoughPlayersToStart()
+    {
+        int needed = minPlayersToStart;
+        int maxPlayers = PhotonNetwork.CurrentRoom.MaxPlayers;
+        if (maxPlayers > 0) needed = Mathf.Min(needed, maxPlayers);
+        return PhotonNetwork.CurrentRoom.PlayerCount >= needed;
+    }
+
+    private void OnStateChanged(GameState previousState)
+    {
+        RefreshTimerUI();
+
+        switch (state)
         {
-            RefreshTimer_S();
-            timerCoroutine = StartCoroutine(Timer());
+            case GameState.Waiting:
+                ShowMessage("WAITING FOR PLAYERS");
+                break;
+            case GameState.Starting:
+                ShowMessage("MATCH STARTING");
+                break;
+            case GameState.Playing:
+                if (previousState == GameState.Starting) ShowMessage("FIGHT!");
+                break;
         }
+    }
+
+    private string CurrentMapName()
+    {
+        object mapName;
+        if (PhotonNetwork.CurrentRoom != null && PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue("mapname", out mapName))
+        {
+            return mapName.ToString();
+        }
+        return SceneManager.GetActiveScene().name;
     }
 }

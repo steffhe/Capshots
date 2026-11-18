@@ -15,6 +15,7 @@ To play together, each player runs the game, picks a username and either creates
 - Online multiplayer through Photon: create rooms, browse and join open rooms, or quick-join a random one
 - Room options: map, max players and kills to win
 - Several maps to choose from
+- Warmup until enough players have joined, then a countdown before the match starts
 - Three weapons (pistol, machine gun and sniper rifle) with aiming, reloading and weapon sway
 - Sprinting, jumping, crouching and sliding
 - Scoreboard with kills and deaths

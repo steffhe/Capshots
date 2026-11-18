@@ -71,6 +71,10 @@ public class Launcher : MonoBehaviourPunCallbacks
     public Slider killsToWinSlider;
     public Text killsToWinValue;
 
+    // Optional: match length in minutes. If not assigned, the map's Manager default is used.
+    public Slider matchLengthSlider;
+    public Text matchLengthValue;
+
     public static ProfileData myProfile = new ProfileData();
 
     public GameObject tabMain;
@@ -137,6 +141,8 @@ public class Launcher : MonoBehaviourPunCallbacks
         ExitGames.Client.Photon.Hashtable properties = new ExitGames.Client.Photon.Hashtable();
         properties.Add("map", currentmap);
         properties.Add("killcount", (int)killsToWinSlider.value);
+        properties.Add("mapname", maps[currentmap].name);
+        if (matchLengthSlider != null) properties.Add("matchlength", Mathf.RoundToInt(matchLengthSlider.value) * 60);
         options.CustomRoomProperties = properties;
         PhotonNetwork.CreateRoom(roomnameField.text, options);
     }
@@ -156,6 +162,11 @@ public class Launcher : MonoBehaviourPunCallbacks
     public void ChangeKillsToWinSlider(float value)
     {
         killsToWinValue.text = Mathf.RoundToInt(value).ToString();
+    }
+
+    public void ChangeMatchLengthSlider(float value)
+    {
+        if (matchLengthValue != null) matchLengthValue.text = Mathf.RoundToInt(value) + " MIN";
     }
 
     public void StartGame ()
@@ -197,6 +208,8 @@ public class Launcher : MonoBehaviourPunCallbacks
 
         maxPlayersSlider.value = maxPlayersSlider.maxValue;
         maxPlayersValue.text = Mathf.RoundToInt(maxPlayersSlider.value).ToString(); 
+
+        if (matchLengthSlider != null) ChangeMatchLengthSlider(matchLengthSlider.value);
     }
 
     private void ClearRoomList()
