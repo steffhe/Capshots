@@ -48,6 +48,11 @@ jobs:
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         run: |
           if [ -n "$UNITY_LICENSE" ] && [ -n "$UNITY_EMAIL" ] && [ -n "$UNITY_PASSWORD" ]; then
+            # GameCI reads the serial from the license file's DeveloperData, so catch a wrong or partial file early
+            if ! grep -q "DeveloperData" <<< "$UNITY_LICENSE"; then
+              echo "::error::UNITY_LICENSE does not look like a Unity license file. Paste the full contents of Unity_lic.ulf (it starts with <?xml and contains a DeveloperData line)."
+              exit 1
+            fi
             echo "available=true" >> "$GITHUB_OUTPUT"
           elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
             echo "::error::Cannot build the release: add the UNITY_LICENSE, UNITY_EMAIL and UNITY_PASSWORD repository secrets."
@@ -65,7 +70,7 @@ jobs:
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
           else
             # Test builds get a unique version so they never match players on a real release
-            echo "version=dev-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+            echo "version=0.0.0-dev.${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
           fi
 
       # The Unity Docker image is large, so make room on the runner first
