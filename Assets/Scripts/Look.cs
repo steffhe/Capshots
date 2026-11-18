@@ -24,6 +24,10 @@ public class Look : MonoBehaviourPunCallbacks
     private Slider yslider;
 
     private ProfileData myProfile;
+
+    // Mouse input is already a per-frame movement, so it must not be scaled by Time.deltaTime.
+    // This fixed scale keeps existing sensitivity values feeling the same as they did at 60 FPS.
+    private const float SensitivityScale = 1f / 60f;
     private UnityEngine.Events.UnityAction<float> onXSensChanged;
     private UnityEngine.Events.UnityAction<float> onYSensChanged;
 
@@ -78,7 +82,7 @@ public class Look : MonoBehaviourPunCallbacks
 
     void SetY()
     {
-        float input = Input.GetAxis("Mouse Y") * ySensitivity * Time.deltaTime;
+        float input = Input.GetAxis("Mouse Y") * ySensitivity * SensitivityScale;
         Quaternion adj = Quaternion.AngleAxis(input, -Vector3.right);
         Quaternion delta = cam.localRotation * adj;
         if (Quaternion.Angle(camCenter, delta) < maxAngle)
@@ -90,7 +94,7 @@ public class Look : MonoBehaviourPunCallbacks
 
     void SetX()
     {
-        float input = Input.GetAxis("Mouse X") * xSensitivity * Time.deltaTime;
+        float input = Input.GetAxis("Mouse X") * xSensitivity * SensitivityScale;
         Quaternion adj = Quaternion.AngleAxis(input, Vector3.up);
         Quaternion delta = player.localRotation * adj;
             player.localRotation = delta;

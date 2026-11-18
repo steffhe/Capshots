@@ -117,7 +117,10 @@ public class Launcher : MonoBehaviourPunCallbacks
 
     public void Connect ()
     {
-        PhotonNetwork.GameVersion = "0.0.0";
+        // Photon only matches players with the same game version, so builds with
+        // different network code never end up in the same room.
+        // Bump the Version in Player Settings for every release.
+        PhotonNetwork.GameVersion = Application.version;
         if (PhotonNetwork.IsConnected)
         {
             if (!PhotonNetwork.InLobby) PhotonNetwork.JoinLobby();

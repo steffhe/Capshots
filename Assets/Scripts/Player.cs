@@ -54,6 +54,7 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
 
     private bool crouched;
     private bool sliding;
+    private bool slideRequested;
     private float slideTime;
     private Vector3 slideDirection;
 
@@ -147,6 +148,9 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         bool crouch = Input.GetKeyDown(KeyCode.LeftControl);
         bool pause = Input.GetKeyDown(KeyCode.Escape);
 
+        // GetKeyDown is only true for one rendered frame, so read it here and let FixedUpdate consume it
+        if (Input.GetKeyDown(KeyCode.C)) slideRequested = true;
+
         //States
         bool isgrounded = Physics.Raycast(groundDetector.position, Vector3.down, 0.15f, ground);
         bool isJumping = jump && isgrounded;
@@ -236,7 +240,8 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         //Controls
         bool sprint = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
         bool jump = Input.GetKey(KeyCode.Space);
-        bool slide = Input.GetKeyDown(KeyCode.C);
+        bool slide = slideRequested;
+        slideRequested = false;
 
 
         //States
