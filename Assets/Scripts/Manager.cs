@@ -155,7 +155,9 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
 
     private void RefreshMyStats()
     {
-        if (playerInfo.Count > myind)
+        if (myKills == null) return;
+
+        if (myind >= 0 && playerInfo.Count > myind)
         {
             myKills.text = $"{playerInfo[myind].kills} Kills";
             myDeaths.text = $"{playerInfo[myind].deaths} Deaths";
@@ -262,7 +264,8 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
 
         PlayerInfo p = new PlayerInfo(new ProfileData((string)data[0], (int)data[1], (int)data[2], 150f, 50f), (int)data[3], (short)data[4], (short)data[5]);
 
-        playerInfo.Add(p);
+        // A player re-sends NewPlayer if a host change lost the first one, so never add the same actor twice
+        if (FindPlayerIndex(p.actor) < 0) playerInfo.Add(p);
 
         UpdatePlayers_S((int)state, playerInfo);
 
@@ -304,10 +307,14 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
             PlayerInfo p = new PlayerInfo(new ProfileData((string)extract[0], (int)extract[1], (int)extract[2], 150f, 150f), (int)extract[3], (short)extract[4], (short)extract[5]);
 
             playerInfo.Add(p);
-
-            if (PhotonNetwork.LocalPlayer.ActorNumber == p.actor) myind = i - 1;
         }
 
+        RecalculateMyIndex();
+
+        // If our NewPlayer event went to a host that left before handling it, we are missing from the list
+        if (myind < 0 && state != GameState.Ending) NewPlayer_S(Launcher.myProfile);
+
+        RefreshMyStats();
         StateCheck();
 
     }
@@ -404,6 +411,51 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         }
     }
 
+    public override void OnPlayerLeftRoom(Photon.Realtime.Player otherPlayer)
+    {
+        base.OnPlayerLeftRoom(otherPlayer);
+
+        // Every client removes the player itself, so this works no matter which host is in charge
+        int index = FindPlayerIndex(otherPlayer.ActorNumber);
+        if (index < 0) return;
+
+        playerInfo.RemoveAt(index);
+        RecalculateMyIndex();
+        RefreshMyStats();
+    }
+
+    public override void OnMasterClientSwitched(Photon.Realtime.Player newMasterClient)
+    {
+        base.OnMasterClientSwitched(newMasterClient);
+
+        if (!PhotonNetwork.IsMasterClient) return;
+
+        // Drop anyone who is no longer in the room, then share our list so everyone is in sync
+        playerInfo.RemoveAll(p => PhotonNetwork.CurrentRoom.GetPlayer(p.actor) == null);
+        RecalculateMyIndex();
+
+        if (state == GameState.Ending || matchEnded) return;
+
+        UpdatePlayers_S((int)state, playerInfo);
+
+        // The old host ran the match timer, so take it over from the last time it sent
+        if (timerCoroutine == null) timerCoroutine = StartCoroutine(Timer());
+    }
+
+    private int FindPlayerIndex(int actor)
+    {
+        for (int i = 0; i < playerInfo.Count; i++)
+        {
+            if (playerInfo[i].actor == actor) return i;
+        }
+        return -1;
+    }
+
+    private void RecalculateMyIndex()
+    {
+        myind = FindPlayerIndex(PhotonNetwork.LocalPlayer.ActorNumber);
+    }
+
     public override void OnLeftRoom()
     {
         base.OnLeftRoom();
@@ -469,7 +521,7 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
 
     private void AwardMatchXp()
     {
-        short myKills = playerInfo.Count > myind ? playerInfo[myind].kills : (short)0;
+        short myKills = (myind >= 0 && playerInfo.Count > myind) ? playerInfo[myind].kills : (short)0;
         short topKills = 0;
         foreach (PlayerInfo a in playerInfo)
         {
