@@ -121,7 +121,7 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
             uiUsername = GameObject.Find("HUD/Username/Text").GetComponent<Text>();
             RefreshHealthBar();
 
-            uiUsername.text = Launcher.myProfile.username;
+            uiUsername.text = Manager.UsernameWithLevel(Launcher.myProfile);
             photonView.RPC("SyncProfile", RpcTarget.All, Launcher.myProfile.username, Launcher.myProfile.level, Launcher.myProfile.xp);
 
 

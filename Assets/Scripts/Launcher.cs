@@ -23,6 +23,26 @@ public class ProfileData
         this.ysens = 150f;
     }
 
+    // XP needed to go from this level to the next one
+    public static int XpToNextLevel(int level)
+    {
+        return 500 + 250 * level;
+    }
+
+    // Adds XP and levels up as many times as the XP allows. Returns the number of levels gained.
+    public int AddXp(int amount)
+    {
+        int levelsGained = 0;
+        xp += amount;
+        while (xp >= XpToNextLevel(level))
+        {
+            xp -= XpToNextLevel(level);
+            level++;
+            levelsGained++;
+        }
+        return levelsGained;
+    }
+
     public ProfileData (string u, int l, int x, float xs, float ys)
     {
         this.username = u;

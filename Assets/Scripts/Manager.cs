@@ -60,6 +60,16 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
 
     public GameObject Hud;
 
+    [Header("XP")]
+    public int xpPerKill = 100;
+    public int xpMatchComplete = 150;
+    public int xpWin = 300;
+
+    private Text uiUsername;
+    private Text xpPopup;
+    private Coroutine xpPopupRoutine;
+    private bool matchEnded = false;
+
     private GameState state = GameState.Waiting;
 
 
@@ -119,6 +129,8 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         timer = GameObject.Find("HUD/Timer/Text").GetComponent<Text>();
         leaderboard = GameObject.Find("HUD").transform.Find("Leaderboard").transform;
         endgame = GameObject.Find("Canvas").transform.Find("End Game").transform;
+        uiUsername = GameObject.Find("HUD/Username/Text").GetComponent<Text>();
+        CreateXpPopup();
        
 
         RefreshMyStats();
@@ -330,6 +342,15 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
                         playerInfo[i].deaths += amt;
                         Debug.Log($"Player {playerInfo[i].profile.username } : deaths = {playerInfo[i].deaths }");
                         break;
+
+                    case 2:
+                        playerInfo[i].profile.level += amt;
+                        break;
+                }
+
+                if (stat == 0 && actor == PhotonNetwork.LocalPlayer.ActorNumber && !matchEnded)
+                {
+                    AwardXp(xpPerKill * amt, "KILL");
                 }
 
                 if (i == myind) RefreshMyStats();
@@ -415,6 +436,11 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
     {
         state = GameState.Ending;
 
+        if (matchEnded) return;
+        matchEnded = true;
+
+        AwardMatchXp();
+
         if (timerCoroutine != null) StopCoroutine(timerCoroutine);
         currentMatchTime = 0;
         RefreshTimerUI();
@@ -433,6 +459,101 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
 
         StartCoroutine(End(6f));
     }
+
+    #region XP
+
+    public static string UsernameWithLevel(ProfileData profile)
+    {
+        return $"{profile.username}  LVL {profile.level}";
+    }
+
+    private void AwardMatchXp()
+    {
+        short myKills = playerInfo.Count > myind ? playerInfo[myind].kills : (short)0;
+        short topKills = 0;
+        foreach (PlayerInfo a in playerInfo)
+        {
+            if (a.kills > topKills) topKills = a.kills;
+        }
+
+        bool won = topKills > 0 && myKills == topKills;
+        if (won) AwardXp(xpMatchComplete + xpWin, "VICTORY");
+        else AwardXp(xpMatchComplete, "MATCH COMPLETE");
+    }
+
+    private void AwardXp(int amount, string reason)
+    {
+        ProfileData profile = Launcher.myProfile;
+        int levelsGained = profile.AddXp(amount);
+        Data.SaveProfile(profile);
+
+        string message = $"+{amount} XP  {reason}";
+        if (levelsGained > 0)
+        {
+            message += $"\nLEVEL UP!  LVL {profile.level}";
+            // Let everyone update this player's level on the scoreboard
+            ChangeStat_S(PhotonNetwork.LocalPlayer.ActorNumber, 2, (byte)levelsGained);
+        }
+
+        if (uiUsername != null) uiUsername.text = UsernameWithLevel(profile);
+        ShowXpPopup(message);
+    }
+
+    private void CreateXpPopup()
+    {
+        // Built at runtime from the existing Kills text so it matches the HUD font and style
+        GameObject popupObject = Instantiate(myKills.gameObject, GameObject.Find("Canvas").transform);
+        popupObject.name = "XP Popup";
+
+        xpPopup = popupObject.GetComponent<Text>();
+        xpPopup.alignment = TextAnchor.MiddleCenter;
+        xpPopup.horizontalOverflow = HorizontalWrapMode.Overflow;
+        xpPopup.verticalOverflow = VerticalWrapMode.Overflow;
+
+        RectTransform rect = popupObject.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 0.7f);
+        rect.anchorMax = new Vector2(0.5f, 0.7f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = Vector2.zero;
+        rect.sizeDelta = new Vector2(600f, 100f);
+
+        popupObject.SetActive(false);
+    }
+
+    private void ShowXpPopup(string message)
+    {
+        if (xpPopup == null) return;
+        if (xpPopupRoutine != null) StopCoroutine(xpPopupRoutine);
+        xpPopupRoutine = StartCoroutine(XpPopup(message));
+    }
+
+    private IEnumerator XpPopup(string message)
+    {
+        const float holdTime = 1.5f;
+        const float fadeTime = 0.5f;
+
+        xpPopup.text = message;
+        xpPopup.transform.SetAsLastSibling();
+        xpPopup.gameObject.SetActive(true);
+
+        Color color = xpPopup.color;
+        color.a = 1f;
+        xpPopup.color = color;
+
+        yield return new WaitForSeconds(holdTime);
+
+        for (float t = 0f; t < fadeTime; t += Time.deltaTime)
+        {
+            color.a = 1f - t / fadeTime;
+            xpPopup.color = color;
+            yield return null;
+        }
+
+        xpPopup.gameObject.SetActive(false);
+        xpPopupRoutine = null;
+    }
+
+    #endregion
 
     private IEnumerator End(float wait)
     {

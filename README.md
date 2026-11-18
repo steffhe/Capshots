@@ -18,6 +18,7 @@ To play together, each player runs the game, picks a username and either creates
 - Three weapons (pistol, machine gun and sniper rifle) with aiming, reloading and weapon sway
 - Sprinting, jumping, crouching and sliding
 - Scoreboard with kills and deaths
+- Levels and XP: earn XP for kills, finishing matches and winning, saved to your profile between sessions
 
 ## Controls
 
