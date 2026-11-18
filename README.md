@@ -1,8 +1,70 @@
 # MultiplayerFPS
-A simple multiplayer FPS created with help of Welton Kings youtube videos.
 
-To test, download the BUILD-folder here:
+A simple online multiplayer first-person shooter made in Unity, built while following Welton King's YouTube tutorial series. Networking is handled by [Photon PUN](https://www.photonengine.com/pun), so players can host and join rooms over the internet without running their own server.
 
-https://minhaskamal.github.io/DownGit/#/home?url=https://github.com/steffhe/MultiplayerFPS/tree/main/BUILD
+## Play
 
-Run the .exe-file in the BUILD-folder and ENJOY!
+1. Go to the [latest release](https://github.com/steffhe/MultiplayerFPS/releases/latest).
+2. Download the build from the **Assets** section and extract it.
+3. Run the `.exe` file and enjoy!
+
+To play together, each player runs the game, picks a username and either creates a room or joins one from the room list.
+
+## Features
+
+- Online multiplayer through Photon: create rooms, browse and join open rooms, or quick-join a random one
+- Room options: map, max players and kills to win
+- Several maps to choose from
+- Three weapons (pistol, machine gun and sniper rifle) with aiming, reloading and weapon sway
+- Sprinting, jumping, crouching and sliding
+- Scoreboard with kills and deaths
+
+## Controls
+
+| Action | Key |
+| --- | --- |
+| Move | `W` `A` `S` `D` |
+| Look | Mouse |
+| Shoot | Left mouse button |
+| Aim | Right mouse button |
+| Reload | `R` |
+| Switch weapon | `1` `2` `3` / mouse wheel |
+| Sprint | `Shift` |
+| Jump | `Space` |
+| Crouch | `Left Ctrl` |
+| Slide | `C` (while sprinting) |
+| Scoreboard | Hold `Tab` |
+| Pause | `Esc` |
+
+## Building from source
+
+Requirements:
+
+- [Unity](https://unity.com/download) **6000.6.9f1** (Unity 6)
+
+Steps:
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/steffhe/MultiplayerFPS.git
+   ```
+2. Open the project folder in Unity Hub with the editor version above.
+3. Open `Assets/Scenes/Menu.unity` and press Play, or build via **File → Build Profiles**. The menu scene must be first in the scene list, followed by the map scenes.
+
+Photon is configured in `Assets/Photon/PhotonUnityNetworking/Resources/PhotonServerSettings.asset`. If you fork the project, consider creating your own free Photon app and replacing the App ID there.
+
+## Project structure
+
+| Path | Contents |
+| --- | --- |
+| `Assets/Scripts` | Game code: launcher/lobby, player movement, weapons, match manager, pause menu |
+| `Assets/Scenes` | `Menu` plus the playable maps |
+| `Assets/Resources` | Networked prefabs spawned through Photon (player, weapons, bullet holes) |
+| `Assets/Prefabs` | UI and misc prefabs |
+| `Assets/Photon` | Photon PUN networking package |
+
+## Credits
+
+- Tutorial: Welton King's YouTube series on making a multiplayer FPS in Unity
+- Networking: Photon PUN by Exit Games
+- Assets: Robot Kyle, SimplePoly Town Pack and Unity Starter Assets
