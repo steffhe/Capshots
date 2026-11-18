@@ -420,8 +420,10 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
 
             RefreshHealthBar();
 
-            if (currentHealth <= 0 ) //&& !isDead
+            if (currentHealth <= 0 && !isDead)
             {
+                isDead = true;
+
                 GameObject dp = PhotonNetwork.Instantiate("Dead Player", transform.position, transform.rotation);
                 dp.GetComponent<Rigidbody>().linearVelocity = rig.linearVelocity;
 
