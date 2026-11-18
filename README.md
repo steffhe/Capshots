@@ -55,6 +55,23 @@ Steps:
 
 Photon is configured in `Assets/Photon/PhotonUnityNetworking/Resources/PhotonServerSettings.asset`. If you fork the project, consider creating your own free Photon app and replacing the App ID there.
 
+## Releasing
+
+Builds are made automatically by GitHub Actions with [GameCI](https://game.ci) (`.github/workflows/build.yml`):
+
+- **Release:** push a version tag, and the Windows build is attached to a new GitHub Release:
+  ```bash
+  git tag v0.2
+  ```
+  ```bash
+  git push origin v0.2
+  ```
+  The tag (without the `v`) becomes the game's version, which is also used as Photon's matchmaking version, so players on different releases never end up in the same room.
+- **Pull requests** that change the project get a test build. Download it from the workflow run's **Artifacts**.
+- **On demand:** run the **Build** workflow from the **Actions** tab.
+
+The workflow needs three repository secrets (**Settings → Secrets and variables → Actions**): `UNITY_LICENSE` (the contents of your Unity license file, `Unity_lic.ulf`), `UNITY_EMAIL` and `UNITY_PASSWORD`. Without them, pull request builds are skipped with a warning.
+
 ## Project structure
 
 | Path | Contents |
