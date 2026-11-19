@@ -53,6 +53,7 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
     private Look look;
     private Pause pauseMenu;
     private Camera viewmodelCam;
+    private bool wasCursorLocked;
 
     private bool isDead;
 
@@ -224,6 +225,7 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
             if (pauseMenu == null) pauseMenu = FindAnyObjectByType<Pause>();
             if (pauseMenu != null) pauseMenu.TogglePause();
         }
+        PauseWhenBrowserReleasesMouse();
         if ( Pause.paused)
         {
              hmove = 0f;
@@ -597,6 +599,23 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         viewmodelData.renderShadows = false;
 
         normalCam.GetUniversalAdditionalCameraData().cameraStack.Add(viewmodelCam);
+    }
+
+    // Browser builds only: the browser releases the mouse when the player presses Escape (or switches
+    // tabs), and the game never sees that Escape. So open the pause menu when the mouse lock is lost.
+    // Only the change from locked to unlocked counts: after resuming, the browser waits for a click
+    // before locking the mouse again, and that wait must not pause the game again.
+    private void PauseWhenBrowserReleasesMouse()
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        bool locked = Cursor.lockState == CursorLockMode.Locked;
+        if (wasCursorLocked && !locked && !Pause.paused)
+        {
+            if (pauseMenu == null) pauseMenu = FindAnyObjectByType<Pause>();
+            if (pauseMenu != null) pauseMenu.TogglePause();
+        }
+        wasCursorLocked = locked;
+#endif
     }
 
     private void RegenerateHealth()

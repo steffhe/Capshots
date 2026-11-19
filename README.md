@@ -4,11 +4,15 @@ A simple online multiplayer first-person shooter made in Unity, built while foll
 
 ## Play
 
+**In your browser:** go to **[steffhe.github.io/MultiplayerFPS](https://steffhe.github.io/MultiplayerFPS/)**. It needs a desktop browser (Chrome, Edge or Firefox) and a mouse; phones and tablets aren't supported. Click the game to lock the mouse. **Esc** releases the mouse and opens the pause menu; click again after resuming to lock it.
+
+**On Windows:**
+
 1. Go to the [latest release](https://github.com/steffhe/MultiplayerFPS/releases/latest).
 2. Download the build from the **Assets** section and extract it.
 3. Run the `.exe` file and enjoy!
 
-To play together, each player runs the game, picks a username and either creates a room or joins one from the room list.
+To play together, each player runs the game, picks a username and either creates a room or joins one from the room list. Browser and Windows players on the same release can play in the same rooms.
 
 ## Features
 
@@ -75,7 +79,7 @@ The tests in `Assets/Tests/EditMode` check gun ammo, damage falloff and XP. Run 
 
 Builds are made automatically by GitHub Actions with [GameCI](https://game.ci) (`.github/workflows/build.yml`):
 
-- **Release:** push a version tag, and the Windows build is attached to a new GitHub Release:
+- **Release:** push a version tag. The Windows build is attached to a new GitHub Release, and the browser version is published to GitHub Pages:
   ```bash
   git tag v0.2
   ```
@@ -83,10 +87,15 @@ Builds are made automatically by GitHub Actions with [GameCI](https://game.ci) (
   git push origin v0.2
   ```
   The tag (without the `v`) becomes the game's version, which is also used as Photon's matchmaking version, so players on different releases never end up in the same room.
-- **Pull requests** that change the project get a test build. Download it from the workflow run's **Artifacts**.
+- **Pull requests** that change the project get test builds for Windows and the browser. Download them from the workflow run's **Artifacts**.
 - **On demand:** run the **Build** workflow from the **Actions** tab.
 
 The workflow needs three repository secrets (**Settings → Secrets and variables → Actions**): `UNITY_LICENSE` (the contents of your Unity license file, `Unity_lic.ulf`), `UNITY_EMAIL` and `UNITY_PASSWORD`. Without them, pull request builds are skipped with a warning.
+
+Publishing the browser version needs GitHub Pages set up once:
+
+1. **Settings → Pages → Build and deployment → Source:** choose **GitHub Actions**.
+2. **Settings → Environments → github-pages → Deployment branches and tags:** add a rule for tags matching `v*`. By default only the `main` branch may publish there, and releases are published from tags.
 
 ## Project structure
 
