@@ -55,7 +55,8 @@ public static class GameInput
         Jump = Button("Jump", "<Keyboard>/space", "<Gamepad>/buttonSouth");
         Sprint = Button("Sprint", "<Keyboard>/leftShift", "<Gamepad>/leftStickPress");
         Sprint.AddBinding("<Keyboard>/rightShift", groups: KeyboardMouseGroup);
-        Crouch = Button("Crouch", "<Keyboard>/leftCtrl", "<Gamepad>/buttonEast");
+        // In a browser, Ctrl+W closes the tab and a web page can't stop it, so crouch isn't on Ctrl there
+        Crouch = Button("Crouch", Browser.IsBrowser ? "<Keyboard>/z" : "<Keyboard>/leftCtrl", "<Gamepad>/buttonEast");
         Slide = Button("Slide", "<Keyboard>/c", "<Gamepad>/rightStickPress");
         Reload = Button("Reload", "<Keyboard>/r", "<Gamepad>/buttonWest");
         Weapon1 = Button("Weapon1", "<Keyboard>/1", null);

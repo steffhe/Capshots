@@ -19,6 +19,14 @@ public class Pause : MonoBehaviour
     {
         // Adds the Settings button and panel to this pause menu
         SettingsMenu.Create(this);
+
+        // The pause menu lives in the match scene, so this covers exactly the time spent in a match
+        Browser.SetLeaveWarning(true);
+    }
+
+    private void OnDestroy()
+    {
+        Browser.SetLeaveWarning(false);
     }
 
     public void TogglePause()

@@ -4,7 +4,7 @@ A simple online multiplayer first-person shooter made in Unity, built while foll
 
 ## Play
 
-**In your browser:** go to **[steffhe.github.io/MultiplayerFPS](https://steffhe.github.io/MultiplayerFPS/)**. It needs a desktop browser (Chrome, Edge or Firefox) and a mouse; phones and tablets aren't supported. Click the game to lock the mouse. **Esc** releases the mouse and opens the pause menu; click again after resuming to lock it.
+**In your browser:** go to **[steffhe.github.io/MultiplayerFPS](https://steffhe.github.io/MultiplayerFPS/)**. It needs a desktop browser (Chrome, Edge or Firefox) and a mouse; phones and tablets aren't supported. Click the game to lock the mouse. **Esc** releases the mouse and opens the pause menu; click again after resuming to lock it. Crouch is on `Z` in the browser, because Ctrl+W would close the tab. During a match the browser asks before closing or reloading the tab.
 
 **On Windows:**
 
@@ -48,7 +48,7 @@ Keyboard and mouse controls can be changed in **Pause → Settings**. A gamepad 
 | Switch weapon | `1` `2` `3` / mouse wheel | Bumpers |
 | Sprint | `Shift` | Left stick press |
 | Jump | `Space` | A / Cross |
-| Crouch | `Left Ctrl` | B / Circle |
+| Crouch | `Left Ctrl` (`Z` in the browser) | B / Circle |
 | Slide | `C` (while sprinting) | Right stick press |
 | Scoreboard | Hold `Tab` | View / Select |
 | Chat | `T` or `Enter` | - |
