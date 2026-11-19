@@ -4,7 +4,8 @@ using UnityEngine.InputSystem;
 
 // All gameplay input, on Unity's Input System. Actions are created in code with keyboard/mouse
 // and gamepad bindings, so there's no input asset to set up. Keyboard/mouse bindings can be
-// changed in the settings menu; the changes are saved in PlayerPrefs.
+// changed in the settings menu; the changes are saved in PlayerPrefs. On phones and tablets the
+// on-screen TouchControls are read here too.
 public static class GameInput
 {
     public const string KeyboardMouseGroup = "KeyboardMouse";
@@ -47,8 +48,10 @@ public static class GameInput
             .With("Right", "<Keyboard>/rightArrow", KeyboardMouseGroup);
         Move.AddBinding("<Gamepad>/leftStick", groups: GamepadGroup);
 
-        Look = Map.AddAction("Look", InputActionType.Value, "<Mouse>/delta");
-        LookStick = Map.AddAction("LookStick", InputActionType.Value, "<Gamepad>/rightStick");
+        Look = Map.AddAction("Look", InputActionType.Value);
+        Look.AddBinding("<Mouse>/delta", groups: KeyboardMouseGroup);
+        LookStick = Map.AddAction("LookStick", InputActionType.Value);
+        LookStick.AddBinding("<Gamepad>/rightStick", groups: GamepadGroup);
 
         Fire = Button("Fire", "<Mouse>/leftButton", "<Gamepad>/rightTrigger");
         Aim = Button("Aim", "<Mouse>/rightButton", "<Gamepad>/leftTrigger");
@@ -64,7 +67,8 @@ public static class GameInput
         Weapon3 = Button("Weapon3", "<Keyboard>/3", null);
         WeaponNext = Button("WeaponNext", null, "<Gamepad>/rightShoulder");
         WeaponPrev = Button("WeaponPrev", null, "<Gamepad>/leftShoulder");
-        WeaponScroll = Map.AddAction("WeaponScroll", InputActionType.Value, "<Mouse>/scroll/y");
+        WeaponScroll = Map.AddAction("WeaponScroll", InputActionType.Value);
+        WeaponScroll.AddBinding("<Mouse>/scroll/y", groups: KeyboardMouseGroup);
         Scoreboard = Button("Scoreboard", "<Keyboard>/tab", "<Gamepad>/select");
         Chat = Button("Chat", "<Keyboard>/t", null);
         Chat.AddBinding("<Keyboard>/enter", groups: KeyboardMouseGroup);
@@ -101,15 +105,15 @@ public static class GameInput
     public static bool Blocked => Pause.paused || ChatUI.IsTyping || IsRebinding;
     public static bool IsRebinding { get; set; }
 
-    public static Vector2 MoveValue => Blocked ? Vector2.zero : Move.ReadValue<Vector2>();
+    public static Vector2 MoveValue => Blocked ? Vector2.zero : Vector2.ClampMagnitude(Move.ReadValue<Vector2>() + TouchControls.MoveValue, 1f);
 
-    // Mouse look in the same units as the old "Mouse X"/"Mouse Y" axes
-    public static Vector2 MouseLookValue => Blocked ? Vector2.zero : Look.ReadValue<Vector2>() * MouseScale;
+    // Mouse (or touch drag) look in the same units as the old "Mouse X"/"Mouse Y" axes
+    public static Vector2 MouseLookValue => Blocked ? Vector2.zero : Look.ReadValue<Vector2>() * MouseScale + TouchControls.LookDelta;
     public static Vector2 StickLookValue => Blocked ? Vector2.zero : LookStick.ReadValue<Vector2>();
 
-    public static bool Held(InputAction action) => !Blocked && action.IsPressed();
-    public static bool Pressed(InputAction action) => !Blocked && action.WasPressedThisFrame();
-    public static bool Released(InputAction action) => action.WasReleasedThisFrame();
+    public static bool Held(InputAction action) => !Blocked && (action.IsPressed() || TouchControls.IsHeld(action));
+    public static bool Pressed(InputAction action) => !Blocked && (action.WasPressedThisFrame() || TouchControls.WasPressed(action));
+    public static bool Released(InputAction action) => action.WasReleasedThisFrame() || TouchControls.WasReleased(action);
 
     // Pause works while paused (to unpause), but not while typing in chat: there Escape closes the chat
     public static bool PausePressed
@@ -119,7 +123,8 @@ public static class GameInput
 #if UNITY_WEBGL && !UNITY_EDITOR
             // In a browser, Escape always releases the mouse, and the game pauses when that happens
             // (see Player.PauseWhenBrowserReleasesMouse). Here Escape only resumes, so the two can't fight.
-            if (!Pause.paused) return false;
+            // With touch controls nothing locks the mouse, so there Escape on a keyboard pauses too.
+            if (!Pause.paused && !TouchControls.UsingTouch) return false;
 #endif
             return !IsRebinding && !ChatUI.IsTyping && ChatUI.ClosedFrame != Time.frameCount && PauseMenu.WasPressedThisFrame();
         }
@@ -132,7 +137,7 @@ public static class GameInput
         {
             if (Blocked) return 0;
             float scroll = WeaponScroll.ReadValue<float>();
-            if (scroll > 0f || WeaponNext.WasPressedThisFrame()) return 1;
+            if (scroll > 0f || WeaponNext.WasPressedThisFrame() || TouchControls.WasPressed(WeaponNext)) return 1;
             if (scroll < 0f || WeaponPrev.WasPressedThisFrame()) return -1;
             return 0;
         }

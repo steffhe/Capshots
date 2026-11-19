@@ -6,7 +6,16 @@
     <title>{{{ PRODUCT_NAME }}}</title>
     <style>
       html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
-      #unity-canvas { display: block; width: 100%; height: 100%; background: #000; outline: none; }
+      /* touch-action: none keeps the browser from scrolling, zooming or going back on swipes,
+         so every touch reaches the game's on-screen controls */
+      #unity-canvas { display: block; width: 100%; height: 100%; background: #000; outline: none; touch-action: none; }
+      body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+      /* Phones held upright: the controls need the width, so ask to turn the phone */
+      #rotate {
+        display: none; position: absolute; inset: 0; z-index: 10; align-items: center; justify-content: center;
+        padding: 24px; background: #000; color: #ccc; font: 16px/1.4 sans-serif; text-align: center;
+      }
+      @media (pointer: coarse) and (orientation: portrait) { #rotate { display: flex; } }
       #loading {
         position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
         width: 320px; max-width: 80vw; color: #ccc; font: 14px/1.4 sans-serif; text-align: center;
@@ -29,6 +38,7 @@
       <div id="loading-track"><div id="loading-fill"></div></div>
     </div>
     <div id="message"></div>
+    <div id="rotate">Turn your device sideways to play.</div>
     <script>
       var canvas = document.getElementById("unity-canvas");
       var loading = document.getElementById("loading");
@@ -41,8 +51,24 @@
         if (type !== "error") setTimeout(function () { message.style.display = "none"; }, 6000);
       }
 
-      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-        showMessage("This game needs a desktop browser with a mouse and keyboard.", "warning");
+      // Phones and tablets: go fullscreen and landscape on the first touch, where the browser
+      // allows it (iPhones don't, so there the browser bars stay). Browsers only allow this
+      // in response to a touch, so it can't happen on load.
+      if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) {
+        document.addEventListener("touchend", function goFullscreen() {
+          document.removeEventListener("touchend", goFullscreen);
+          var el = document.documentElement;
+          var request = el.requestFullscreen || el.webkitRequestFullscreen;
+          if (!request) return;
+          try {
+            var result = request.call(el);
+            if (result && result.then) {
+              result.then(function () {
+                if (screen.orientation && screen.orientation.lock) screen.orientation.lock("landscape").catch(function () {});
+              }).catch(function () {});
+            }
+          } catch (e) {}
+        });
       }
 
       // Right mouse button aims, so don't open the browser's menu

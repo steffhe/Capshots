@@ -127,6 +127,7 @@ public partial class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         FeedbackUI.Create(GameObject.Find("Canvas").transform, myKills.font);
         CreateTeamScore();
         ChatUI.Create(GameObject.Find("Canvas").transform, myKills.font, this);
+        TouchControls.Create(myKills.font);
         StartCoroutine(SharePing());
        
 

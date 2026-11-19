@@ -14,5 +14,25 @@ mergeInto(LibraryManager.library, {
     }
     window.removeEventListener("beforeunload", Module.leaveWarning);
     if (enabled) window.addEventListener("beforeunload", Module.leaveWarning);
+  },
+
+  // Phones and tablets: the main pointer is a finger. Touchscreen laptops have a mouse or
+  // trackpad as their main pointer, so they keep the keyboard and mouse controls.
+  IsBrowserTouchDevice: function () {
+    return window.matchMedia && window.matchMedia("(pointer: coarse)").matches ? 1 : 0;
+  },
+
+  // The kind of pointer used last: 0 none yet, 1 mouse or trackpad, 2 finger or pen.
+  // Pointer events say which it was; the mouse events browsers make up for taps don't count.
+  GetBrowserPointerType: function () {
+    if (!Module.pointerTypeListener) {
+      Module.lastPointerType = 0;
+      Module.pointerTypeListener = function (e) {
+        Module.lastPointerType = e.pointerType === "mouse" ? 1 : 2;
+      };
+      document.addEventListener("pointerdown", Module.pointerTypeListener, true);
+      document.addEventListener("pointermove", Module.pointerTypeListener, true);
+    }
+    return Module.lastPointerType;
   }
 });

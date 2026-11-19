@@ -99,6 +99,9 @@ public class Look : MonoBehaviourPunCallbacks
 
     void UpdateCursorLock()
     {
+        // Touch controls have no mouse to lock, and the pause menu has its own on-screen button
+        if (TouchControls.UsingTouch) return;
+
         if (cursorLocked)
         {
             Cursor.lockState = CursorLockMode.Locked;
