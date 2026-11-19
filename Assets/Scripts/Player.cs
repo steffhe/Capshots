@@ -597,6 +597,12 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         // Overlay cameras clear depth by default (clearDepth is read-only in code), so the gun
         // is always drawn in front of walls
         viewmodelData.renderShadows = false;
+        // Match the main camera so the gun gets the same colour grading, bloom and anti-aliasing
+        // as the world it's drawn on top of
+        UniversalAdditionalCameraData mainData = normalCam.GetUniversalAdditionalCameraData();
+        viewmodelData.renderPostProcessing = mainData.renderPostProcessing;
+        viewmodelData.antialiasing = mainData.antialiasing;
+        viewmodelData.antialiasingQuality = mainData.antialiasingQuality;
 
         normalCam.GetUniversalAdditionalCameraData().cameraStack.Add(viewmodelCam);
     }
