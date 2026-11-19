@@ -343,10 +343,8 @@ public class Weapon : MonoBehaviourPunCallbacks
                 // Send which gun hit and whether it was a headshot, not a damage number: the victim works out the damage itself
                 target.RPC("TakeDamage", target.Owner, currentIndex, headshot);
             }
-            else
-            {
-                hitWorld = true;
-            }
+
+            hitWorld = hit.collider.gameObject.layer != 8;
         }
 
         photonView.RPC("ShotEffects", RpcTarget.All, endPoint, hitNormal, hitWorld);
