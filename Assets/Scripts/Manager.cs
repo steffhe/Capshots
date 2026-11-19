@@ -43,6 +43,9 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
     public int minPlayersToStart = 2;
     public int startCountdown = 5;
 
+    [Header("Respawn")]
+    public float respawnTime = 3f;
+
     public GameObject mapcam;
 
     public string playerPrefabString;
@@ -83,7 +86,8 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         NewPlayer,
         UpdatePlayers,
         ChangeStat,
-        RefreshTimer
+        RefreshTimer,
+        KillFeed
     }
 
 
@@ -126,7 +130,7 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
 
     public void Spawn()
     {
-        StartCoroutine(Spawn(3f));
+        StartCoroutine(Spawn(respawnTime));
 
     }
 
@@ -139,6 +143,7 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         endgame = GameObject.Find("Canvas").transform.Find("End Game").transform;
         uiUsername = GameObject.Find("HUD/Username/Text").GetComponent<Text>();
         CreateXpPopup();
+        FeedbackUI.Create(GameObject.Find("Canvas").transform, myKills.font);
        
 
         RefreshMyStats();
@@ -389,6 +394,36 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         ScoreCheck();
     }
 
+    // Sent by the player who died, so everyone can show it in the kill feed
+    public void KillFeed_S(int killer, int victim, string weapon, bool headshot)
+    {
+        object[] package = new object[] { killer, victim, weapon, headshot };
+
+        PhotonNetwork.RaiseEvent((byte)EventCodes.KillFeed, package, new RaiseEventOptions { Receivers = ReceiverGroup.All }, new SendOptions { Reliability = true });
+    }
+
+    public void KillFeed_R(object[] data)
+    {
+        int killer = (int)data[0];
+        int victim = (int)data[1];
+        string weapon = (string)data[2];
+        bool headshot = (bool)data[3];
+
+        int me = PhotonNetwork.LocalPlayer.ActorNumber;
+        FeedbackUI.AddKillFeed(GetPlayerName(killer), GetPlayerName(victim), weapon, headshot, killer == me || victim == me);
+
+        if (killer == me && victim != me) FeedbackUI.Kill();
+    }
+
+    public string GetPlayerName(int actor)
+    {
+        int index = FindPlayerIndex(actor);
+        if (index >= 0) return playerInfo[index].profile.username;
+
+        Photon.Realtime.Player player = PhotonNetwork.CurrentRoom != null ? PhotonNetwork.CurrentRoom.GetPlayer(actor) : null;
+        return player != null && !string.IsNullOrEmpty(player.NickName) ? player.NickName : "Unknown";
+    }
+
     public void RefreshTimer_S()
     {
         object[] package = new object[] {currentMatchTime};
@@ -424,6 +459,9 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
                 break;
             case EventCodes.RefreshTimer:
                 RefreshTimer_R(o);
+                break;
+            case EventCodes.KillFeed:
+                KillFeed_R(o);
                 break;
                 
         }

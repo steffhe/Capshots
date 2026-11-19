@@ -416,16 +416,24 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
 
     #region Public Methods
 
-    public void TakeDamage(int damage, int actor)
+    public void TakeDamage(int damage, int actor, string weaponName, bool headshot)
     {
         if (photonView.IsMine)
         {
-        currentHealth -= damage;
+            if (isDead) return;
+
+            currentHealth -= damage;
             if (currentHealth < 0) currentHealth = 0;
 
             RefreshHealthBar();
 
-            if (currentHealth <= 0 && !isDead)
+            // Feedback: screen flash, direction to the attacker and a small flinch
+            Player attacker = FindPlayerByActor(actor);
+            FeedbackUI.Damaged((float)damage / maxHealth, attacker != null ? attacker.transform.position : (Vector3?)null, transform);
+            Look look = GetComponent<Look>();
+            if (look != null) look.AddRecoil(UnityEngine.Random.Range(0.5f, 1.5f), UnityEngine.Random.Range(-1f, 1f));
+
+            if (currentHealth <= 0)
             {
                 isDead = true;
 
@@ -437,9 +445,21 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
 
                 if (actor >= 0) manager.ChangeStat_S(actor, 0, 1);
 
+                manager.KillFeed_S(actor, PhotonNetwork.LocalPlayer.ActorNumber, weaponName, headshot);
+                FeedbackUI.ShowDeath(manager.GetPlayerName(actor), weaponName, headshot, manager.respawnTime);
+
                 PhotonNetwork.Destroy(gameObject);
             }
         }
+    }
+
+    private static Player FindPlayerByActor(int actor)
+    {
+        foreach (Player p in FindObjectsByType<Player>(FindObjectsSortMode.None))
+        {
+            if (p.photonView.OwnerActorNr == actor) return p;
+        }
+        return null;
     }
 
 
