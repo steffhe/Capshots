@@ -74,6 +74,17 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
 
     public bool IsProtected => isProtected;
 
+    [Header("Health regeneration")]
+    // Seconds without taking damage before health starts coming back
+    public float regenDelay = 5f;
+    public float regenPerSecond = 150f;
+
+    private float lastDamageTime = float.NegativeInfinity;
+    private float regenBuffer;
+
+    // The player this client controls, or null while dead
+    public static Player Local { get; private set; }
+
 
 
     #endregion
@@ -104,6 +115,7 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         weapon = GetComponent<Weapon>();
 
         currentHealth = maxHealth;
+        if (photonView.IsMine) Local = this;
         isProtected = spawnProtectionTime > 0f;
         protectionLeft = spawnProtectionTime;
             cameraParent.SetActive(photonView.IsMine);
@@ -154,6 +166,8 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
             UpdateProtectionBlink();
             return;
         }
+
+        RegenerateHealth();
 
         if (isProtected)
         {
@@ -446,6 +460,9 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         {
             if (isDead || isProtected) return;
 
+            lastDamageTime = Time.time;
+            regenBuffer = 0f;
+
             currentHealth -= damage;
             if (currentHealth < 0) currentHealth = 0;
 
@@ -464,6 +481,7 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
                 GameObject dp = PhotonNetwork.Instantiate("Dead Player", transform.position, transform.rotation);
                 dp.GetComponent<Rigidbody>().linearVelocity = rig.linearVelocity;
 
+                manager.DropAmmo_S(GroundPosition());
                 manager.Spawn();
                 manager.ChangeStat_S(PhotonNetwork.LocalPlayer.ActorNumber, 1, 1);
 
@@ -475,6 +493,34 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
                 PhotonNetwork.Destroy(gameObject);
             }
         }
+    }
+
+    private void OnDestroy()
+    {
+        if (Local == this) Local = null;
+    }
+
+    private void RegenerateHealth()
+    {
+        if (isDead || currentHealth >= maxHealth || Time.time - lastDamageTime < regenDelay) return;
+
+        regenBuffer += regenPerSecond * Time.deltaTime;
+        int amount = (int)regenBuffer;
+        if (amount <= 0) return;
+
+        regenBuffer -= amount;
+        currentHealth = Mathf.Min(maxHealth, currentHealth + amount);
+    }
+
+    // Where an ammo box dropped by this player should rest
+    private Vector3 GroundPosition()
+    {
+        RaycastHit hit;
+        if (Physics.Raycast(transform.position + Vector3.up * 0.5f, Vector3.down, out hit, 50f, ground, QueryTriggerInteraction.Ignore))
+        {
+            return hit.point + Vector3.up * 0.4f;
+        }
+        return transform.position;
     }
 
     public void EndSpawnProtection()

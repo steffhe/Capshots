@@ -56,6 +56,19 @@ public class Gun : ScriptableObject
         return clip < clipSize && stash > 0;
     }
 
+    // Adds reserve ammo, up to the gun's starting amount. Returns true if anything was added.
+    public bool AddAmmo(int amount)
+    {
+        int before = stash;
+        stash = Mathf.Min(ammo, stash + amount);
+        return stash > before;
+    }
+
+    public bool NeedsAmmo()
+    {
+        return stash < ammo;
+    }
+
     public int GetStash()
     {
         return stash;

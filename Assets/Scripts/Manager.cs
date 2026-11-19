@@ -43,6 +43,13 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
     public int minPlayersToStart = 2;
     public int startCountdown = 5;
 
+    [Header("Ammo pickups")]
+    public bool dropAmmoOnDeath = true;
+    public float pickupLifetime = 20f;
+
+    private readonly Dictionary<int, AmmoPickup> pickups = new Dictionary<int, AmmoPickup>();
+    private int pickupCounter;
+
     [Header("Respawn")]
     public float respawnTime = 3f;
     // Spawn points an enemy can see count as this many metres closer to the enemy
@@ -91,7 +98,10 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         UpdatePlayers,
         ChangeStat,
         RefreshTimer,
-        KillFeed
+        KillFeed,
+        SpawnPickup,
+        ClaimPickup,
+        PickupTaken
     }
 
 
@@ -419,6 +429,74 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         if (killer == me && victim != me) FeedbackUI.Kill();
     }
 
+    // Drops an ammo box for everyone at the given position
+    public void DropAmmo_S(Vector3 position)
+    {
+        if (!dropAmmoOnDeath) return;
+
+        int id = PhotonNetwork.LocalPlayer.ActorNumber * 10000 + (pickupCounter++ % 10000);
+        object[] package = new object[] { id, position };
+
+        PhotonNetwork.RaiseEvent((byte)EventCodes.SpawnPickup, package, new RaiseEventOptions { Receivers = ReceiverGroup.All }, new SendOptions { Reliability = true });
+    }
+
+    public void SpawnPickup_R(object[] data)
+    {
+        int id = (int)data[0];
+        Vector3 position = (Vector3)data[1];
+        if (pickups.ContainsKey(id)) return;
+
+        pickups[id] = AmmoPickup.Create(id, position, this, pickupLifetime);
+    }
+
+    // Asks the master client for a pickup, so two players can't both take it
+    public void ClaimPickup_S(int id)
+    {
+        object[] package = new object[] { id, PhotonNetwork.LocalPlayer.ActorNumber };
+
+        PhotonNetwork.RaiseEvent((byte)EventCodes.ClaimPickup, package, new RaiseEventOptions { Receivers = ReceiverGroup.MasterClient }, new SendOptions { Reliability = true });
+    }
+
+    public void ClaimPickup_R(object[] data)
+    {
+        if (!PhotonNetwork.IsMasterClient) return;
+
+        int id = (int)data[0];
+        int actor = (int)data[1];
+
+        // First claim wins: remove it here straight away so later claims are ignored
+        if (!pickups.ContainsKey(id)) return;
+        RemovePickup(id, true);
+
+        object[] package = new object[] { id, actor };
+        PhotonNetwork.RaiseEvent((byte)EventCodes.PickupTaken, package, new RaiseEventOptions { Receivers = ReceiverGroup.All }, new SendOptions { Reliability = true });
+    }
+
+    public void PickupTaken_R(object[] data)
+    {
+        int id = (int)data[0];
+        int actor = (int)data[1];
+
+        RemovePickup(id, true);
+
+        if (actor == PhotonNetwork.LocalPlayer.ActorNumber && Player.Local != null)
+        {
+            Weapon weapon = Player.Local.GetComponent<Weapon>();
+            if (weapon != null) weapon.AddAmmoPickup();
+            FeedbackUI.Pickup();
+            ShowMessage("+ AMMO");
+        }
+    }
+
+    public void RemovePickup(int id, bool destroy = false)
+    {
+        AmmoPickup pickup;
+        if (!pickups.TryGetValue(id, out pickup)) return;
+
+        pickups.Remove(id);
+        if (destroy && pickup != null) Destroy(pickup.gameObject);
+    }
+
     public string GetPlayerName(int actor)
     {
         int index = FindPlayerIndex(actor);
@@ -466,6 +544,15 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
                 break;
             case EventCodes.KillFeed:
                 KillFeed_R(o);
+                break;
+            case EventCodes.SpawnPickup:
+                SpawnPickup_R(o);
+                break;
+            case EventCodes.ClaimPickup:
+                ClaimPickup_R(o);
+                break;
+            case EventCodes.PickupTaken:
+                PickupTaken_R(o);
                 break;
                 
         }
