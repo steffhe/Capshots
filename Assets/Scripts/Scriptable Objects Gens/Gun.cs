@@ -22,6 +22,24 @@ public class Gun : ScriptableObject
     public Texture2D image;
     public AudioClip shootingSound;
 
+    [Header("Damage")]
+    public float headshotMultiplier = 2f;
+    // Full damage up to falloffStart metres, dropping to minDamageMultiplier at falloffEnd and beyond
+    public float falloffStart = 30f;
+    public float falloffEnd = 60f;
+    [Range(0f, 1f)] public float minDamageMultiplier = 1f;
+
+    [Header("Accuracy")]
+    // Spread is divided by this while aiming
+    public float aimBloomDivisor = 2f;
+    // Spread multiplier at full running speed (scaled by how fast you move)
+    public float movingBloomMultiplier = 1.5f;
+
+    [Header("Movement")]
+    // Movement speed multiplier while this gun is equipped, and while aiming with it
+    public float moveSpeedMultiplier = 1f;
+    public float aimMoveSpeedMultiplier = 0.7f;
+
     private int clip; //current in clip
     private int stash; //current ammo
 
@@ -29,6 +47,20 @@ public class Gun : ScriptableObject
     {
         stash = ammo;
         clip = clipSize;
+    }
+
+    // Damage for a hit at the given distance, before any other modifiers
+    public int DamageAt(float distance, bool headshot)
+    {
+        float falloff = 1f;
+        if (falloffEnd > falloffStart)
+        {
+            float t = Mathf.InverseLerp(falloffStart, falloffEnd, distance);
+            falloff = Mathf.Lerp(1f, minDamageMultiplier, t);
+        }
+
+        float multiplier = headshot ? headshotMultiplier : 1f;
+        return Mathf.Max(1, Mathf.RoundToInt(damage * falloff * multiplier));
     }
 
     public bool FireBullet()

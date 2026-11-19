@@ -23,6 +23,10 @@ public class Weapon : MonoBehaviourPunCallbacks
     public float aimingRecoilMultiplier = 0.5f;
     public Color muzzleFlashColor = new Color(1f, 0.8f, 0.45f);
 
+    [Header("Accuracy")]
+    // Spread multiplier while jumping or falling, for every gun
+    public float airborneBloomMultiplier = 2f;
+
     [Header("Ammo pickups")]
     // Each pickup adds this many clips of reserve ammo to every gun
     public int clipsPerPickup = 2;
@@ -307,9 +311,26 @@ public class Weapon : MonoBehaviourPunCallbacks
   
     float CurrentBloom()
     {
-        float bloom = loadout[currentIndex].bloom;
-        if (isAiming) bloom /= (currentIndex == 2) ? 10f : 2f;
+        Gun gun = loadout[currentIndex];
+        float bloom = gun.bloom;
+        if (isAiming) bloom /= Mathf.Max(1f, gun.aimBloomDivisor);
+
+        // Less accurate while moving, and much less while in the air
+        Player player = GetComponent<Player>();
+        if (player != null)
+        {
+            bloom *= Mathf.Lerp(1f, gun.movingBloomMultiplier, player.MoveSpeedRatio);
+            if (!player.IsGrounded) bloom *= airborneBloomMultiplier;
+        }
         return bloom;
+    }
+
+    // How fast the player can move with the current gun, relative to normal
+    public float MoveSpeedMultiplier()
+    {
+        if (loadout == null || loadout.Length == 0) return 1f;
+        Gun gun = loadout[currentIndex];
+        return gun.moveSpeedMultiplier * (isAiming ? gun.aimMoveSpeedMultiplier : 1f);
     }
 
     void Aim(bool isAiming)
@@ -370,7 +391,7 @@ public class Weapon : MonoBehaviourPunCallbacks
             if (target != null && target.Owner != null && !friendly)
             {
                 bool headshot = hit.collider.gameObject.CompareTag("Head");
-                int damage = gun.damage * (headshot ? 2 : 1);
+                int damage = gun.DamageAt(hit.distance, headshot);
 
                 Player targetPlayer = target.GetComponent<Player>();
                 // No hit feedback on spawn-protected players. The damage is still sent: the target decides.
@@ -383,7 +404,7 @@ public class Weapon : MonoBehaviourPunCallbacks
                 }
 
                 // Send which gun hit and whether it was a headshot, not a damage number: the victim works out the damage itself
-                target.RPC("TakeDamage", target.Owner, currentIndex, headshot);
+                target.RPC("TakeDamage", target.Owner, currentIndex, headshot, hit.distance);
             }
 
             hitWorld = hit.collider.gameObject.layer != 8;
@@ -443,13 +464,14 @@ public class Weapon : MonoBehaviourPunCallbacks
     }
 
     [PunRPC]
-    private void TakeDamage(int gunIndex, bool headshot, PhotonMessageInfo info)
+    private void TakeDamage(int gunIndex, bool headshot, float distance, PhotonMessageInfo info)
     {
         if (gunIndex < 0 || gunIndex >= loadout.Length || info.Sender == null) return;
         // The victim checks teams too, so a modified client can't damage teammates
         if (Manager.Instance != null && !Manager.Instance.AreEnemies(info.Sender.ActorNumber, photonView.OwnerActorNr)) return;
 
-        int damage = loadout[gunIndex].damage * (headshot ? 2 : 1);
+        // Damage comes from this game's own gun data. A wrong distance can only lower it, never raise it above full damage.
+        int damage = loadout[gunIndex].DamageAt(Mathf.Max(0f, distance), headshot);
         GetComponent<Player>().TakeDamage(damage, info.Sender.ActorNumber, loadout[gunIndex].gunName, headshot);
     }
     #endregion
