@@ -64,7 +64,8 @@ Hold the device sideways. On phones that allow it (Android), the game goes fulls
 - **AIM** is a toggle: tap to aim down sights, tap again to stop.
 - **CROUCH** crouches when standing, and slides when sprinting.
 - **JUMP**, **RELOAD** and **SWAP** (next weapon) are buttons on the right; **SCORE** (hold) and **II** (pause) are at the top.
-- Chat isn't available with touch controls.
+- A keyboard, mouse or trackpad connected to a tablet works as on a computer. Using the mouse or trackpad hides the on-screen controls, and touching the screen brings them back. The keyboard works alongside them, including **Esc** to pause and **T** to chat.
+- Without a keyboard, chat isn't available.
 
 Look sensitivity for touch follows the aim sensitivity in **Pause → Settings**.
 

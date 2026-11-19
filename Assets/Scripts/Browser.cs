@@ -11,6 +11,7 @@ public static class Browser
     [DllImport("__Internal")] private static extern int IsBrowserPointerLocked();
     [DllImport("__Internal")] private static extern void SetBrowserLeaveWarning(int enabled);
     [DllImport("__Internal")] private static extern int IsBrowserTouchDevice();
+    [DllImport("__Internal")] private static extern int GetBrowserPointerType();
 
     private static int touchDevice = -1;
 
@@ -27,10 +28,20 @@ public static class Browser
             return touchDevice != 0;
         }
     }
+
+    public static int LastPointerType => GetBrowserPointerType();
+
+    // Starts listening for the pointer type at launch, so a trackpad used in the menu already counts
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    private static void StartPointerTracking() => GetBrowserPointerType();
 #else
     public const bool IsBrowser = false;
     public static bool IsPointerLocked => Cursor.lockState == CursorLockMode.Locked;
     public static void SetLeaveWarning(bool enabled) { }
     public static bool IsTouchDevice => false;
+    public static int LastPointerType => PointerNone;
 #endif
+
+    // The kind of pointer the player used last: a mouse or trackpad, or a finger or pen
+    public const int PointerNone = 0, PointerMouse = 1, PointerTouch = 2;
 }

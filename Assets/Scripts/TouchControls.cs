@@ -11,6 +11,8 @@ using TouchPhase = UnityEngine.InputSystem.TouchPhase;
 // shoot, aim, jump, crouch/slide, reload and switch weapons. Dragging on the fire button also turns
 // the view, so you can shoot and aim at the same time with one thumb.
 // GameInput reads this alongside the keyboard, mouse and gamepad, so gameplay code doesn't change.
+// A keyboard always works too. Using a mouse or trackpad (on a tablet) hides the on-screen controls
+// and plays like a computer; touching the screen brings them back.
 // Built at runtime, so no scene or prefab changes are needed.
 [DefaultExecutionOrder(-500)] // Before Player, Weapon and Look read the input each frame
 public class TouchControls : MonoBehaviour
@@ -31,6 +33,9 @@ public class TouchControls : MonoBehaviour
 #endif
         }
     }
+
+    // True while the on-screen controls are in use; false when playing with a mouse or trackpad instead
+    public static bool UsingTouch => instance != null && instance.usingTouch;
 
     // Movement in -1..1, and view movement this frame in the same units as GameInput.MouseLookValue
     public static Vector2 MoveValue { get; private set; }
@@ -86,6 +91,8 @@ public class TouchControls : MonoBehaviour
     private Vector2 stickOrigin;
     private bool sprinting;
     private TouchButton aimButton;
+    private bool usingTouch;
+    private int lastPointerType;
 
     private static readonly Color Idle = new Color(1f, 1f, 1f, 0.22f);
     private static readonly Color Down = new Color(1f, 1f, 1f, 0.5f);
@@ -116,7 +123,8 @@ public class TouchControls : MonoBehaviour
     {
         instance = this;
         EnhancedTouchSupport.Enable();
-        GameInput.SetTouchMode(true);
+        lastPointerType = Browser.LastPointerType;
+        SetUsingTouch(lastPointerType != Browser.PointerMouse);
     }
 
     private void OnDestroy()
@@ -124,7 +132,56 @@ public class TouchControls : MonoBehaviour
         if (instance != this) return;
         instance = null;
         MoveValue = LookDelta = Vector2.zero;
-        GameInput.SetTouchMode(false);
+        EnableMouse(true);
+    }
+
+    // Switches between the on-screen controls and mouse/trackpad play
+    private void SetUsingTouch(bool on)
+    {
+        usingTouch = on;
+        EnableMouse(!on);
+        if (on)
+        {
+            // Let go of the mouse lock from mouse play; touch play never locks it
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
+    }
+
+    // Mobile browsers also report taps as mouse clicks, which would shoot or turn the view on every
+    // tap, so the mouse is switched off while the on-screen controls are in use. Real mouse or
+    // trackpad use is still noticed, through the browser (Browser.LastPointerType).
+    // Not in the editor, where simulated touches are made from the mouse.
+    private static void EnableMouse(bool enable)
+    {
+        if (!Browser.IsBrowser) return;
+        Mouse mouse = Mouse.current;
+        if (mouse == null || mouse.enabled == enable) return;
+        if (enable) InputSystem.EnableDevice(mouse);
+        else InputSystem.DisableDevice(mouse);
+    }
+
+    private void UpdateMode()
+    {
+        // The browser says which kind of pointer was used last: a mouse or trackpad, or a finger or pen
+        int pointer = Browser.LastPointerType;
+        if (pointer != lastPointerType)
+        {
+            lastPointerType = pointer;
+            if (pointer == Browser.PointerMouse) SetUsingTouch(false);
+            else if (pointer == Browser.PointerTouch) SetUsingTouch(true);
+        }
+
+        if (!usingTouch)
+        {
+            foreach (Touch touch in Touch.activeTouches)
+            {
+                if (touch.phase == TouchPhase.Began) { SetUsingTouch(true); break; }
+            }
+        }
+
+        // The mouse device can appear after the switch, on its first event
+        if (usingTouch) EnableMouse(false);
     }
 
     #region Read by GameInput
@@ -250,8 +307,9 @@ public class TouchControls : MonoBehaviour
     {
         LookDelta = Vector2.zero;
 
-        canvas.enabled = !Pause.paused;
-        if (GameInput.Blocked)
+        UpdateMode();
+        canvas.enabled = usingTouch && !Pause.paused;
+        if (!usingTouch || GameInput.Blocked)
         {
             ReleaseAll();
             return;

@@ -616,7 +616,8 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
     private void PauseWhenBrowserReleasesMouse()
     {
 #if UNITY_WEBGL && !UNITY_EDITOR
-        if (TouchControls.Enabled) return;
+        // Touch controls never lock the mouse, and switching to them lets go of it on purpose
+        if (TouchControls.UsingTouch) { wasCursorLocked = false; return; }
         bool locked = Browser.IsPointerLocked;
         if (wasCursorLocked && !locked && !Pause.paused)
         {

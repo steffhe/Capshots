@@ -115,14 +115,6 @@ public static class GameInput
     public static bool Pressed(InputAction action) => !Blocked && (action.WasPressedThisFrame() || TouchControls.WasPressed(action));
     public static bool Released(InputAction action) => action.WasReleasedThisFrame() || TouchControls.WasReleased(action);
 
-    // While the touch controls are on, mouse and keyboard bindings are switched off: mobile browsers
-    // also report taps as mouse clicks, which would otherwise shoot or turn the view on every tap.
-    // A gamepad still works.
-    public static void SetTouchMode(bool on)
-    {
-        Map.bindingMask = on ? InputBinding.MaskByGroup(GamepadGroup) : (InputBinding?)null;
-    }
-
     // Pause works while paused (to unpause), but not while typing in chat: there Escape closes the chat
     public static bool PausePressed
     {
@@ -131,7 +123,8 @@ public static class GameInput
 #if UNITY_WEBGL && !UNITY_EDITOR
             // In a browser, Escape always releases the mouse, and the game pauses when that happens
             // (see Player.PauseWhenBrowserReleasesMouse). Here Escape only resumes, so the two can't fight.
-            if (!Pause.paused) return false;
+            // With touch controls nothing locks the mouse, so there Escape on a keyboard pauses too.
+            if (!Pause.paused && !TouchControls.UsingTouch) return false;
 #endif
             return !IsRebinding && !ChatUI.IsTyping && ChatUI.ClosedFrame != Time.frameCount && PauseMenu.WasPressedThisFrame();
         }
