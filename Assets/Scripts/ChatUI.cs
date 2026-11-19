@@ -21,7 +21,8 @@ public class ChatUI : MonoBehaviour
 
     [Header("Chat")]
     public int maxMessages = 8;
-    public float messageTime = 10f;
+    // Seconds a message stays on screen before fading out (all show again while typing)
+    public float messageTime = 30f;
 
     private Manager manager;
     private Font font;
