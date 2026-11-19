@@ -7,8 +7,12 @@ name: Build
 #    matchmaking version, so different releases never share a room (and Windows and
 #    browser players on the same release can play together).
 #  - Pull requests that touch the project get test builds of both, downloadable from the run.
+#  - Pushes to main (merged pull requests) build too. Besides checking that main still builds,
+#    this saves Unity's Library cache on main, which every later pull request can start from.
+#    (A pull request can only use caches saved by itself or by main.)
 #  - "Run workflow" on the Actions tab builds on demand.
-#  - The Windows build first runs the EditMode tests in Assets/Tests, and stops if any fail.
+#  - The EditMode tests in Assets/Tests run in parallel with the builds. A release and the
+#    browser version are only published when the tests and both builds pass.
 #
 # Publishing the browser version needs GitHub Pages set up once:
 #   1. Settings > Pages > Build and deployment > Source: "GitHub Actions"
@@ -22,8 +26,16 @@ name: Build
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
+    # Only for pushes to main; GitHub doesn't apply path filters to tag pushes
+    paths:
+      - 'Assets/**'
+      - 'Packages/**'
+      - 'ProjectSettings/**'
+      - '.github/workflows/build.yml'
   pull_request:
     paths:
       - 'Assets/**'
@@ -40,22 +52,13 @@ env:
   BUILD_NAME: MultiplayerFPS
 
 jobs:
-  build:
-    name: Build for ${{ matrix.name }}
+  # Checks the Unity license secrets and works out the version, once for all jobs below
+  setup:
+    name: Setup
     runs-on: ubuntu-latest
-    timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Windows
-            targetPlatform: StandaloneWindows64
-          - name: WebGL
-            targetPlatform: WebGL
-    permissions:
-      contents: write # needed to create releases on tag pushes
-      checks: write # lets the test runner post a test results check
-
+    outputs:
+      available: ${{ steps.license.outputs.available }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Check for Unity license
         id: license
@@ -80,7 +83,6 @@ jobs:
           fi
 
       - name: Determine version
-        if: steps.license.outputs.available == 'true'
         id: version
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
@@ -90,9 +92,18 @@ jobs:
             echo "version=0.0.0-dev.${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
           fi
 
+  test:
+    name: EditMode tests
+    needs: setup
+    if: needs.setup.outputs.available == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      checks: write # lets the test runner post a test results check
+    steps:
       # The Unity Docker image is large, so make room on the runner first
       - name: Free disk space
-        if: steps.license.outputs.available == 'true'
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
           tool-cache: false
@@ -104,21 +115,17 @@ jobs:
           swap-storage: true
 
       - name: Check out repository
-        if: steps.license.outputs.available == 'true'
         uses: actions/checkout@v4
 
       - name: Cache Unity Library folder
-        if: steps.license.outputs.available == 'true'
         uses: actions/cache@v4
         with:
           path: Library
-          key: Library-${{ matrix.targetPlatform }}-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          key: Library-Tests-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
           restore-keys: |
-            Library-${{ matrix.targetPlatform }}-
+            Library-Tests-
 
-      # The tests don't depend on the platform, so they only run in the Windows build
       - name: Run EditMode tests
-        if: steps.license.outputs.available == 'true' && matrix.targetPlatform == 'StandaloneWindows64'
         id: tests
         uses: game-ci/unity-test-runner@v4
         env:
@@ -132,15 +139,57 @@ jobs:
           checkName: EditMode test results
 
       - name: Upload test results
-        if: always() && steps.license.outputs.available == 'true' && matrix.targetPlatform == 'StandaloneWindows64'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results
           path: ${{ steps.tests.outputs.artifactsPath }}
           retention-days: 14
 
+  build:
+    name: Build for ${{ matrix.name }}
+    needs: setup
+    if: needs.setup.outputs.available == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            targetPlatform: StandaloneWindows64
+          - name: WebGL
+            targetPlatform: WebGL
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.setup.outputs.version }}
+
+    steps:
+      # The Unity Docker image is large, so make room on the runner first
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: true
+          swap-storage: true
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Cache Unity Library folder
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-${{ matrix.targetPlatform }}-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-${{ matrix.targetPlatform }}-
+
       - name: Build with Unity
-        if: steps.license.outputs.available == 'true'
         uses: game-ci/unity-builder@v4
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
@@ -150,56 +199,68 @@ jobs:
           targetPlatform: ${{ matrix.targetPlatform }}
           buildName: ${{ env.BUILD_NAME }}
           versioning: Custom
-          version: ${{ steps.version.outputs.version }}
+          version: ${{ env.VERSION }}
 
-      # ---- Windows: zip, upload, and attach to the release on tags ----
+      # ---- Windows: zip and upload (the release job attaches it on tags) ----
       - name: Zip build
-        if: steps.license.outputs.available == 'true' && matrix.targetPlatform == 'StandaloneWindows64'
-        id: zip
+        if: matrix.targetPlatform == 'StandaloneWindows64'
         run: |
-          ZIP_NAME="${BUILD_NAME}-${{ steps.version.outputs.version }}-Windows.zip"
           cd build/StandaloneWindows64
           # Leave out the debug folders Unity says not to ship
-          zip -r -q "$GITHUB_WORKSPACE/$ZIP_NAME" . \
+          zip -r -q "$GITHUB_WORKSPACE/${BUILD_NAME}-${VERSION}-Windows.zip" . \
             -x '*_BurstDebugInformation_DoNotShip*' \
             -x '*_BackUpThisFolder_ButDontShipItWithYourGame*'
-          echo "name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Upload build artifact
-        if: steps.license.outputs.available == 'true' && matrix.targetPlatform == 'StandaloneWindows64'
+        if: matrix.targetPlatform == 'StandaloneWindows64'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.BUILD_NAME }}-${{ steps.version.outputs.version }}-Windows
-          path: ${{ steps.zip.outputs.name }}
+          name: ${{ env.BUILD_NAME }}-${{ env.VERSION }}-Windows
+          path: ${{ env.BUILD_NAME }}-${{ env.VERSION }}-Windows.zip
           retention-days: 14
-
-      - name: Publish GitHub Release
-        if: steps.license.outputs.available == 'true' && matrix.targetPlatform == 'StandaloneWindows64' && startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          name: Multiplayer FPS ${{ github.ref_name }}
-          files: ${{ steps.zip.outputs.name }}
-          generate_release_notes: true
 
       # ---- WebGL: upload for testing, and hand the site to GitHub Pages on tags ----
       - name: Upload browser build artifact
-        if: steps.license.outputs.available == 'true' && matrix.targetPlatform == 'WebGL'
+        if: matrix.targetPlatform == 'WebGL'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.BUILD_NAME }}-${{ steps.version.outputs.version }}-WebGL
+          name: ${{ env.BUILD_NAME }}-${{ env.VERSION }}-WebGL
           path: build/WebGL/${{ env.BUILD_NAME }}
           retention-days: 14
 
       - name: Prepare GitHub Pages site
-        if: steps.license.outputs.available == 'true' && matrix.targetPlatform == 'WebGL' && startsWith(github.ref, 'refs/tags/v')
+        if: matrix.targetPlatform == 'WebGL' && startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-pages-artifact@v3
         with:
           path: build/WebGL/${{ env.BUILD_NAME }}
 
-  # Publishes the browser version from the WebGL build above. Only on release tags.
+  # Publishes the GitHub Release with the Windows zip. Only on release tags, and only when
+  # the tests and both builds passed.
+  release:
+    name: Publish release
+    needs: [setup, test, build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # needed to create the release
+    steps:
+      - name: Download Windows build
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.BUILD_NAME }}-${{ needs.setup.outputs.version }}-Windows
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Multiplayer FPS ${{ github.ref_name }}
+          files: ${{ env.BUILD_NAME }}-${{ needs.setup.outputs.version }}-Windows.zip
+          generate_release_notes: true
+
+  # Publishes the browser version from the WebGL build above. Only on release tags, and only
+  # when the tests and both builds passed.
   publish-web:
     name: Publish browser version
-    needs: build
+    needs: [test, build]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:

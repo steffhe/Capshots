@@ -73,7 +73,7 @@ Photon is configured in `Assets/Photon/PhotonUnityNetworking/Resources/PhotonSer
 
 ## Tests
 
-The tests in `Assets/Tests/EditMode` check gun ammo, damage falloff and XP. Run them in Unity from **Window → General → Test Runner → EditMode → Run All**. The build workflow also runs them before every build and stops if any fail.
+The tests in `Assets/Tests/EditMode` check gun ammo, damage falloff and XP. Run them in Unity from **Window → General → Test Runner → EditMode → Run All**. The build workflow also runs them alongside every build, and only publishes a release when they pass.
 
 ## Releasing
 
@@ -88,6 +88,7 @@ Builds are made automatically by GitHub Actions with [GameCI](https://game.ci) (
   ```
   The tag (without the `v`) becomes the game's version, which is also used as Photon's matchmaking version, so players on different releases never end up in the same room.
 - **Pull requests** that change the project get test builds for Windows and the browser. Download them from the workflow run's **Artifacts**.
+- **Merges to `main`** are built too. This checks that `main` still builds, and saves Unity's Library cache so later pull requests start from it instead of importing every asset again.
 - **On demand:** run the **Build** workflow from the **Actions** tab.
 
 The workflow needs three repository secrets (**Settings → Secrets and variables → Actions**): `UNITY_LICENSE` (the contents of your Unity license file, `Unity_lic.ulf`), `UNITY_EMAIL` and `UNITY_PASSWORD`. Without them, pull request builds are skipped with a warning.
