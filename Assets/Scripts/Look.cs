@@ -31,6 +31,14 @@ public class Look : MonoBehaviourPunCallbacks
     private UnityEngine.Events.UnityAction<float> onXSensChanged;
     private UnityEngine.Events.UnityAction<float> onYSensChanged;
 
+    [Header("Recoil")]
+    // How fast the view snaps to a new kick, and how fast it settles back afterwards
+    public float recoilSnappiness = 25f;
+    public float recoilRecovery = 7f;
+
+    private Vector2 recoilTarget;   // x = pitch up, y = yaw right, in degrees
+    private Vector2 recoilCurrent;
+
     #endregion
 
     #region MonoBehaviour Callbacks
@@ -71,6 +79,7 @@ public class Look : MonoBehaviourPunCallbacks
         if (!photonView.IsMine) return;
         if (Pause.paused && photonView.IsMine) return;
 
+        ApplyRecoil();
         SetX();
         SetY();
         UpdateCursorLock();
@@ -123,6 +132,26 @@ public class Look : MonoBehaviourPunCallbacks
             }
         }
 
+    }
+
+    // Kicks the view by the given degrees. The kick is smoothed in and then recovers back on its own.
+    public void AddRecoil(float pitch, float yaw)
+    {
+        recoilTarget += new Vector2(pitch, yaw);
+    }
+
+    void ApplyRecoil()
+    {
+        Vector2 previous = recoilCurrent;
+        recoilCurrent = Vector2.Lerp(recoilCurrent, recoilTarget, Time.deltaTime * recoilSnappiness);
+        recoilTarget = Vector2.Lerp(recoilTarget, Vector2.zero, Time.deltaTime * recoilRecovery);
+
+        Vector2 delta = recoilCurrent - previous;
+
+        Quaternion pitched = cam.localRotation * Quaternion.AngleAxis(delta.x, -Vector3.right);
+        if (Quaternion.Angle(camCenter, pitched) < maxAngle) cam.localRotation = pitched;
+
+        player.localRotation *= Quaternion.AngleAxis(delta.y, Vector3.up);
     }
 
     public void SetXSens()

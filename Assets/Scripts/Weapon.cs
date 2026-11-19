@@ -17,6 +17,12 @@ public class Weapon : MonoBehaviourPunCallbacks
 
     public GameObject weaponImagePrefab;
 
+    [Header("Game feel")]
+    // Camera kick per shot, as a fraction of each gun's recoil value
+    public float cameraRecoilScale = 0.15f;
+    public float aimingRecoilMultiplier = 0.5f;
+    public Color muzzleFlashColor = new Color(1f, 0.8f, 0.45f);
+
 
     private float currentCooldown;
     public int currentIndex;
@@ -339,6 +345,7 @@ public class Weapon : MonoBehaviourPunCallbacks
                 StopCoroutine("HitPlayer");
                 bool targetIsDead = target.GetComponent<Player>().currentHealth - damage <= 0;
                 StartCoroutine("HitPlayer", targetIsDead);
+                FeedbackUI.Hit(headshot);
 
                 // Send which gun hit and whether it was a headshot, not a damage number: the victim works out the damage itself
                 target.RPC("TakeDamage", target.Owner, currentIndex, headshot);
@@ -348,6 +355,14 @@ public class Weapon : MonoBehaviourPunCallbacks
         }
 
         photonView.RPC("ShotEffects", RpcTarget.All, endPoint, hitNormal, hitWorld);
+
+        // Kick the view up and slightly sideways. Look recovers it over the next moments.
+        Look look = GetComponent<Look>();
+        if (look != null)
+        {
+            float kick = gun.recoil * cameraRecoilScale * (isAiming ? aimingRecoilMultiplier : 1f);
+            look.AddRecoil(kick, Random.Range(-kick, kick) * 0.35f);
+        }
     }
 
     // Runs on every client: sound, tracer, bullet hole and gun kick for a shot.
@@ -357,6 +372,7 @@ public class Weapon : MonoBehaviourPunCallbacks
         GetComponent<AudioSource>().PlayOneShot(loadout[currentIndex].shootingSound);
 
         StartCoroutine(ShotLine(endPoint));
+        MuzzleFlash();
 
         if (hitWorld)
         {
@@ -373,13 +389,31 @@ public class Weapon : MonoBehaviourPunCallbacks
         }
     }
 
+    void MuzzleFlash()
+    {
+        if (currentWeapon == null) return;
+
+        Vector3 muzzle = lineRend != null ? lineRend.transform.position : currentWeapon.transform.position + currentWeapon.transform.forward * 0.5f;
+
+        GameObject flash = new GameObject("Muzzle Flash");
+        flash.transform.position = muzzle;
+        Light light = flash.AddComponent<Light>();
+        light.type = LightType.Point;
+        light.color = muzzleFlashColor;
+        light.range = 6f;
+        light.intensity = Random.Range(2.5f, 4f);
+        light.shadows = LightShadows.None;
+
+        Destroy(flash, 0.04f);
+    }
+
     [PunRPC]
     private void TakeDamage(int gunIndex, bool headshot, PhotonMessageInfo info)
     {
         if (gunIndex < 0 || gunIndex >= loadout.Length || info.Sender == null) return;
 
         int damage = loadout[gunIndex].damage * (headshot ? 2 : 1);
-        GetComponent<Player>().TakeDamage(damage, info.Sender.ActorNumber);
+        GetComponent<Player>().TakeDamage(damage, info.Sender.ActorNumber, loadout[gunIndex].gunName, headshot);
     }
     #endregion
 
