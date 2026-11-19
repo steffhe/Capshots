@@ -4,7 +4,7 @@ A simple online multiplayer first-person shooter made in Unity, built while foll
 
 ## Play
 
-**In your browser:** go to **[steffhe.github.io/MultiplayerFPS](https://steffhe.github.io/MultiplayerFPS/)**. It needs a desktop browser (Chrome, Edge or Firefox) and a mouse; phones and tablets aren't supported. Click the game to lock the mouse. **Esc** releases the mouse and opens the pause menu; click again after resuming to lock it. Crouch is on `Z` in the browser, because Ctrl+W would close the tab. During a match the browser asks before closing or reloading the tab.
+**In your browser:** go to **[steffhe.github.io/MultiplayerFPS](https://steffhe.github.io/MultiplayerFPS/)**. It works in desktop browsers (Chrome, Edge or Firefox) and on phones and tablets, which get on-screen touch controls (see below). On a computer, click the game to lock the mouse. **Esc** releases the mouse and opens the pause menu; click again after resuming to lock it. Crouch is on `Z` in the browser, because Ctrl+W would close the tab. During a match the browser asks before closing or reloading the tab.
 
 **On Windows:**
 
@@ -54,6 +54,19 @@ Keyboard and mouse controls can be changed in **Pause → Settings**. A gamepad 
 | Scoreboard | Hold `Tab` | View / Select |
 | Chat | `T` or `Enter` | - |
 | Pause | `Esc` | Menu / Start |
+
+### Touch controls (phones and tablets)
+
+Hold the device sideways. On phones that allow it (Android), the game goes fullscreen on your first tap.
+
+- **Move:** put your thumb anywhere on the lower left of the screen and drag; the joystick follows your thumb. Push it far forward to sprint (the knob turns yellow).
+- **Look:** drag anywhere else on the screen. Dragging on the **FIRE** button turns the view too, so you can shoot and aim with one thumb.
+- **AIM** is a toggle: tap to aim down sights, tap again to stop.
+- **CROUCH** crouches when standing, and slides when sprinting.
+- **JUMP**, **RELOAD** and **SWAP** (next weapon) are buttons on the right; **SCORE** (hold) and **II** (pause) are at the top.
+- Chat isn't available with touch controls.
+
+Look sensitivity for touch follows the aim sensitivity in **Pause → Settings**.
 
 ## Building from source
 

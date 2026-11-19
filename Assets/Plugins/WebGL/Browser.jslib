@@ -14,5 +14,11 @@ mergeInto(LibraryManager.library, {
     }
     window.removeEventListener("beforeunload", Module.leaveWarning);
     if (enabled) window.addEventListener("beforeunload", Module.leaveWarning);
+  },
+
+  // Phones and tablets: the main pointer is a finger. Touchscreen laptops have a mouse or
+  // trackpad as their main pointer, so they keep the keyboard and mouse controls.
+  IsBrowserTouchDevice: function () {
+    return window.matchMedia && window.matchMedia("(pointer: coarse)").matches ? 1 : 0;
   }
 });

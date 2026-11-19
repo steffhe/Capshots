@@ -616,6 +616,7 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
     private void PauseWhenBrowserReleasesMouse()
     {
 #if UNITY_WEBGL && !UNITY_EDITOR
+        if (TouchControls.Enabled) return;
         bool locked = Browser.IsPointerLocked;
         if (wasCursorLocked && !locked && !Pause.paused)
         {
