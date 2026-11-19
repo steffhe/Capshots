@@ -582,6 +582,8 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
 
         UniversalAdditionalCameraData viewmodelData = viewmodelCam.GetUniversalAdditionalCameraData();
         viewmodelData.renderType = CameraRenderType.Overlay;
+        // Ignore the world's depth, so the gun is always drawn in front of walls
+        viewmodelData.clearDepth = true;
         viewmodelData.renderShadows = false;
 
         normalCam.GetUniversalAdditionalCameraData().cameraStack.Add(viewmodelCam);
