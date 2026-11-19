@@ -71,12 +71,12 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
     {
         if (stream.IsWriting)
         {
-            stream.SendNext((int)weaponParent.transform.localEulerAngles.x * 100f);
+            stream.SendNext(weaponParent.transform.localEulerAngles.x);
             stream.SendNext(currentHealth);
         }
         else
         {
-            aimAngle = (float)stream.ReceiveNext() / 100f;
+            aimAngle = (float)stream.ReceiveNext();
             currentHealth = (int)stream.ReceiveNext();
         }
     }
