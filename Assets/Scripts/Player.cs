@@ -82,6 +82,11 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
     private float lastDamageTime = float.NegativeInfinity;
     private float regenBuffer;
 
+    [Header("Team colours")]
+    // How strongly other players' bodies are tinted with their team colour in team mode
+    [Range(0f, 1f)] public float teamTintStrength = 0.6f;
+    private int teamVisualsVersion = -1;
+
     // The player this client controls, or null while dead
     public static Player Local { get; private set; }
 
@@ -164,6 +169,7 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         {
             RefreshMultiplayerState();
             UpdateProtectionBlink();
+            RefreshTeamVisuals();
             return;
         }
 
@@ -492,6 +498,35 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
 
                 PhotonNetwork.Destroy(gameObject);
             }
+        }
+    }
+
+    // Colours this player's name tag and body by team. Runs again whenever the team list changes.
+    private void RefreshTeamVisuals()
+    {
+        if (teamVisualsVersion == Manager.TeamsVersion) return;
+        teamVisualsVersion = Manager.TeamsVersion;
+
+        Manager m = Manager.Instance;
+        int team = m != null ? m.GetTeam(photonView.OwnerActorNr) : -1;
+        if (team < 0) return;
+
+        Color teamColor = Manager.TeamColors[team % 2];
+        if (playerUsername != null) playerUsername.color = teamColor;
+
+        Color tint = Color.Lerp(Color.white, teamColor, teamTintStrength);
+        MaterialPropertyBlock block = new MaterialPropertyBlock();
+        foreach (Renderer body in GetComponentsInChildren<Renderer>(true))
+        {
+            // Body meshes only: not the name tag, the gun or effects
+            if (!(body is MeshRenderer || body is SkinnedMeshRenderer)) continue;
+            if (body.GetComponent<TextMeshPro>() != null) continue;
+            if (weaponParent != null && body.transform.IsChildOf(weaponParent)) continue;
+
+            body.GetPropertyBlock(block);
+            block.SetColor("_BaseColor", tint); // URP
+            block.SetColor("_Color", tint);     // built-in shaders
+            body.SetPropertyBlock(block);
         }
     }
 

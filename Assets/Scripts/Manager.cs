@@ -13,6 +13,7 @@ public class PlayerInfo
     public int actor;
     public short kills;
     public short deaths;
+    public byte team;
 
     public PlayerInfo (ProfileData p, int a, short k, short d)
     {
@@ -24,6 +25,12 @@ public class PlayerInfo
 }
 
 
+public enum GameMode
+{
+    FreeForAll = 0,
+    TeamDeathmatch = 1
+}
+
 public enum GameState
 {
     Waiting = 0,
@@ -34,6 +41,20 @@ public enum GameState
 
 public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
 {
+    public static Manager Instance { get; private set; }
+
+    public GameMode mode = GameMode.FreeForAll;
+    public bool IsTeamMode => mode == GameMode.TeamDeathmatch;
+
+    public static readonly string[] TeamNames = { "BLUE", "RED" };
+    public static readonly Color[] TeamColors = { new Color(0.3f, 0.6f, 1f), new Color(1f, 0.35f, 0.3f) };
+    public static string TeamHex(int team) => team == 0 ? "#4d99ff" : "#ff594d";
+
+    // Goes up whenever the player list changes, so players know to refresh their team colours
+    public static int TeamsVersion { get; private set; }
+
+    private Text teamScore;
+    private int announcedTeam = -1;
 
     public int mainmenu = 0;
     public int killcount = 20;
@@ -105,9 +126,23 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
     }
 
 
+    private void Awake()
+    {
+        Instance = this;
+    }
+
+    private void OnDestroy()
+    {
+        if (Instance == this) Instance = null;
+    }
+
     private void Start()
     {
         killcount = (int)PhotonNetwork.CurrentRoom.CustomProperties["killcount"];
+        if (PhotonNetwork.CurrentRoom.CustomProperties.ContainsKey("mode"))
+        {
+            mode = (GameMode)(int)PhotonNetwork.CurrentRoom.CustomProperties["mode"];
+        }
         if (PhotonNetwork.CurrentRoom.CustomProperties.ContainsKey("matchlength"))
         {
             matchlength = (int)PhotonNetwork.CurrentRoom.CustomProperties["matchlength"];
@@ -158,6 +193,7 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         uiUsername = GameObject.Find("HUD/Username/Text").GetComponent<Text>();
         CreateXpPopup();
         FeedbackUI.Create(GameObject.Find("Canvas").transform, myKills.font);
+        CreateTeamScore();
        
 
         RefreshMyStats();
@@ -201,6 +237,7 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
             myDeaths.text = "0 Deaths";
         }
 
+        RefreshTeamScore();
         if (leaderboard.gameObject.activeSelf) Leaderboard(leaderboard);
     }
 
@@ -212,7 +249,10 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         }
 
 
-        lb.Find("Header/Mode").GetComponent<Text>().text = "FREE FOR ALL";
+        Text modeText = lb.Find("Header/Mode").GetComponent<Text>();
+        modeText.supportRichText = true;
+        modeText.horizontalOverflow = HorizontalWrapMode.Overflow;
+        modeText.text = IsTeamMode ? TeamHeader() : "FREE FOR ALL";
         lb.Find("Header/Map").GetComponent<Text>().text = CurrentMapName();
 
         GameObject playerCard = lb.GetChild(1).gameObject;
@@ -226,6 +266,12 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
             GameObject newcard = Instantiate(playerCard, lb) as GameObject;
 
             if (alternateColors) newcard.GetComponent<Image>().color = new Color32(0, 0,0, 100);
+            if (IsTeamMode)
+            {
+                Color teamColor = TeamColors[a.team % 2];
+                teamColor.a = 0.35f;
+                newcard.GetComponent<Image>().color = teamColor;
+            }
 
             newcard.transform.Find("Level").GetComponent<Text>().text = a.profile.level.ToString("00");
             newcard.transform.Find("Username").GetComponent<Text>().text = a.profile.username;
@@ -243,6 +289,14 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
     private List<PlayerInfo> SortPlayers (List<PlayerInfo> info)
     {
         List<PlayerInfo> sorted = new List<PlayerInfo>();
+
+        // Team mode: blue team first, then red, each sorted by kills
+        if (IsTeamMode)
+        {
+            List<PlayerInfo> byKills = new List<PlayerInfo>(info);
+            byKills.Sort((x, y) => x.team != y.team ? x.team.CompareTo(y.team) : y.kills.CompareTo(x.kills));
+            return byKills;
+        }
 
         while (sorted.Count < info.Count)
         {
@@ -298,7 +352,11 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         PlayerInfo p = new PlayerInfo(new ProfileData((string)data[0], (int)data[1], (int)data[2], 150f, 50f), (int)data[3], (short)data[4], (short)data[5]);
 
         // A player re-sends NewPlayer if a host change lost the first one, so never add the same actor twice
-        if (FindPlayerIndex(p.actor) < 0) playerInfo.Add(p);
+        if (FindPlayerIndex(p.actor) < 0)
+        {
+            p.team = ChooseTeamForNewPlayer();
+            playerInfo.Add(p);
+        }
 
         UpdatePlayers_S((int)state, playerInfo);
 
@@ -310,7 +368,7 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         package[0] = state;
         for(int i = 0; i < info.Count; i++)
         {
-            object[] piece = new object[6];
+            object[] piece = new object[7];
 
             piece[0] = info[i].profile.username;
             piece[1] = info[i].profile.level;
@@ -318,6 +376,7 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
             piece[3] = info[i].actor;
             piece[4] = info[i].kills;
             piece[5] = info[i].deaths;
+            piece[6] = info[i].team;
 
             package[i + 1] = piece;
         }
@@ -339,6 +398,7 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
             object[] extract = (object[])data[i];
 
             PlayerInfo p = new PlayerInfo(new ProfileData((string)extract[0], (int)extract[1], (int)extract[2], 150f, 150f), (int)extract[3], (short)extract[4], (short)extract[5]);
+            p.team = (byte)extract[6];
 
             playerInfo.Add(p);
         }
@@ -348,8 +408,10 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         // If our NewPlayer event went to a host that left before handling it, we are missing from the list
         if (myind < 0 && state != GameState.Ending) NewPlayer_S(Launcher.myProfile);
 
+        TeamsVersion++;
         RefreshMyStats();
         if (previousState != state) OnStateChanged(previousState);
+        AnnounceTeam();
         StateCheck();
 
     }
@@ -405,6 +467,7 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
             }
         }
 
+        RefreshTeamScore();
         ScoreCheck();
     }
 
@@ -424,7 +487,15 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         bool headshot = (bool)data[3];
 
         int me = PhotonNetwork.LocalPlayer.ActorNumber;
-        FeedbackUI.AddKillFeed(GetPlayerName(killer), GetPlayerName(victim), weapon, headshot, killer == me || victim == me);
+        if (IsTeamMode)
+        {
+            FeedbackUI.AddKillFeed(GetPlayerName(killer), GetPlayerName(victim), weapon, headshot, killer == me || victim == me,
+                TeamHex(GetTeam(killer)), TeamHex(GetTeam(victim)));
+        }
+        else
+        {
+            FeedbackUI.AddKillFeed(GetPlayerName(killer), GetPlayerName(victim), weapon, headshot, killer == me || victim == me);
+        }
 
         if (killer == me && victim != me) FeedbackUI.Kill();
     }
@@ -497,6 +568,108 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         if (destroy && pickup != null) Destroy(pickup.gameObject);
     }
 
+    #region Teams
+
+    // The player's team in team mode, or -1 in free for all or if they aren't known yet
+    public int GetTeam(int actor)
+    {
+        if (!IsTeamMode) return -1;
+        int index = FindPlayerIndex(actor);
+        return index >= 0 ? playerInfo[index].team : -1;
+    }
+
+    public bool AreEnemies(int actorA, int actorB)
+    {
+        if (actorA == actorB) return false;
+        if (!IsTeamMode) return true;
+
+        int teamA = GetTeam(actorA);
+        int teamB = GetTeam(actorB);
+        // Until both teams are known, treat them as enemies so nobody is accidentally unhittable
+        if (teamA < 0 || teamB < 0) return true;
+        return teamA != teamB;
+    }
+
+    public int TeamKills(int team)
+    {
+        int kills = 0;
+        foreach (PlayerInfo p in playerInfo)
+        {
+            if (p.team == team) kills += p.kills;
+        }
+        return kills;
+    }
+
+    // 0 or 1, or -1 for a draw
+    private int WinningTeam()
+    {
+        int blue = TeamKills(0);
+        int red = TeamKills(1);
+        if (blue == red) return -1;
+        return blue > red ? 0 : 1;
+    }
+
+    // Host only: put new players on the smaller team, or the one that's behind
+    private byte ChooseTeamForNewPlayer()
+    {
+        int blueCount = 0, redCount = 0;
+        foreach (PlayerInfo p in playerInfo)
+        {
+            if (p.team == 0) blueCount++; else redCount++;
+        }
+
+        if (blueCount != redCount) return (byte)(blueCount < redCount ? 0 : 1);
+        return (byte)(TeamKills(0) <= TeamKills(1) ? 0 : 1);
+    }
+
+    private string TeamHeader()
+    {
+        string score = $"<color={TeamHex(0)}>{TeamNames[0]} {TeamKills(0)}</color>  -  <color={TeamHex(1)}>{TeamKills(1)} {TeamNames[1]}</color>";
+        if (state != GameState.Ending) return "TEAM DEATHMATCH   " + score;
+
+        int winner = WinningTeam();
+        string result = winner < 0 ? "DRAW" : $"<color={TeamHex(winner)}>{TeamNames[winner]} TEAM WINS</color>";
+        return result + "   " + score;
+    }
+
+    // Team score shown above the match timer, built from the timer text so it matches the HUD style
+    private void CreateTeamScore()
+    {
+        if (!IsTeamMode || timer == null) return;
+
+        GameObject scoreObject = Instantiate(timer.gameObject, timer.transform.parent);
+        scoreObject.name = "Team Score";
+
+        teamScore = scoreObject.GetComponent<Text>();
+        teamScore.supportRichText = true;
+        teamScore.horizontalOverflow = HorizontalWrapMode.Overflow;
+
+        RectTransform rect = (RectTransform)scoreObject.transform;
+        RectTransform timerRect = (RectTransform)timer.transform;
+        rect.anchoredPosition = timerRect.anchoredPosition + new Vector2(0f, timerRect.sizeDelta.y + 6f);
+
+        RefreshTeamScore();
+    }
+
+    private void RefreshTeamScore()
+    {
+        if (teamScore == null) return;
+        teamScore.text = $"<color={TeamHex(0)}>{TeamNames[0]} {TeamKills(0)}</color>  -  <color={TeamHex(1)}>{TeamKills(1)} {TeamNames[1]}</color>";
+    }
+
+    private void AnnounceTeam()
+    {
+        if (!IsTeamMode) return;
+
+        int myTeam = GetTeam(PhotonNetwork.LocalPlayer.ActorNumber);
+        if (myTeam < 0 || myTeam == announcedTeam) return;
+
+        announcedTeam = myTeam;
+        ShowMessage($"YOU ARE ON <color={TeamHex(myTeam)}>{TeamNames[myTeam]}</color> TEAM");
+    }
+
+    #endregion
+
     public string GetPlayerName(int actor)
     {
         int index = FindPlayerIndex(actor);
@@ -567,6 +740,7 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         if (index < 0) return;
 
         playerInfo.RemoveAt(index);
+        TeamsVersion++;
         RecalculateMyIndex();
         RefreshMyStats();
     }
@@ -613,7 +787,11 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
     {
         bool detectwin = false;
 
-        foreach (PlayerInfo a in playerInfo)
+        if (IsTeamMode)
+        {
+            detectwin = TeamKills(0) >= killcount || TeamKills(1) >= killcount;
+        }
+        else foreach (PlayerInfo a in playerInfo)
         {
             if (a.kills >= killcount)
             {
@@ -668,6 +846,15 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
 
     private void AwardMatchXp()
     {
+        if (IsTeamMode)
+        {
+            int myTeam = GetTeam(PhotonNetwork.LocalPlayer.ActorNumber);
+            int winner = WinningTeam();
+            if (myTeam >= 0 && myTeam == winner) AwardXp(xpMatchComplete + xpWin, "VICTORY");
+            else AwardXp(xpMatchComplete, winner < 0 ? "DRAW" : "MATCH COMPLETE");
+            return;
+        }
+
         short myKills = (myind >= 0 && playerInfo.Count > myind) ? playerInfo[myind].kills : (short)0;
         short topKills = 0;
         foreach (PlayerInfo a in playerInfo)
@@ -705,6 +892,7 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         popupObject.name = "XP Popup";
 
         xpPopup = popupObject.GetComponent<Text>();
+        xpPopup.supportRichText = true;
         xpPopup.alignment = TextAnchor.MiddleCenter;
         xpPopup.horizontalOverflow = HorizontalWrapMode.Overflow;
         xpPopup.verticalOverflow = VerticalWrapMode.Overflow;
@@ -780,6 +968,7 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         foreach (Player p in FindObjectsByType<Player>(FindObjectsSortMode.None))
         {
             if (p.photonView.IsMine) continue;
+            if (!AreEnemies(PhotonNetwork.LocalPlayer.ActorNumber, p.photonView.OwnerActorNr)) continue;
             enemyEyes.Add(p.normalCam != null ? p.normalCam.transform.position : p.transform.position + Vector3.up * 1.5f);
         }
 
