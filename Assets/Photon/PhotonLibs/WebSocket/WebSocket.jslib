@@ -3,8 +3,9 @@ $webSocketInstances: [],
 
 SocketCreate: function(url, protocols)
 {
-    var str = Pointer_stringify(url);
-    var prot = Pointer_stringify(protocols);
+    // Pointer_stringify was removed from newer Unity/Emscripten versions; UTF8ToString replaces it
+    var str = UTF8ToString(url);
+    var prot = UTF8ToString(protocols);
     var socket = {
         socket: new WebSocket(str, [prot]),
         buffer: new Uint8Array(0),
@@ -77,7 +78,8 @@ SocketError: function (socketInstance, ptr, bufsize)
  	if (socket.error == null)
  		return 0;
     var str = socket.error.slice(0, Math.max(0, bufsize - 1));
-    writeStringToMemory(str, ptr, false);
+    // writeStringToMemory was removed from newer Emscripten versions; stringToUTF8 replaces it
+    stringToUTF8(str, ptr, bufsize);
     return 1;
 },
 
