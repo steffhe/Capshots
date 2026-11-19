@@ -111,7 +111,18 @@ public static class GameInput
     public static bool Released(InputAction action) => action.WasReleasedThisFrame();
 
     // Pause works while paused (to unpause), but not while typing in chat: there Escape closes the chat
-    public static bool PausePressed => !IsRebinding && !ChatUI.IsTyping && ChatUI.ClosedFrame != Time.frameCount && PauseMenu.WasPressedThisFrame();
+    public static bool PausePressed
+    {
+        get
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // In a browser, Escape always releases the mouse, and the game pauses when that happens
+            // (see Player.PauseWhenBrowserReleasesMouse). Here Escape only resumes, so the two can't fight.
+            if (!Pause.paused) return false;
+#endif
+            return !IsRebinding && !ChatUI.IsTyping && ChatUI.ClosedFrame != Time.frameCount && PauseMenu.WasPressedThisFrame();
+        }
+    }
 
     // +1 next weapon, -1 previous, 0 none
     public static int WeaponSwitch
