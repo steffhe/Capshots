@@ -4,8 +4,8 @@ using UnityEngine.Events;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
-// Settings panel inside the pause menu: field of view, ADS sensitivity, volume, graphics
-// quality and key bindings. Built at runtime from copies of the pause menu's own button,
+// Settings panel inside the pause menu: look sensitivity, ADS sensitivity, field of view, volume,
+// graphics quality and key bindings. Built at runtime from copies of the pause menu's own button,
 // slider and label, so it matches their style and the Pause prefab doesn't need editing.
 public class SettingsMenu : MonoBehaviour
 {
@@ -18,8 +18,8 @@ public class SettingsMenu : MonoBehaviour
     private Slider sliderTemplate;
     private Text labelTemplate;
 
-    private Text fovLabel, adsLabel, volumeLabel;
-    private Slider fovSlider, adsSlider, volumeSlider;
+    private Text xSensLabel, ySensLabel, fovLabel, adsLabel, volumeLabel;
+    private Slider xSensSlider, ySensSlider, fovSlider, adsSlider, volumeSlider;
     private Text qualityText;
 
     private class BindingRow
@@ -55,6 +55,9 @@ public class SettingsMenu : MonoBehaviour
 
         mainButtons = buttons.gameObject;
         sensitivity = sens.gameObject;
+        // Sensitivity is now in the settings panel. The old sliders stay hidden in the prefab only
+        // as style templates for the settings panel's sliders and labels.
+        sensitivity.SetActive(false);
         buttonTemplate = resume.gameObject;
         sliderTemplate = xSens.GetComponent<Slider>();
         labelTemplate = label.GetComponent<Text>();
@@ -90,24 +93,38 @@ public class SettingsMenu : MonoBehaviour
 
         NewLabel(rect, "SETTINGS", new Vector2(0f, 300f), 600f, 34);
 
-        // Left column: sliders and buttons
+        // Left column: sliders and buttons, one row every 62 px
         const float left = -250f;
-        fovLabel = NewLabel(rect, "", new Vector2(left, 240f), 400f, 0);
-        fovSlider = NewSlider(rect, new Vector2(left, 212f), GameSettings.MinFov, GameSettings.MaxFov, true, GameSettings.Fov, v =>
+        xSensLabel = NewLabel(rect, "", new Vector2(left, 245f), 400f, 0);
+        xSensSlider = NewSlider(rect, new Vector2(left, 217f), GameSettings.MinSensitivity, GameSettings.MaxSensitivity, true, GameSettings.XSensitivity, v =>
         {
-            GameSettings.Fov = v;
+            GameSettings.XSensitivity = v;
             RefreshLabels();
         });
 
-        adsLabel = NewLabel(rect, "", new Vector2(left, 165f), 400f, 0);
-        adsSlider = NewSlider(rect, new Vector2(left, 137f), 0.1f, 2f, false, GameSettings.AdsSensitivity, v =>
+        ySensLabel = NewLabel(rect, "", new Vector2(left, 183f), 400f, 0);
+        ySensSlider = NewSlider(rect, new Vector2(left, 155f), GameSettings.MinSensitivity, GameSettings.MaxSensitivity, true, GameSettings.YSensitivity, v =>
+        {
+            GameSettings.YSensitivity = v;
+            RefreshLabels();
+        });
+
+        adsLabel = NewLabel(rect, "", new Vector2(left, 121f), 400f, 0);
+        adsSlider = NewSlider(rect, new Vector2(left, 93f), 0.1f, 2f, false, GameSettings.AdsSensitivity, v =>
         {
             GameSettings.AdsSensitivity = Mathf.Round(v * 20f) / 20f;
             RefreshLabels();
         });
 
-        volumeLabel = NewLabel(rect, "", new Vector2(left, 90f), 400f, 0);
-        volumeSlider = NewSlider(rect, new Vector2(left, 62f), 0f, 1f, false, GameSettings.Volume, v =>
+        fovLabel = NewLabel(rect, "", new Vector2(left, 59f), 400f, 0);
+        fovSlider = NewSlider(rect, new Vector2(left, 31f), GameSettings.MinFov, GameSettings.MaxFov, true, GameSettings.Fov, v =>
+        {
+            GameSettings.Fov = v;
+            RefreshLabels();
+        });
+
+        volumeLabel = NewLabel(rect, "", new Vector2(left, -3f), 400f, 0);
+        volumeSlider = NewSlider(rect, new Vector2(left, -31f), 0f, 1f, false, GameSettings.Volume, v =>
         {
             GameSettings.Volume = v;
             RefreshLabels();
@@ -118,7 +135,7 @@ public class SettingsMenu : MonoBehaviour
             if (QualitySettings.names.Length > 0) GameSettings.Quality = (GameSettings.Quality + 1) % QualitySettings.names.Length;
             RefreshLabels();
         });
-        Place(quality, new Vector2(left, -10f), new Vector2(340f, 46f));
+        Place(quality, new Vector2(left, -95f), new Vector2(340f, 46f));
         qualityText = quality.GetComponentInChildren<Text>();
 
         GameObject reset = NewButton(rect, "RESET CONTROLS", () =>
@@ -126,7 +143,7 @@ public class SettingsMenu : MonoBehaviour
             GameInput.ResetBindings();
             RefreshBindings();
         });
-        Place(reset, new Vector2(left, -70f), new Vector2(340f, 46f));
+        Place(reset, new Vector2(left, -155f), new Vector2(340f, 46f));
 
         GameObject back = NewButton(rect, "BACK", CloseSettings);
         Place(back, new Vector2(left, -270f), new Vector2(340f, 46f));
@@ -187,6 +204,8 @@ public class SettingsMenu : MonoBehaviour
 
     private void RefreshLabels()
     {
+        xSensLabel.text = "LOOK SENSITIVITY X:  " + Mathf.RoundToInt(GameSettings.XSensitivity);
+        ySensLabel.text = "LOOK SENSITIVITY Y:  " + Mathf.RoundToInt(GameSettings.YSensitivity);
         fovLabel.text = "FIELD OF VIEW:  " + Mathf.RoundToInt(GameSettings.Fov);
         adsLabel.text = "AIM SENSITIVITY:  " + GameSettings.AdsSensitivity.ToString("0.00") + "x";
         volumeLabel.text = "VOLUME:  " + Mathf.RoundToInt(GameSettings.Volume * 100f) + "%";
@@ -196,9 +215,10 @@ public class SettingsMenu : MonoBehaviour
     private void OpenSettings()
     {
         mainButtons.SetActive(false);
-        sensitivity.SetActive(false);
         panel.SetActive(true);
 
+        xSensSlider.SetValueWithoutNotify(GameSettings.XSensitivity);
+        ySensSlider.SetValueWithoutNotify(GameSettings.YSensitivity);
         fovSlider.SetValueWithoutNotify(GameSettings.Fov);
         adsSlider.SetValueWithoutNotify(GameSettings.AdsSensitivity);
         volumeSlider.SetValueWithoutNotify(GameSettings.Volume);
@@ -210,7 +230,6 @@ public class SettingsMenu : MonoBehaviour
     {
         panel.SetActive(false);
         mainButtons.SetActive(true);
-        sensitivity.SetActive(true);
     }
 
     #endregion

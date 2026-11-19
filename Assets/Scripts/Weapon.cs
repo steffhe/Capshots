@@ -1,4 +1,4 @@
-  using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Photon.Pun;
@@ -39,6 +39,17 @@ public class Weapon : MonoBehaviourPunCallbacks
     private Coroutine reloadRoutine;
     private bool isBursting;
     private Coroutine burstRoutine;
+
+    // Looked up once instead of every shot or frame
+    private AudioSource audioSource;
+    private Player player;
+    private Look look;
+    private Transform playerCamera;
+    private Image hitmarkImage;
+    private readonly List<Image> arsenalImages = new List<Image>();
+    private Transform weaponAnchor, stateAds, stateHip;
+
+    public Gun CurrentGun => loadout != null && currentIndex >= 0 && currentIndex < loadout.Length ? loadout[currentIndex] : null;
     #endregion
 
     #region MonoBehaviour Callbacks
@@ -49,6 +60,11 @@ public class Weapon : MonoBehaviourPunCallbacks
         {
             loadout[i] = Instantiate(loadout[i]);
         }
+
+        audioSource = GetComponent<AudioSource>();
+        player = GetComponent<Player>();
+        look = GetComponent<Look>();
+        playerCamera = transform.Find("Cameras/Normal Camera");
     }
 
     // Start is called before the first frame update
@@ -67,20 +83,22 @@ public class Weapon : MonoBehaviourPunCallbacks
             {
                 gun.Initialize();
 
-                GameObject weaponImage = weaponImagePrefab;
-                Rect rect = new Rect(0, 0, gun.image.width, gun.image.height);
-                weaponImage.GetComponent<Image>().sprite = Sprite.Create(gun.image, rect, new Vector2(0.5f, 0.5f), 100);
-                //Transform pos = arsenal.transform;
-                //float y = pos.position.y + (ind * 100f);
-                //pos.position = new Vector3(pos.localPosition.x,y,pos.localPosition.z);
-                GameObject weaponimageObject = Instantiate(weaponImage, new Vector3(arsenal.transform.position.x, arsenal.transform.position.y + (ind * 120f), arsenal.transform.position.z), arsenal.transform.rotation, arsenal.transform) as GameObject;
+                Vector3 position = arsenal.transform.position + Vector3.up * (ind * 120f);
+                GameObject weaponimageObject = Instantiate(weaponImagePrefab, position, arsenal.transform.rotation, arsenal.transform);
                 weaponimageObject.name = "WeaponImage" + ind.ToString();
+
+                // Set the icon on the copy, not on the prefab asset
+                Image image = weaponimageObject.GetComponent<Image>();
+                Rect rect = new Rect(0, 0, gun.image.width, gun.image.height);
+                image.sprite = Sprite.Create(gun.image, rect, new Vector2(0.5f, 0.5f), 100);
+                arsenalImages.Add(image);
                 ind += 1;
             }
+
+            hitmark = GameObject.Find("HUD/Crosshair/Hitmark");
+            if (hitmark != null) hitmarkImage = hitmark.GetComponent<Image>();
         }
         photonView.RPC("Equip", RpcTarget.All, 0);
-
-        hitmark = GameObject.Find("HUD/Crosshair/Hitmark");
 
     }
 
@@ -247,14 +265,9 @@ public class Weapon : MonoBehaviourPunCallbacks
     IEnumerator HitPlayer(bool targetIsDead)
     {
 
-        if (targetIsDead)
-        {
-            hitmark.GetComponent<Image>().color = Color.red;
-        }
-        else
-        {
-            hitmark.GetComponent<Image>().color = Color.white;
-        }
+        if (hitmark == null) yield break;
+
+        hitmarkImage.color = targetIsDead ? Color.red : Color.white;
         hitmark.SetActive(true);
         yield return new WaitForSeconds(0.5f);
         hitmark.SetActive(false);
@@ -285,28 +298,20 @@ public class Weapon : MonoBehaviourPunCallbacks
         newWeapon.transform.localPosition = Vector3.zero;
         newWeapon.transform.localEulerAngles = Vector3.zero;
         newWeapon.GetComponent<Sway>().isMine = photonView.IsMine;
-        GetComponent<AudioSource>().clip = loadout[ind].shootingSound;
+        audioSource.clip = loadout[ind].shootingSound;
 
         currentWeapon = newWeapon;
         lineRend = currentWeapon.GetComponentInChildren<LineRenderer>();
+        weaponAnchor = currentWeapon.transform.Find("Anchor");
+        stateAds = currentWeapon.transform.Find("States/ADS");
+        stateHip = currentWeapon.transform.Find("States/Hip");
 
-        if (photonView.IsMine)
+        // Highlight the equipped gun in the HUD
+        for (int i = 0; i < arsenalImages.Count; i++)
         {
-            int curInd = 0;
-            foreach (Gun gun in loadout)
-            {
-                Image img = GameObject.Find("HUD/Arsenal/WeaponImage" + curInd).GetComponent<Image>();
-                if (curInd == currentIndex)
-                {
-                    img.color = new Color(img.GetComponent<Image>().color.r, img.color.g, img.color.b, 0.75f);
-                }
-                else
-                {
-                    img.color = new Color(img.GetComponent<Image>().color.r, img.color.g, img.color.b, 0.30f);
-                }
-                curInd += 1;
-
-            }
+            Color c = arsenalImages[i].color;
+            c.a = i == currentIndex ? 0.75f : 0.30f;
+            arsenalImages[i].color = c;
         }
     }
   
@@ -317,7 +322,6 @@ public class Weapon : MonoBehaviourPunCallbacks
         if (isAiming) bloom /= Mathf.Max(1f, gun.aimBloomDivisor);
 
         // Less accurate while moving, and much less while in the air
-        Player player = GetComponent<Player>();
         if (player != null)
         {
             bloom *= Mathf.Lerp(1f, gun.movingBloomMultiplier, player.MoveSpeedRatio);
@@ -337,20 +341,10 @@ public class Weapon : MonoBehaviourPunCallbacks
     void Aim(bool isAiming)
     {
         this.isAiming = isAiming;
-        Transform anchor = currentWeapon.transform.Find("Anchor");
-        Transform stateAds = currentWeapon.transform.Find("States/ADS");
-        Transform stateHip = currentWeapon.transform.Find("States/Hip");
+        if (weaponAnchor == null || stateAds == null || stateHip == null) return;
 
-        if (isAiming)
-        {
-            //aim
-            anchor.position = Vector3.Lerp(anchor.position, stateAds.position, Time.deltaTime * loadout[currentIndex].aimSpeed );
-        }
-        else
-        {
-            //hip
-            anchor.position = Vector3.Lerp(anchor.position, stateHip.position, Time.deltaTime * loadout[currentIndex].aimSpeed);
-        }
+        Transform target = isAiming ? stateAds : stateHip;
+        weaponAnchor.position = Vector3.Lerp(weaponAnchor.position, target.position, Time.deltaTime * loadout[currentIndex].aimSpeed);
 
     }
     // Runs on the shooter only. The shooter does the raycast and applies damage, then tells
@@ -358,10 +352,10 @@ public class Weapon : MonoBehaviourPunCallbacks
     void Fire()
     {
         Gun gun = loadout[currentIndex];
-        Transform spawn = transform.Find("Cameras/Normal Camera");
+        Transform spawn = playerCamera;
 
         // Shooting gives up spawn protection
-        GetComponent<Player>().EndSpawnProtection();
+        player.EndSpawnProtection();
 
         //bloom
         float spread = CurrentBloom();
@@ -385,7 +379,7 @@ public class Weapon : MonoBehaviourPunCallbacks
             endPoint = hit.point;
             hitNormal = hit.normal;
 
-            PhotonView target = hit.collider.gameObject.layer == 8 ? hit.collider.transform.root.gameObject.GetPhotonView() : null;
+            PhotonView target = hit.collider.gameObject.layer == Layers.RemotePlayer ? hit.collider.transform.root.gameObject.GetPhotonView() : null;
             // No friendly fire: teammates are hit like scenery, minus the bullet hole
             bool friendly = target != null && Manager.Instance != null && !Manager.Instance.AreEnemies(photonView.OwnerActorNr, target.OwnerActorNr);
 
@@ -408,13 +402,12 @@ public class Weapon : MonoBehaviourPunCallbacks
                 target.RPC("TakeDamage", target.Owner, currentIndex, headshot, hit.distance);
             }
 
-            hitWorld = hit.collider.gameObject.layer != 8;
+            hitWorld = hit.collider.gameObject.layer != Layers.RemotePlayer;
         }
 
         photonView.RPC("ShotEffects", RpcTarget.All, endPoint, hitNormal, hitWorld);
 
         // Kick the view up and slightly sideways. Look recovers it over the next moments.
-        Look look = GetComponent<Look>();
         if (look != null)
         {
             float kick = gun.recoil * cameraRecoilScale * (isAiming ? aimingRecoilMultiplier : 1f);
@@ -426,7 +419,7 @@ public class Weapon : MonoBehaviourPunCallbacks
     [PunRPC]
     void ShotEffects(Vector3 endPoint, Vector3 hitNormal, bool hitWorld)
     {
-        GetComponent<AudioSource>().PlayOneShot(loadout[currentIndex].shootingSound);
+        audioSource.PlayOneShot(loadout[currentIndex].shootingSound);
 
         StartCoroutine(ShotLine(endPoint));
         MuzzleFlash();
@@ -473,7 +466,7 @@ public class Weapon : MonoBehaviourPunCallbacks
 
         // Damage comes from this game's own gun data. A wrong distance can only lower it, never raise it above full damage.
         int damage = loadout[gunIndex].DamageAt(Mathf.Max(0f, distance), headshot);
-        GetComponent<Player>().TakeDamage(damage, info.Sender.ActorNumber, loadout[gunIndex].gunName, headshot);
+        player.TakeDamage(damage, info.Sender.ActorNumber, loadout[gunIndex].gunName, headshot);
     }
     #endregion
 

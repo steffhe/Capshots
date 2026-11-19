@@ -7,54 +7,12 @@ using Photon.Realtime;
 using ExitGames.Client.Photon;
 using UnityEngine.UI;
 
-public class PlayerInfo
-{
-    public ProfileData profile;
-    public int actor;
-    public short kills;
-    public short deaths;
-    public byte team;
-
-    public PlayerInfo (ProfileData p, int a, short k, short d)
-    {
-        this.profile = p;
-        this.actor = a;
-        this.kills = k;
-        this.deaths = d;
-    }
-}
-
-
-public enum GameMode
-{
-    FreeForAll = 0,
-    TeamDeathmatch = 1
-}
-
-public enum GameState
-{
-    Waiting = 0,
-    Starting = 1,
-    Playing = 2,
-    Ending = 3
-}
-
-public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
+// The match: player list, game state and timer, network events and the end of the match.
+// Other parts of this class are in Manager.Teams.cs, Manager.Scoreboard.cs, Manager.Spawning.cs,
+// Manager.Pickups.cs, Manager.Chat.cs and Manager.Xp.cs.
+public partial class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
 {
     public static Manager Instance { get; private set; }
-
-    public GameMode mode = GameMode.FreeForAll;
-    public bool IsTeamMode => mode == GameMode.TeamDeathmatch;
-
-    public static readonly string[] TeamNames = { "BLUE", "RED" };
-    public static readonly Color[] TeamColors = { new Color(0.3f, 0.6f, 1f), new Color(1f, 0.35f, 0.3f) };
-    public static string TeamHex(int team) => team == 0 ? "#4d99ff" : "#ff594d";
-
-    // Goes up whenever the player list changes, so players know to refresh their team colours
-    public static int TeamsVersion { get; private set; }
-
-    private Text teamScore;
-    private int announcedTeam = -1;
 
     public int mainmenu = 0;
     public int killcount = 20;
@@ -63,20 +21,6 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
     [Header("Match start")]
     public int minPlayersToStart = 2;
     public int startCountdown = 5;
-
-    [Header("Ammo pickups")]
-    public bool dropAmmoOnDeath = true;
-    public float pickupLifetime = 20f;
-
-    private readonly Dictionary<int, AmmoPickup> pickups = new Dictionary<int, AmmoPickup>();
-    private int pickupCounter;
-
-    [Header("Respawn")]
-    public float respawnTime = 3f;
-    // Spawn points an enemy can see count as this many metres closer to the enemy
-    public float spawnSightPenalty = 30f;
-    // Random metres added to each spawn point's score, so the choice isn't always the same
-    public float spawnRandomness = 5f;
 
     public GameObject mapcam;
 
@@ -99,14 +43,7 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
 
     public GameObject Hud;
 
-    [Header("XP")]
-    public int xpPerKill = 100;
-    public int xpMatchComplete = 150;
-    public int xpWin = 300;
-
     private Text uiUsername;
-    private Text xpPopup;
-    private Coroutine xpPopupRoutine;
     private bool matchEnded = false;
 
     private GameState state = GameState.Waiting;
@@ -178,12 +115,6 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         PhotonNetwork.RemoveCallbackTarget(this);
     }
 
-    public void Spawn()
-    {
-        StartCoroutine(Spawn(respawnTime));
-
-    }
-
     public void InitializeUI()
     {
         myKills = GameObject.Find("HUD/Stats/Kills").GetComponent<Text>();
@@ -242,87 +173,6 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
 
         RefreshTeamScore();
         if (leaderboard.gameObject.activeSelf) Leaderboard(leaderboard);
-    }
-
-    private void Leaderboard(Transform lb)
-    {
-        for (int i = 2; i < lb.childCount; i++)
-        {
-            Destroy(lb.GetChild(i).gameObject);
-        }
-
-
-        Text modeText = lb.Find("Header/Mode").GetComponent<Text>();
-        modeText.supportRichText = true;
-        modeText.horizontalOverflow = HorizontalWrapMode.Overflow;
-        modeText.text = IsTeamMode ? TeamHeader() : "FREE FOR ALL";
-        lb.Find("Header/Map").GetComponent<Text>().text = CurrentMapName();
-
-        GameObject playerCard = lb.GetChild(1).gameObject;
-        playerCard.SetActive(false);
-
-        List<PlayerInfo> sorted = SortPlayers(playerInfo);
-
-        bool alternateColors = false;
-        foreach(PlayerInfo a in sorted)
-        {
-            GameObject newcard = Instantiate(playerCard, lb) as GameObject;
-
-            if (alternateColors) newcard.GetComponent<Image>().color = new Color32(0, 0,0, 100);
-            if (IsTeamMode)
-            {
-                Color teamColor = TeamColors[a.team % 2];
-                teamColor.a = 0.35f;
-                newcard.GetComponent<Image>().color = teamColor;
-            }
-
-            newcard.transform.Find("Level").GetComponent<Text>().text = a.profile.level.ToString("00");
-            Text usernameText = newcard.transform.Find("Username").GetComponent<Text>();
-            usernameText.supportRichText = true;
-            usernameText.horizontalOverflow = HorizontalWrapMode.Overflow;
-            usernameText.text = a.profile.username + PingLabel(a.actor);
-            newcard.transform.Find("Score Value").GetComponent<Text>().text = (a.kills * 100).ToString();
-            newcard.transform.Find("Kills Value").GetComponent<Text>().text = a.kills.ToString();
-            newcard.transform.Find("Deaths Value").GetComponent<Text>().text = a.deaths.ToString();
-
-            newcard.SetActive(true);
-        }
-
-        lb.gameObject.SetActive(true);
-
-    }
-
-    private List<PlayerInfo> SortPlayers (List<PlayerInfo> info)
-    {
-        List<PlayerInfo> sorted = new List<PlayerInfo>();
-
-        // Team mode: blue team first, then red, each sorted by kills
-        if (IsTeamMode)
-        {
-            List<PlayerInfo> byKills = new List<PlayerInfo>(info);
-            byKills.Sort((x, y) => x.team != y.team ? x.team.CompareTo(y.team) : y.kills.CompareTo(x.kills));
-            return byKills;
-        }
-
-        while (sorted.Count < info.Count)
-        {
-            short highest = -1;
-            PlayerInfo selection = info[0];
-
-            foreach (PlayerInfo a in info)
-            {
-                if (sorted.Contains(a)) continue;
-                if (a.kills > highest)
-                {
-                    selection = a;
-                    highest = a.kills;
-                }
-            }
-
-            sorted.Add(selection);
-        }
-
-        return sorted;
     }
 
     private void ValidateConnection() {
@@ -422,9 +272,9 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
 
     }
 
-    public void ChangeStat_S(int actor, byte stat, byte amt)
+    public void ChangeStat_S(int actor, PlayerStat stat, byte amt)
     {
-        object[] package = new object[] {actor, stat, amt };
+        object[] package = new object[] {actor, (byte)stat, amt };
 
         PhotonNetwork.RaiseEvent((byte)EventCodes.ChangeStat, package, new RaiseEventOptions { Receivers = ReceiverGroup.All }, new SendOptions { Reliability = true });
 
@@ -433,11 +283,11 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
     public void ChangeStat_R(object[] data)
     {
         int actor = (int)data[0];
-        byte stat = (byte)data[1];
+        PlayerStat stat = (PlayerStat)(byte)data[1];
         byte amt = (byte)data[2];
 
         // Kills and deaths during warmup and the countdown don't count
-        if (stat != 2 && state != GameState.Playing) return;
+        if (stat != PlayerStat.Level && state != GameState.Playing) return;
 
         for (int i = 0; i < playerInfo.Count; i++)
         {
@@ -445,22 +295,22 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
             {
                 switch (stat)
                 {
-                    case 0:
+                    case PlayerStat.Kills:
                         playerInfo[i].kills += amt;
                         Debug.Log($"Player {playerInfo[i].profile.username } : kills = {playerInfo[i].kills }");
                         break;
 
-                    case 1:
+                    case PlayerStat.Deaths:
                         playerInfo[i].deaths += amt;
                         Debug.Log($"Player {playerInfo[i].profile.username } : deaths = {playerInfo[i].deaths }");
                         break;
 
-                    case 2:
+                    case PlayerStat.Level:
                         playerInfo[i].profile.level += amt;
                         break;
                 }
 
-                if (stat == 0 && actor == PhotonNetwork.LocalPlayer.ActorNumber && !matchEnded)
+                if (stat == PlayerStat.Kills && actor == PhotonNetwork.LocalPlayer.ActorNumber && !matchEnded)
                 {
                     AwardXp(xpPerKill * amt, "KILL");
                 }
@@ -476,261 +326,6 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         RefreshTeamScore();
         ScoreCheck();
     }
-
-    // Sent by the player who died, so everyone can show it in the kill feed
-    public void KillFeed_S(int killer, int victim, string weapon, bool headshot)
-    {
-        object[] package = new object[] { killer, victim, weapon, headshot };
-
-        PhotonNetwork.RaiseEvent((byte)EventCodes.KillFeed, package, new RaiseEventOptions { Receivers = ReceiverGroup.All }, new SendOptions { Reliability = true });
-    }
-
-    public void KillFeed_R(object[] data)
-    {
-        int killer = (int)data[0];
-        int victim = (int)data[1];
-        string weapon = (string)data[2];
-        bool headshot = (bool)data[3];
-
-        int me = PhotonNetwork.LocalPlayer.ActorNumber;
-        if (IsTeamMode)
-        {
-            FeedbackUI.AddKillFeed(GetPlayerName(killer), GetPlayerName(victim), weapon, headshot, killer == me || victim == me,
-                TeamHex(GetTeam(killer)), TeamHex(GetTeam(victim)));
-        }
-        else
-        {
-            FeedbackUI.AddKillFeed(GetPlayerName(killer), GetPlayerName(victim), weapon, headshot, killer == me || victim == me);
-        }
-
-        if (killer == me && victim != me) FeedbackUI.Kill();
-    }
-
-    // Drops an ammo box for everyone at the given position
-    public void DropAmmo_S(Vector3 position)
-    {
-        if (!dropAmmoOnDeath) return;
-
-        int id = PhotonNetwork.LocalPlayer.ActorNumber * 10000 + (pickupCounter++ % 10000);
-        object[] package = new object[] { id, position };
-
-        PhotonNetwork.RaiseEvent((byte)EventCodes.SpawnPickup, package, new RaiseEventOptions { Receivers = ReceiverGroup.All }, new SendOptions { Reliability = true });
-    }
-
-    public void SpawnPickup_R(object[] data)
-    {
-        int id = (int)data[0];
-        Vector3 position = (Vector3)data[1];
-        if (pickups.ContainsKey(id)) return;
-
-        pickups[id] = AmmoPickup.Create(id, position, this, pickupLifetime);
-    }
-
-    // Asks the master client for a pickup, so two players can't both take it
-    public void ClaimPickup_S(int id)
-    {
-        object[] package = new object[] { id, PhotonNetwork.LocalPlayer.ActorNumber };
-
-        PhotonNetwork.RaiseEvent((byte)EventCodes.ClaimPickup, package, new RaiseEventOptions { Receivers = ReceiverGroup.MasterClient }, new SendOptions { Reliability = true });
-    }
-
-    public void ClaimPickup_R(object[] data)
-    {
-        if (!PhotonNetwork.IsMasterClient) return;
-
-        int id = (int)data[0];
-        int actor = (int)data[1];
-
-        // First claim wins: remove it here straight away so later claims are ignored
-        if (!pickups.ContainsKey(id)) return;
-        RemovePickup(id, true);
-
-        object[] package = new object[] { id, actor };
-        PhotonNetwork.RaiseEvent((byte)EventCodes.PickupTaken, package, new RaiseEventOptions { Receivers = ReceiverGroup.All }, new SendOptions { Reliability = true });
-    }
-
-    public void PickupTaken_R(object[] data)
-    {
-        int id = (int)data[0];
-        int actor = (int)data[1];
-
-        RemovePickup(id, true);
-
-        if (actor == PhotonNetwork.LocalPlayer.ActorNumber && Player.Local != null)
-        {
-            Weapon weapon = Player.Local.GetComponent<Weapon>();
-            if (weapon != null) weapon.AddAmmoPickup();
-            FeedbackUI.Pickup();
-            ShowMessage("+ AMMO");
-        }
-    }
-
-    public void RemovePickup(int id, bool destroy = false)
-    {
-        AmmoPickup pickup;
-        if (!pickups.TryGetValue(id, out pickup)) return;
-
-        pickups.Remove(id);
-        if (destroy && pickup != null) Destroy(pickup.gameObject);
-    }
-
-    #region Chat and ping
-
-    public void SendChat_S(string message)
-    {
-        message = message.Trim();
-        if (message.Length == 0) return;
-        if (message.Length > ChatUI.MaxMessageLength) message = message.Substring(0, ChatUI.MaxMessageLength);
-
-        object[] package = new object[] { PhotonNetwork.LocalPlayer.ActorNumber, message };
-        PhotonNetwork.RaiseEvent((byte)EventCodes.ChatMessage, package, new RaiseEventOptions { Receivers = ReceiverGroup.All }, new SendOptions { Reliability = true });
-    }
-
-    public void ChatMessage_R(object[] data)
-    {
-        int actor = (int)data[0];
-        string message = (string)data[1];
-        if (message.Length > ChatUI.MaxMessageLength) message = message.Substring(0, ChatUI.MaxMessageLength);
-
-        int team = GetTeam(actor);
-        string color = team >= 0 ? TeamHex(team) : (actor == PhotonNetwork.LocalPlayer.ActorNumber ? "#ffd84a" : "#dddddd");
-        ChatUI.AddMessage(GetPlayerName(actor), color, message);
-    }
-
-    // Every couple of seconds, share this player's ping so others can see it on the scoreboard
-    private IEnumerator SharePing()
-    {
-        int lastShared = -1;
-        while (true)
-        {
-            int ping = PhotonNetwork.GetPing();
-            if (PhotonNetwork.InRoom && Mathf.Abs(ping - lastShared) >= 5)
-            {
-                lastShared = ping;
-                ExitGames.Client.Photon.Hashtable props = new ExitGames.Client.Photon.Hashtable { { "ping", ping } };
-                PhotonNetwork.LocalPlayer.SetCustomProperties(props);
-            }
-            yield return new WaitForSeconds(2f);
-        }
-    }
-
-    private string PingLabel(int actor)
-    {
-        Photon.Realtime.Player player = PhotonNetwork.CurrentRoom != null ? PhotonNetwork.CurrentRoom.GetPlayer(actor) : null;
-        if (player == null) return "";
-
-        int ping = actor == PhotonNetwork.LocalPlayer.ActorNumber ? PhotonNetwork.GetPing() : -1;
-        object value;
-        if (ping < 0 && player.CustomProperties.TryGetValue("ping", out value)) ping = (int)value;
-        if (ping < 0) return "";
-
-        string color = ping < 80 ? "#7ddc6f" : ping < 150 ? "#e8c84a" : "#e8604a";
-        return $"  <size=14><color={color}>{ping} ms</color></size>";
-    }
-
-    #endregion
-
-    #region Teams
-
-    // The player's team in team mode, or -1 in free for all or if they aren't known yet
-    public int GetTeam(int actor)
-    {
-        if (!IsTeamMode) return -1;
-        int index = FindPlayerIndex(actor);
-        return index >= 0 ? playerInfo[index].team : -1;
-    }
-
-    public bool AreEnemies(int actorA, int actorB)
-    {
-        if (actorA == actorB) return false;
-        if (!IsTeamMode) return true;
-
-        int teamA = GetTeam(actorA);
-        int teamB = GetTeam(actorB);
-        // Until both teams are known, treat them as enemies so nobody is accidentally unhittable
-        if (teamA < 0 || teamB < 0) return true;
-        return teamA != teamB;
-    }
-
-    public int TeamKills(int team)
-    {
-        int kills = 0;
-        foreach (PlayerInfo p in playerInfo)
-        {
-            if (p.team == team) kills += p.kills;
-        }
-        return kills;
-    }
-
-    // 0 or 1, or -1 for a draw
-    private int WinningTeam()
-    {
-        int blue = TeamKills(0);
-        int red = TeamKills(1);
-        if (blue == red) return -1;
-        return blue > red ? 0 : 1;
-    }
-
-    // Host only: put new players on the smaller team, or the one that's behind
-    private byte ChooseTeamForNewPlayer()
-    {
-        int blueCount = 0, redCount = 0;
-        foreach (PlayerInfo p in playerInfo)
-        {
-            if (p.team == 0) blueCount++; else redCount++;
-        }
-
-        if (blueCount != redCount) return (byte)(blueCount < redCount ? 0 : 1);
-        return (byte)(TeamKills(0) <= TeamKills(1) ? 0 : 1);
-    }
-
-    private string TeamHeader()
-    {
-        string score = $"<color={TeamHex(0)}>{TeamNames[0]} {TeamKills(0)}</color>  -  <color={TeamHex(1)}>{TeamKills(1)} {TeamNames[1]}</color>";
-        if (state != GameState.Ending) return "TEAM DEATHMATCH   " + score;
-
-        int winner = WinningTeam();
-        string result = winner < 0 ? "DRAW" : $"<color={TeamHex(winner)}>{TeamNames[winner]} TEAM WINS</color>";
-        return result + "   " + score;
-    }
-
-    // Team score shown above the match timer, built from the timer text so it matches the HUD style
-    private void CreateTeamScore()
-    {
-        if (!IsTeamMode || timer == null) return;
-
-        GameObject scoreObject = Instantiate(timer.gameObject, timer.transform.parent);
-        scoreObject.name = "Team Score";
-
-        teamScore = scoreObject.GetComponent<Text>();
-        teamScore.supportRichText = true;
-        teamScore.horizontalOverflow = HorizontalWrapMode.Overflow;
-
-        RectTransform rect = (RectTransform)scoreObject.transform;
-        RectTransform timerRect = (RectTransform)timer.transform;
-        rect.anchoredPosition = timerRect.anchoredPosition + new Vector2(0f, timerRect.sizeDelta.y + 6f);
-
-        RefreshTeamScore();
-    }
-
-    private void RefreshTeamScore()
-    {
-        if (teamScore == null) return;
-        teamScore.text = $"<color={TeamHex(0)}>{TeamNames[0]} {TeamKills(0)}</color>  -  <color={TeamHex(1)}>{TeamKills(1)} {TeamNames[1]}</color>";
-    }
-
-    private void AnnounceTeam()
-    {
-        if (!IsTeamMode) return;
-
-        int myTeam = GetTeam(PhotonNetwork.LocalPlayer.ActorNumber);
-        if (myTeam < 0 || myTeam == announcedTeam) return;
-
-        announcedTeam = myTeam;
-        ShowMessage($"YOU ARE ON <color={TeamHex(myTeam)}>{TeamNames[myTeam]}</color> TEAM");
-    }
-
-    #endregion
 
     public string GetPlayerName(int actor)
     {
@@ -902,175 +497,12 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         StartCoroutine(End(6f));
     }
 
-    #region XP
-
-    public static string UsernameWithLevel(ProfileData profile)
-    {
-        return $"{profile.username}  LVL {profile.level}";
-    }
-
-    private void AwardMatchXp()
-    {
-        if (IsTeamMode)
-        {
-            int myTeam = GetTeam(PhotonNetwork.LocalPlayer.ActorNumber);
-            int winner = WinningTeam();
-            if (myTeam >= 0 && myTeam == winner) AwardXp(xpMatchComplete + xpWin, "VICTORY");
-            else AwardXp(xpMatchComplete, winner < 0 ? "DRAW" : "MATCH COMPLETE");
-            return;
-        }
-
-        short myKills = (myind >= 0 && playerInfo.Count > myind) ? playerInfo[myind].kills : (short)0;
-        short topKills = 0;
-        foreach (PlayerInfo a in playerInfo)
-        {
-            if (a.kills > topKills) topKills = a.kills;
-        }
-
-        bool won = topKills > 0 && myKills == topKills;
-        if (won) AwardXp(xpMatchComplete + xpWin, "VICTORY");
-        else AwardXp(xpMatchComplete, "MATCH COMPLETE");
-    }
-
-    private void AwardXp(int amount, string reason)
-    {
-        ProfileData profile = Launcher.myProfile;
-        int levelsGained = profile.AddXp(amount);
-        Data.SaveProfile(profile);
-
-        string message = $"+{amount} XP  {reason}";
-        if (levelsGained > 0)
-        {
-            message += $"\nLEVEL UP!  LVL {profile.level}";
-            // Let everyone update this player's level on the scoreboard
-            ChangeStat_S(PhotonNetwork.LocalPlayer.ActorNumber, 2, (byte)levelsGained);
-        }
-
-        if (uiUsername != null) uiUsername.text = UsernameWithLevel(profile);
-        ShowMessage(message);
-    }
-
-    private void CreateXpPopup()
-    {
-        // Built at runtime from the existing Kills text so it matches the HUD font and style
-        GameObject popupObject = Instantiate(myKills.gameObject, GameObject.Find("Canvas").transform);
-        popupObject.name = "XP Popup";
-
-        xpPopup = popupObject.GetComponent<Text>();
-        xpPopup.supportRichText = true;
-        xpPopup.alignment = TextAnchor.MiddleCenter;
-        xpPopup.horizontalOverflow = HorizontalWrapMode.Overflow;
-        xpPopup.verticalOverflow = VerticalWrapMode.Overflow;
-
-        RectTransform rect = popupObject.GetComponent<RectTransform>();
-        rect.anchorMin = new Vector2(0.5f, 0.7f);
-        rect.anchorMax = new Vector2(0.5f, 0.7f);
-        rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.anchoredPosition = Vector2.zero;
-        rect.sizeDelta = new Vector2(600f, 100f);
-
-        popupObject.SetActive(false);
-    }
-
-    private void ShowMessage(string message)
-    {
-        if (xpPopup == null) return;
-        if (xpPopupRoutine != null) StopCoroutine(xpPopupRoutine);
-        xpPopupRoutine = StartCoroutine(XpPopup(message));
-    }
-
-    private IEnumerator XpPopup(string message)
-    {
-        const float holdTime = 1.5f;
-        const float fadeTime = 0.5f;
-
-        xpPopup.text = message;
-        xpPopup.transform.SetAsLastSibling();
-        xpPopup.gameObject.SetActive(true);
-
-        Color color = xpPopup.color;
-        color.a = 1f;
-        xpPopup.color = color;
-
-        yield return new WaitForSeconds(holdTime);
-
-        for (float t = 0f; t < fadeTime; t += Time.deltaTime)
-        {
-            color.a = 1f - t / fadeTime;
-            xpPopup.color = color;
-            yield return null;
-        }
-
-        xpPopup.gameObject.SetActive(false);
-        xpPopupRoutine = null;
-    }
-
-    #endregion
-
     private IEnumerator End(float wait)
     {
         yield return new WaitForSeconds(wait);
 
         PhotonNetwork.AutomaticallySyncScene = false;
         PhotonNetwork.LeaveRoom();
-    }
-
-    private IEnumerator Spawn(float wait)
-    {
-        mapcam.SetActive(true);
-        Hud.SetActive(false);
-        yield return new WaitForSeconds(wait);
-        Transform spawn = ChooseSpawnPoint();
-        mapcam.SetActive(false);
-        Hud.SetActive(true);
-        PhotonNetwork.Instantiate(playerPrefab, spawn.position, spawn.rotation);
-    }
-
-    // Picks the spawn point farthest from living enemies, avoiding points an enemy can see
-    private Transform ChooseSpawnPoint()
-    {
-        List<Vector3> enemyEyes = new List<Vector3>();
-        foreach (Player p in FindObjectsByType<Player>(FindObjectsSortMode.None))
-        {
-            if (p.photonView.IsMine) continue;
-            if (!AreEnemies(PhotonNetwork.LocalPlayer.ActorNumber, p.photonView.OwnerActorNr)) continue;
-            enemyEyes.Add(p.normalCam != null ? p.normalCam.transform.position : p.transform.position + Vector3.up * 1.5f);
-        }
-
-        if (enemyEyes.Count == 0 || spawnPoints.Length <= 1)
-        {
-            return spawnPoints[Random.Range(0, spawnPoints.Length)];
-        }
-
-        // Players' own colliders shouldn't block line of sight
-        int sightMask = ~(1 << 8);
-        int localLayer = LayerMask.NameToLayer("LocalPlayer");
-        if (localLayer >= 0) sightMask &= ~(1 << localLayer);
-
-        Transform best = spawnPoints[0];
-        float bestScore = float.MinValue;
-
-        foreach (Transform point in spawnPoints)
-        {
-            Vector3 eye = point.position + Vector3.up * 1.6f;
-            float closest = float.MaxValue;
-            bool seen = false;
-
-            foreach (Vector3 enemy in enemyEyes)
-            {
-                closest = Mathf.Min(closest, Vector3.Distance(eye, enemy));
-                if (!seen && !Physics.Linecast(eye, enemy, sightMask, QueryTriggerInteraction.Ignore)) seen = true;
-            }
-
-            float score = closest - (seen ? spawnSightPenalty : 0f) + Random.Range(0f, spawnRandomness);
-            if (score > bestScore)
-            {
-                bestScore = score;
-                best = point;
-            }
-        }
-
-        return best;
     }
 
     // Runs on the host only. Drives Waiting -> Starting -> Playing -> Ending.

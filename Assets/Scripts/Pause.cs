@@ -9,6 +9,12 @@ public class Pause : MonoBehaviour
     public static bool paused = false;
     private bool disconnecting = false;
 
+    private void Awake()
+    {
+        // "paused" is static, so it would otherwise still be true after quitting a match from the pause menu
+        paused = false;
+    }
+
     private void Start()
     {
         // Adds the Settings button and panel to this pause menu

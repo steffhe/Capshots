@@ -6,6 +6,7 @@ name: Build
 #    matchmaking version, so different releases never share a room.
 #  - Pull requests that touch the project get a test build, downloadable from the run.
 #  - "Run workflow" on the Actions tab builds on demand.
+#  - Every run first runs the EditMode tests in Assets/Tests, and stops if any fail.
 #
 # Needs these repository secrets (Settings > Secrets and variables > Actions):
 #   UNITY_LICENSE   contents of your Unity license file (Unity_lic.ulf)
@@ -38,6 +39,7 @@ jobs:
     timeout-minutes: 120
     permissions:
       contents: write # needed to create releases on tag pushes
+      checks: write # lets the test runner post a test results check
 
     steps:
       - name: Check for Unity license
@@ -98,6 +100,28 @@ jobs:
           key: Library-StandaloneWindows64-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
           restore-keys: |
             Library-StandaloneWindows64-
+
+      - name: Run EditMode tests
+        if: steps.license.outputs.available == 'true'
+        id: tests
+        uses: game-ci/unity-test-runner@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          testMode: editmode
+          artifactsPath: test-results
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          checkName: EditMode test results
+
+      - name: Upload test results
+        if: always() && steps.license.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ${{ steps.tests.outputs.artifactsPath }}
+          retention-days: 14
 
       - name: Build with Unity
         if: steps.license.outputs.available == 'true'
