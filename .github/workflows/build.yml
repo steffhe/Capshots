@@ -10,6 +10,7 @@ name: Build
 #  - Pushes to main (merged pull requests) build too. Besides checking that main still builds,
 #    this saves Unity's Library cache on main, which every later pull request can start from.
 #    (A pull request can only use caches saved by itself or by main.)
+#    Release builds (v* tags) skip the cache and always build from a clean Library.
 #  - "Run workflow" on the Actions tab builds on demand.
 #  - The EditMode tests in Assets/Tests run in parallel with the builds. A release and the
 #    browser version are only published when the tests and both builds pass.
@@ -181,7 +182,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      # Release builds (v* tags) always start from a clean Library, so a bad cache can never
+      # break or affect a release. Pull request and main builds use the cache to save time.
       - name: Cache Unity Library folder
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         uses: actions/cache@v4
         with:
           path: Library
