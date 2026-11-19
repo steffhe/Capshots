@@ -87,8 +87,8 @@ Builds are made automatically by GitHub Actions with [GameCI](https://game.ci) (
   git push origin v0.2
   ```
   The tag (without the `v`) becomes the game's version, which is also used as Photon's matchmaking version, so players on different releases never end up in the same room.
-- **Pull requests** that change the project get test builds for Windows and the browser. Download them from the workflow run's **Artifacts**.
-- **Merges to `main`** only run the tests, not the builds: the pull request already built that code, and a release builds it again with its real version. The test run on `main` saves Unity's Library cache, which later pull requests' tests start from. The builds always start clean.
+- **Pull requests** that change the project get test builds for Windows and the browser. Download them from the workflow run's **Artifacts**. Draft pull requests only run the tests; the builds start when you mark the pull request ready for review.
+- **Merges to `main`** only run the tests, not the builds: the pull request already built that code, and a release builds it again with its real version. The test run on `main` saves Unity's Library cache, which later pull requests start from. Pull request builds use the cache and build again from a clean Library if that fails; release builds always start clean.
 - **On demand:** run the **Build** workflow from the **Actions** tab.
 
 The workflow needs three repository secrets (**Settings → Secrets and variables → Actions**): `UNITY_LICENSE` (the contents of your Unity license file, `Unity_lic.ulf`), `UNITY_EMAIL` and `UNITY_PASSWORD`. Without them, pull request builds are skipped with a warning.
