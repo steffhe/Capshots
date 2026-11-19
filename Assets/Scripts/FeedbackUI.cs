@@ -263,12 +263,12 @@ public class FeedbackUI : MonoBehaviour
     {
         yield return new WaitForSeconds(killFeedTime);
 
+        // Fade the whole entry, coloured names included
         const float fade = 0.5f;
+        CanvasGroup group = entry != null ? entry.gameObject.AddComponent<CanvasGroup>() : null;
         for (float t = 0f; t < fade && entry != null; t += Time.deltaTime)
         {
-            Color c = entry.color;
-            c.a = 1f - t / fade;
-            entry.color = c;
+            group.alpha = 1f - t / fade;
             yield return null;
         }
 

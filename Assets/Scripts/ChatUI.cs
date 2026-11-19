@@ -32,6 +32,7 @@ public class ChatUI : MonoBehaviour
     private class Entry
     {
         public Text text;
+        public CanvasGroup group;
         public float time;
     }
     private readonly List<Entry> entries = new List<Entry>();
@@ -173,7 +174,13 @@ public class ChatUI : MonoBehaviour
         rect.sizeDelta = new Vector2(600f, 22f);
         line.text = $"<color={senderColor}>{Escape(sender)}</color>: {Escape(message)}";
 
-        chat.entries.Add(new Entry { text = line, time = Time.time });
+        // Fade with a CanvasGroup: changing the text colour's alpha wouldn't fade the
+        // sender's name, which has its own colour tag
+        CanvasGroup group = line.gameObject.AddComponent<CanvasGroup>();
+        group.interactable = false;
+        group.blocksRaycasts = false;
+
+        chat.entries.Add(new Entry { text = line, group = group, time = Time.time });
         while (chat.entries.Count > chat.maxMessages)
         {
             Destroy(chat.entries[0].text.gameObject);
@@ -205,12 +212,7 @@ public class ChatUI : MonoBehaviour
         {
             float age = Time.time - entry.time;
             float alpha = IsTyping ? 1f : Mathf.Clamp01(1f - (age - messageTime) / 1f);
-            Color c = entry.text.color;
-            if (!Mathf.Approximately(c.a, alpha))
-            {
-                c.a = alpha;
-                entry.text.color = c;
-            }
+            if (!Mathf.Approximately(entry.group.alpha, alpha)) entry.group.alpha = alpha;
         }
     }
 
