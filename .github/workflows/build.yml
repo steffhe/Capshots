@@ -7,11 +7,12 @@ name: Build
 #    matchmaking version, so different releases never share a room (and Windows and
 #    browser players on the same release can play together).
 #  - Pull requests that touch the project get test builds of both, downloadable from the run.
-#  - Pushes to main (merged pull requests) build too, which shows right away when main breaks,
-#    and saves the tests job's Library cache on main for later pull requests to start from.
-#    (A pull request can only use caches saved by itself or by main.)
+#  - Pushes to main (merged pull requests) only run the tests, not the builds: the pull request
+#    already built that code, and a release tag builds it again with its real version anyway.
+#    The tests run there to save their Library cache on main for later pull requests to start
+#    from. (A pull request can only use caches saved by itself or by main.)
 #  - The builds always start from a clean Library (no cache); see the note in the build job.
-#  - "Run workflow" on the Actions tab builds on demand.
+#  - "Run workflow" on the Actions tab builds on demand, also on main.
 #  - The EditMode tests in Assets/Tests run in parallel with the builds. A release and the
 #    browser version are only published when the tests and both builds pass.
 #
@@ -150,7 +151,10 @@ jobs:
   build:
     name: Build for ${{ matrix.name }}
     needs: setup
-    if: needs.setup.outputs.available == 'true'
+    # Not on pushes to main (see the top of this file); "Run workflow" still builds main
+    if: >-
+      needs.setup.outputs.available == 'true' &&
+      (github.ref != 'refs/heads/main' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:
