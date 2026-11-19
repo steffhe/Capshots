@@ -146,7 +146,7 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
 
             weaponParentorigin = weaponParent.localPosition;
         weaponParentCurrentPosition = weaponParentorigin;
-        baseFOV = normalCam.fieldOfView;
+        baseFOV = GameSettings.Fov;
         origin = normalCam.transform.localPosition;
 
         // if (Camera.main)Camera.main.enabled = false;
@@ -188,17 +188,18 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         }
 
         //Axis'
-        float hmove = Input.GetAxisRaw("Horizontal");
-        float vmove = Input.GetAxisRaw("Vertical");
+        Vector2 moveInput = GameInput.MoveValue;
+        float hmove = moveInput.x;
+        float vmove = moveInput.y;
 
         //Controls
-        bool sprint = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
-        bool jump = Input.GetKeyDown(KeyCode.Space);
-        bool crouch = Input.GetKeyDown(KeyCode.LeftControl);
-        bool pause = Input.GetKeyDown(KeyCode.Escape);
+        bool sprint = GameInput.Held(GameInput.Sprint);
+        bool jump = GameInput.Pressed(GameInput.Jump);
+        bool crouch = GameInput.Pressed(GameInput.Crouch);
+        bool pause = GameInput.PausePressed;
 
-        // GetKeyDown is only true for one rendered frame, so read it here and let FixedUpdate consume it
-        if (Input.GetKeyDown(KeyCode.C)) slideRequested = true;
+        // A press is only true for one rendered frame, so read it here and let FixedUpdate consume it
+        if (GameInput.Pressed(GameInput.Slide)) slideRequested = true;
 
         //States
         bool isgrounded = Physics.Raycast(groundDetector.position, Vector3.down, 0.15f, ground);
@@ -282,13 +283,17 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
     {
         if(!photonView.IsMine) return;
 
+        // Picks up changes made in the settings menu
+        baseFOV = GameSettings.Fov;
+
         //Axis'
-        float hmove = Input.GetAxisRaw("Horizontal");
-        float vmove = Input.GetAxisRaw("Vertical");
+        Vector2 moveInput = GameInput.MoveValue;
+        float hmove = moveInput.x;
+        float vmove = moveInput.y;
 
         //Controls
-        bool sprint = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
-        bool jump = Input.GetKey(KeyCode.Space);
+        bool sprint = GameInput.Held(GameInput.Sprint);
+        bool jump = GameInput.Held(GameInput.Jump);
         bool slide = slideRequested;
         slideRequested = false;
 

@@ -89,26 +89,27 @@ public class Weapon : MonoBehaviourPunCallbacks
     {
         if (Pause.paused && photonView.IsMine) return;
 
-        if (photonView.IsMine && Input.GetAxis("Mouse ScrollWheel") > 0f) // forward
+        int weaponSwitch = photonView.IsMine ? GameInput.WeaponSwitch : 0;
+        if (weaponSwitch > 0) // forward
         {
             currentIndex = Mathf.Min(currentIndex + 1, loadout.Length - 1);
             photonView.RPC("Equip", RpcTarget.All, currentIndex);
         }
-        else if (photonView.IsMine && Input.GetAxis("Mouse ScrollWheel") < 0f) // backwards
+        else if (weaponSwitch < 0) // backwards
         {
             currentIndex = Mathf.Max(currentIndex - 1, 0);
             photonView.RPC("Equip", RpcTarget.All, currentIndex);
         }
 
-        if (photonView.IsMine && Input.GetKeyDown(KeyCode.Alpha1))
+        if (photonView.IsMine && GameInput.Pressed(GameInput.Weapon1))
         {
             photonView.RPC("Equip", RpcTarget.All, 0);
         }
-        if (photonView.IsMine && Input.GetKeyDown(KeyCode.Alpha2))
+        if (photonView.IsMine && GameInput.Pressed(GameInput.Weapon2))
         {
             photonView.RPC("Equip", RpcTarget.All, 1);
         }
-        if (photonView.IsMine && Input.GetKeyDown(KeyCode.Alpha3))
+        if (photonView.IsMine && GameInput.Pressed(GameInput.Weapon3))
         {
             photonView.RPC("Equip", RpcTarget.All, 2);
         }
@@ -118,8 +119,8 @@ public class Weapon : MonoBehaviourPunCallbacks
            if (photonView.IsMine)
             {
 
-         Aim(Input.GetMouseButton(1));
-                bool fireInput = loadout[currentIndex].burst == 1 ? Input.GetMouseButton(0) : Input.GetMouseButtonDown(0);
+         Aim(GameInput.Held(GameInput.Aim));
+                bool fireInput = loadout[currentIndex].burst == 1 ? GameInput.Held(GameInput.Fire) : GameInput.Pressed(GameInput.Fire);
 
                 if (!isReloading && !isBursting)
                 {
@@ -136,7 +137,7 @@ public class Weapon : MonoBehaviourPunCallbacks
                         }
                     }
 
-                    if (Input.GetKeyDown(KeyCode.R))
+                    if (GameInput.Pressed(GameInput.Reload))
                     {
                         StartReload();
                     }

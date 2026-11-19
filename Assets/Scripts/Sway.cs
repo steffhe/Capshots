@@ -31,8 +31,9 @@ public class Sway : MonoBehaviourPunCallbacks
     private void UpdateSway()
     {
         //Controls
-        float xMouse = Input.GetAxis("Mouse X");
-        float yMouse = Input.GetAxis("Mouse Y");
+        Vector2 look = GameInput.MouseLookValue + GameInput.StickLookValue * 0.5f;
+        float xMouse = look.x;
+        float yMouse = look.y;
         if (!isMine)
         {
             xMouse = 0;
