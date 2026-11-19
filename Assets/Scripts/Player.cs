@@ -52,6 +52,7 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
     private Weapon weapon;
     private Look look;
     private Pause pauseMenu;
+    private Camera viewmodelCam;
 
     private bool isDead;
 
@@ -416,6 +417,15 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
 
             }
         }
+
+        // Scoped guns also zoom the gun model, so the scope comes up to the eye while aiming
+        if (viewmodelCam != null)
+        {
+            Gun currentGun = weapon.CurrentGun;
+            bool scoped = weapon.isAiming && currentGun != null && currentGun.scopeViewmodelFov > 0f;
+            float targetFov = scoped ? currentGun.scopeViewmodelFov : viewmodelFov;
+            viewmodelCam.fieldOfView = Mathf.Lerp(viewmodelCam.fieldOfView, targetFov, Time.deltaTime * 15f);
+        }
     }
 
     #endregion
@@ -574,7 +584,7 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         GameObject go = new GameObject("Viewmodel Camera");
         go.transform.SetParent(normalCam.transform, false);
 
-        Camera viewmodelCam = go.AddComponent<Camera>();
+        viewmodelCam = go.AddComponent<Camera>();
         viewmodelCam.cullingMask = 1 << Layers.LocalGun;
         viewmodelCam.fieldOfView = viewmodelFov;
         viewmodelCam.nearClipPlane = 0.01f;
