@@ -16,14 +16,16 @@ using TouchPhase = UnityEngine.InputSystem.TouchPhase;
 public class TouchControls : MonoBehaviour
 {
     // Whether this device should get touch controls: phones and tablets in a browser. In the editor,
-    // a simulated touchscreen (Input Debugger → Options → Simulate Touch Input From Mouse) also counts.
+    // only while touch is simulated (Input Debugger → Options → Simulate Touch Input From Mouse).
+    // Desktop browsers, touchscreen laptops and the Windows build keep mouse and keyboard.
     public static bool Enabled
     {
         get
         {
             if (Browser.IsTouchDevice) return true;
 #if UNITY_EDITOR
-            return Touchscreen.current != null;
+            // Only when touch is simulated on purpose, so a touchscreen laptop keeps mouse and keyboard
+            return TouchSimulation.instance != null && TouchSimulation.instance.enabled;
 #else
             return false;
 #endif
