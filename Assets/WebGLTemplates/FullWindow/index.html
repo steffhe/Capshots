@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, user-scalable=no">
+    <title>{{{ PRODUCT_NAME }}}</title>
+    <style>
+      html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+      #unity-canvas { display: block; width: 100%; height: 100%; background: #000; outline: none; }
+      #loading {
+        position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+        width: 320px; max-width: 80vw; color: #ccc; font: 14px/1.4 sans-serif; text-align: center;
+      }
+      #loading-track { height: 6px; margin-top: 10px; background: #333; border-radius: 3px; overflow: hidden; }
+      #loading-fill { width: 0; height: 100%; background: #e0e0e0; transition: width 0.2s; }
+      #message {
+        position: absolute; left: 50%; top: 16px; transform: translateX(-50%); display: none;
+        max-width: 90vw; padding: 10px 16px; border-radius: 4px; font: 14px/1.4 sans-serif;
+        background: #fc3; color: #000;
+      }
+      #message.error { background: #c33; color: #fff; }
+    </style>
+  </head>
+  <body>
+    <!-- Fills the whole browser window. Unity resizes the game to match whenever the window changes. -->
+    <canvas id="unity-canvas" tabindex="-1"></canvas>
+    <div id="loading">
+      Loading {{{ PRODUCT_NAME }}}...
+      <div id="loading-track"><div id="loading-fill"></div></div>
+    </div>
+    <div id="message"></div>
+    <script>
+      var canvas = document.getElementById("unity-canvas");
+      var loading = document.getElementById("loading");
+      var message = document.getElementById("message");
+
+      function showMessage(text, type) {
+        message.textContent = text;
+        message.className = type === "error" ? "error" : "";
+        message.style.display = "block";
+        if (type !== "error") setTimeout(function () { message.style.display = "none"; }, 6000);
+      }
+
+      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+        showMessage("This game needs a desktop browser with a mouse and keyboard.", "warning");
+      }
+
+      // Right mouse button aims, so don't open the browser's menu
+      canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+
+      var buildUrl = "Build";
+      var config = {
+        arguments: [],
+        dataUrl: buildUrl + "/{{{ DATA_FILENAME }}}",
+        frameworkUrl: buildUrl + "/{{{ FRAMEWORK_FILENAME }}}",
+        codeUrl: buildUrl + "/{{{ CODE_FILENAME }}}",
+#if USE_THREADS
+        workerUrl: buildUrl + "/{{{ WORKER_FILENAME }}}",
+#endif
+#if MEMORY_FILENAME
+        memoryUrl: buildUrl + "/{{{ MEMORY_FILENAME }}}",
+#endif
+#if SYMBOLS_FILENAME
+        symbolsUrl: buildUrl + "/{{{ SYMBOLS_FILENAME }}}",
+#endif
+        streamingAssetsUrl: "StreamingAssets",
+        companyName: {{{ JSON.stringify(COMPANY_NAME) }}},
+        productName: {{{ JSON.stringify(PRODUCT_NAME) }}},
+        productVersion: {{{ JSON.stringify(PRODUCT_VERSION) }}},
+        showBanner: showMessage,
+        // High-DPI screens (most laptops) would otherwise render 2-4x the pixels of the window.
+        // 1.5 keeps the picture sharp while keeping the frame rate up.
+        devicePixelRatio: Math.min(window.devicePixelRatio || 1, 1.5),
+      };
+
+      var script = document.createElement("script");
+      script.src = buildUrl + "/{{{ LOADER_FILENAME }}}";
+      script.onload = function () {
+        createUnityInstance(canvas, config, function (progress) {
+          document.getElementById("loading-fill").style.width = (100 * progress) + "%";
+        }).then(function () {
+          loading.style.display = "none";
+          canvas.focus();
+        }).catch(function (error) {
+          loading.style.display = "none";
+          showMessage(String(error), "error");
+        });
+      };
+      script.onerror = function () {
+        loading.style.display = "none";
+        showMessage("The game failed to load. Try reloading the page.", "error");
+      };
+      document.body.appendChild(script);
+    </script>
+  </body>
+</html>
