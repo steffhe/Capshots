@@ -45,6 +45,10 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
 
     [Header("Respawn")]
     public float respawnTime = 3f;
+    // Spawn points an enemy can see count as this many metres closer to the enemy
+    public float spawnSightPenalty = 30f;
+    // Random metres added to each spawn point's score, so the choice isn't always the same
+    public float spawnRandomness = 5f;
 
     public GameObject mapcam;
 
@@ -676,10 +680,56 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         mapcam.SetActive(true);
         Hud.SetActive(false);
         yield return new WaitForSeconds(wait);
-        Transform spawn = spawnPoints[Random.Range(0, spawnPoints.Length)];
+        Transform spawn = ChooseSpawnPoint();
         mapcam.SetActive(false);
         Hud.SetActive(true);
         PhotonNetwork.Instantiate(playerPrefab, spawn.position, spawn.rotation);
+    }
+
+    // Picks the spawn point farthest from living enemies, avoiding points an enemy can see
+    private Transform ChooseSpawnPoint()
+    {
+        List<Vector3> enemyEyes = new List<Vector3>();
+        foreach (Player p in FindObjectsByType<Player>(FindObjectsSortMode.None))
+        {
+            if (p.photonView.IsMine) continue;
+            enemyEyes.Add(p.normalCam != null ? p.normalCam.transform.position : p.transform.position + Vector3.up * 1.5f);
+        }
+
+        if (enemyEyes.Count == 0 || spawnPoints.Length <= 1)
+        {
+            return spawnPoints[Random.Range(0, spawnPoints.Length)];
+        }
+
+        // Players' own colliders shouldn't block line of sight
+        int sightMask = ~(1 << 8);
+        int localLayer = LayerMask.NameToLayer("LocalPlayer");
+        if (localLayer >= 0) sightMask &= ~(1 << localLayer);
+
+        Transform best = spawnPoints[0];
+        float bestScore = float.MinValue;
+
+        foreach (Transform point in spawnPoints)
+        {
+            Vector3 eye = point.position + Vector3.up * 1.6f;
+            float closest = float.MaxValue;
+            bool seen = false;
+
+            foreach (Vector3 enemy in enemyEyes)
+            {
+                closest = Mathf.Min(closest, Vector3.Distance(eye, enemy));
+                if (!seen && !Physics.Linecast(eye, enemy, sightMask, QueryTriggerInteraction.Ignore)) seen = true;
+            }
+
+            float score = closest - (seen ? spawnSightPenalty : 0f) + Random.Range(0f, spawnRandomness);
+            if (score > bestScore)
+            {
+                bestScore = score;
+                best = point;
+            }
+        }
+
+        return best;
     }
 
     // Runs on the host only. Drives Waiting -> Starting -> Playing -> Ending.

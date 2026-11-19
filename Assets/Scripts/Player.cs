@@ -62,6 +62,18 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
 
     private float aimAngle;
 
+    [Header("Spawn protection")]
+    // Seconds a freshly spawned player can't be damaged. Firing ends it early.
+    public float spawnProtectionTime = 3f;
+    public float protectionBlinkRate = 8f;
+
+    private bool isProtected;
+    private float protectionLeft;
+    private Renderer[] blinkRenderers;
+    private bool[] blinkRenderersEnabled;
+
+    public bool IsProtected => isProtected;
+
 
 
     #endregion
@@ -73,11 +85,13 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         {
             stream.SendNext(weaponParent.transform.localEulerAngles.x);
             stream.SendNext(currentHealth);
+            stream.SendNext(isProtected);
         }
         else
         {
             aimAngle = (float)stream.ReceiveNext();
             currentHealth = (int)stream.ReceiveNext();
+            isProtected = (bool)stream.ReceiveNext();
         }
     }
     #endregion
@@ -90,6 +104,8 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         weapon = GetComponent<Weapon>();
 
         currentHealth = maxHealth;
+        isProtected = spawnProtectionTime > 0f;
+        protectionLeft = spawnProtectionTime;
             cameraParent.SetActive(photonView.IsMine);
 
         if (!photonView.IsMine)
@@ -135,7 +151,15 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         if (!photonView.IsMine)
         {
             RefreshMultiplayerState();
+            UpdateProtectionBlink();
             return;
+        }
+
+        if (isProtected)
+        {
+            protectionLeft -= Time.deltaTime;
+            if (protectionLeft <= 0f) EndSpawnProtection();
+            else FeedbackUI.SpawnProtection(protectionLeft);
         }
 
         //Axis'
@@ -420,7 +444,7 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
     {
         if (photonView.IsMine)
         {
-            if (isDead) return;
+            if (isDead || isProtected) return;
 
             currentHealth -= damage;
             if (currentHealth < 0) currentHealth = 0;
@@ -450,6 +474,44 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
 
                 PhotonNetwork.Destroy(gameObject);
             }
+        }
+    }
+
+    public void EndSpawnProtection()
+    {
+        if (!isProtected) return;
+        isProtected = false;
+        protectionLeft = 0f;
+        if (photonView.IsMine) FeedbackUI.SpawnProtection(0f);
+    }
+
+    // Other players see a protected player blink
+    private void UpdateProtectionBlink()
+    {
+        if (isProtected)
+        {
+            if (blinkRenderers == null)
+            {
+                // Only meshes: tracers and effects manage their own visibility
+                blinkRenderers = System.Array.FindAll(GetComponentsInChildren<Renderer>(), r => r is MeshRenderer || r is SkinnedMeshRenderer);
+                blinkRenderersEnabled = new bool[blinkRenderers.Length];
+                for (int i = 0; i < blinkRenderers.Length; i++) blinkRenderersEnabled[i] = blinkRenderers[i].enabled;
+            }
+
+            bool visible = Mathf.Repeat(Time.time * protectionBlinkRate, 1f) < 0.5f;
+            for (int i = 0; i < blinkRenderers.Length; i++)
+            {
+                if (blinkRenderers[i] != null && blinkRenderersEnabled[i]) blinkRenderers[i].enabled = visible;
+            }
+        }
+        else if (blinkRenderers != null)
+        {
+            for (int i = 0; i < blinkRenderers.Length; i++)
+            {
+                if (blinkRenderers[i] != null) blinkRenderers[i].enabled = blinkRenderersEnabled[i];
+            }
+            blinkRenderers = null;
+            blinkRenderersEnabled = null;
         }
     }
 

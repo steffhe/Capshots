@@ -314,6 +314,9 @@ public class Weapon : MonoBehaviourPunCallbacks
         Gun gun = loadout[currentIndex];
         Transform spawn = transform.Find("Cameras/Normal Camera");
 
+        // Shooting gives up spawn protection
+        GetComponent<Player>().EndSpawnProtection();
+
         //bloom
         float spread = CurrentBloom();
         Vector3 bloom = spawn.position + spawn.forward * 1000f;
@@ -342,10 +345,15 @@ public class Weapon : MonoBehaviourPunCallbacks
                 bool headshot = hit.collider.gameObject.CompareTag("Head");
                 int damage = gun.damage * (headshot ? 2 : 1);
 
-                StopCoroutine("HitPlayer");
-                bool targetIsDead = target.GetComponent<Player>().currentHealth - damage <= 0;
-                StartCoroutine("HitPlayer", targetIsDead);
-                FeedbackUI.Hit(headshot);
+                Player targetPlayer = target.GetComponent<Player>();
+                // No hit feedback on spawn-protected players. The damage is still sent: the target decides.
+                if (!targetPlayer.IsProtected)
+                {
+                    StopCoroutine("HitPlayer");
+                    bool targetIsDead = targetPlayer.currentHealth - damage <= 0;
+                    StartCoroutine("HitPlayer", targetIsDead);
+                    FeedbackUI.Hit(headshot);
+                }
 
                 // Send which gun hit and whether it was a headshot, not a damage number: the victim works out the damage itself
                 target.RPC("TakeDamage", target.Owner, currentIndex, headshot);

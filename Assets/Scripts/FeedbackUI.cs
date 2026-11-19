@@ -36,6 +36,7 @@ public class FeedbackUI : MonoBehaviour
     private Transform viewer;
 
     private Text deathText;
+    private Text protectionText;
     private Coroutine deathRoutine;
 
     private RectTransform killFeed;
@@ -92,6 +93,13 @@ public class FeedbackUI : MonoBehaviour
         Center(deathText.rectTransform, new Vector2(900f, 120f));
         deathText.rectTransform.anchoredPosition = new Vector2(0f, 60f);
         deathText.gameObject.SetActive(false);
+
+        // Spawn protection countdown under the crosshair
+        protectionText = NewText("Spawn Protection Text", root, 22, TextAnchor.MiddleCenter);
+        Center(protectionText.rectTransform, new Vector2(600f, 40f));
+        protectionText.rectTransform.anchoredPosition = new Vector2(0f, -90f);
+        protectionText.color = new Color(0.55f, 0.85f, 1f);
+        protectionText.gameObject.SetActive(false);
 
         // Kill feed in the top right corner
         GameObject feed = new GameObject("Kill Feed", typeof(RectTransform));
@@ -157,6 +165,17 @@ public class FeedbackUI : MonoBehaviour
 
         if (ui.deathRoutine != null) ui.StopCoroutine(ui.deathRoutine);
         ui.deathRoutine = ui.StartCoroutine(ui.DeathText(text, duration));
+    }
+
+    // Shows the spawn protection countdown; 0 or less hides it
+    public static void SpawnProtection(float secondsLeft)
+    {
+        if (Instance == null) return;
+        Text text = Instance.protectionText;
+
+        bool show = secondsLeft > 0f;
+        if (text.gameObject.activeSelf != show) text.gameObject.SetActive(show);
+        if (show) text.text = "SPAWN PROTECTION  " + secondsLeft.ToString("0.0");
     }
 
     public static void AddKillFeed(string killer, string victim, string weapon, bool headshot, bool involvesMe)
