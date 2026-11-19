@@ -115,7 +115,7 @@ public class Weapon : MonoBehaviourPunCallbacks
                         {
                             burstRoutine = StartCoroutine(BurstFire(loadout[currentIndex]));
                         }
-                        else if (loadout[currentIndex].FireBullet()) { photonView.RPC("Shoot", RpcTarget.All); }
+                        else if (loadout[currentIndex].FireBullet()) { Fire(); }
                         else
                         {
                             StartReload();
@@ -176,7 +176,7 @@ public class Weapon : MonoBehaviourPunCallbacks
                 break;
             }
 
-            photonView.RPC("Shoot", RpcTarget.All);
+            Fire();
             if (i < shots - 1) yield return new WaitForSeconds(gun.fireRate);
         }
 
@@ -227,20 +227,9 @@ public class Weapon : MonoBehaviourPunCallbacks
 
     IEnumerator ShotLine(Vector3 hitPos)
     {
-        if (lineRend != null) { 
+        if (lineRend != null) {
         lineRend.enabled = true;
-        if (hitPos != Vector3.zero)
-        {
-            lineRend.SetPosition(0, hitPos);
-        }
-        else
-        {
-            Transform cam = transform.Find("Cameras/Normal Camera");
-
-            Vector3 line = cam.position + cam.forward * 1000f;
-
-            lineRend.SetPosition(0, line);
-        }
+        lineRend.SetPosition(0, hitPos);
         lineRend.SetPosition(1, lineRend.gameObject.transform.position);
         yield return new WaitForSeconds(0.5f);
         lineRend.enabled = false;
@@ -312,9 +301,11 @@ public class Weapon : MonoBehaviourPunCallbacks
         }
 
     }
-    [PunRPC]
-    void Shoot()
+    // Runs on the shooter only. The shooter does the raycast and applies damage, then tells
+    // everyone where the shot landed so all clients draw the same tracer and bullet hole.
+    void Fire()
     {
+        Gun gun = loadout[currentIndex];
         Transform spawn = transform.Find("Cameras/Normal Camera");
 
         //bloom
@@ -325,76 +316,72 @@ public class Weapon : MonoBehaviourPunCallbacks
         bloom -= spawn.position;
         bloom.Normalize();
 
-
         //cooldown
-        currentCooldown = loadout[currentIndex].fireRate;
-        GetComponent<AudioSource>().PlayOneShot(loadout[currentIndex].shootingSound);
+        currentCooldown = gun.fireRate;
+
+        Vector3 endPoint = spawn.position + bloom * 1000f;
+        Vector3 hitNormal = Vector3.zero;
+        bool hitWorld = false;
 
         //raycast
-        RaycastHit hit = new RaycastHit();
-        if(Physics.Raycast(spawn.position, bloom, out hit, 1000f, canBeShot))
+        RaycastHit hit;
+        if (Physics.Raycast(spawn.position, bloom, out hit, 1000f, canBeShot))
         {
+            endPoint = hit.point;
+            hitNormal = hit.normal;
 
-            if (hit.point == null)
+            PhotonView target = hit.collider.gameObject.layer == 8 ? hit.collider.transform.root.gameObject.GetPhotonView() : null;
+            if (target != null && target.Owner != null)
             {
-                StartCoroutine(ShotLine(Vector3.zero));
-            }
-            else
-            {
-                StartCoroutine(ShotLine(hit.point));
+                bool headshot = hit.collider.gameObject.CompareTag("Head");
+                int damage = gun.damage * (headshot ? 2 : 1);
 
-            }
-
-            if (hit.collider.gameObject.layer != 8)
-            {
-                GameObject newHole = Instantiate(bulletholePrefab, hit.point + hit.normal * 0.001f, Quaternion.identity) as GameObject;
-                newHole.transform.LookAt(hit.point + hit.normal);
-                Destroy(newHole, 5);
-            }
-            else
-            {
                 StopCoroutine("HitPlayer");
-                bool targetIsDead = false;
-                if (hit.collider.gameObject.tag == "Head")
-                {
-                    targetIsDead = (hit.collider.transform.root.gameObject.GetPhotonView().GetComponent<Player>().currentHealth - (loadout[currentIndex].damage * 2)) <= 0;
-                }
-                else
-                {
-                    targetIsDead = (hit.collider.transform.root.gameObject.GetPhotonView().GetComponent<Player>().currentHealth - loadout[currentIndex].damage) <= 0;
+                bool targetIsDead = target.GetComponent<Player>().currentHealth - damage <= 0;
+                StartCoroutine("HitPlayer", targetIsDead);
 
-                }
-                StartCoroutine("HitPlayer",targetIsDead);
+                // Send which gun hit and whether it was a headshot, not a damage number: the victim works out the damage itself
+                target.RPC("TakeDamage", target.Owner, currentIndex, headshot);
             }
-
-            if (photonView.IsMine)
+            else
             {
-                if (hit.collider.gameObject.layer == 8)
-                {
-                    //RPC Damage
-                    if (hit.collider.gameObject.tag == "Head")
-                    {
-                        hit.collider.transform.root.gameObject.GetPhotonView().RPC("TakeDamage", RpcTarget.All, loadout[currentIndex].damage * 2, PhotonNetwork.LocalPlayer.ActorNumber);
-                    }
-                    else
-                    {
-                    hit.collider.transform.root.gameObject.GetPhotonView().RPC("TakeDamage", RpcTarget.All, loadout[currentIndex].damage, PhotonNetwork.LocalPlayer.ActorNumber);
-
-                    }
-                }
+                hitWorld = true;
             }
         }
+
+        photonView.RPC("ShotEffects", RpcTarget.All, endPoint, hitNormal, hitWorld);
+    }
+
+    // Runs on every client: sound, tracer, bullet hole and gun kick for a shot.
+    [PunRPC]
+    void ShotEffects(Vector3 endPoint, Vector3 hitNormal, bool hitWorld)
+    {
+        GetComponent<AudioSource>().PlayOneShot(loadout[currentIndex].shootingSound);
+
+        StartCoroutine(ShotLine(endPoint));
+
+        if (hitWorld)
+        {
+            GameObject newHole = Instantiate(bulletholePrefab, endPoint + hitNormal * 0.001f, Quaternion.identity) as GameObject;
+            newHole.transform.LookAt(endPoint + hitNormal);
+            Destroy(newHole, 5);
+        }
+
         //gun fx
-        currentWeapon.transform.Rotate(-loadout[currentIndex].recoil, 0 ,0);
-        currentWeapon.transform.position -= currentWeapon.transform.forward * loadout[currentIndex].kickback;
-
-
+        if (currentWeapon != null)
+        {
+            currentWeapon.transform.Rotate(-loadout[currentIndex].recoil, 0, 0);
+            currentWeapon.transform.position -= currentWeapon.transform.forward * loadout[currentIndex].kickback;
+        }
     }
 
     [PunRPC]
-    private void TakeDamage(int damage, int actor)
+    private void TakeDamage(int gunIndex, bool headshot, PhotonMessageInfo info)
     {
-        GetComponent<Player>().TakeDamage(damage, actor);
+        if (gunIndex < 0 || gunIndex >= loadout.Length || info.Sender == null) return;
+
+        int damage = loadout[gunIndex].damage * (headshot ? 2 : 1);
+        GetComponent<Player>().TakeDamage(damage, info.Sender.ActorNumber);
     }
     #endregion
 
