@@ -19,6 +19,8 @@ To play together, each player runs the game, picks a username and either creates
 - Three weapons (pistol, machine gun and sniper rifle) with aiming, reloading and weapon sway
 - Sprinting, jumping, crouching and sliding
 - Smarter spawns (away from enemies and out of their sight) and 3 seconds of spawn protection, which ends early if you shoot
+- Health regeneration after 5 seconds without taking damage
+- Players drop an ammo box when they die; walk over it to refill your reserve ammo
 - Scoreboard with kills and deaths
 - Combat feedback: camera recoil, muzzle flash, hit and kill sounds, a damage flash with a direction indicator, a kill feed and a "killed by" screen
 - Levels and XP: earn XP for kills, finishing matches and winning, saved to your profile between sessions

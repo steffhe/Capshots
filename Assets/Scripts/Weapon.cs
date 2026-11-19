@@ -23,6 +23,10 @@ public class Weapon : MonoBehaviourPunCallbacks
     public float aimingRecoilMultiplier = 0.5f;
     public Color muzzleFlashColor = new Color(1f, 0.8f, 0.45f);
 
+    [Header("Ammo pickups")]
+    // Each pickup adds this many clips of reserve ammo to every gun
+    public int clipsPerPickup = 2;
+
 
     private float currentCooldown;
     public int currentIndex;
@@ -146,6 +150,26 @@ public class Weapon : MonoBehaviourPunCallbacks
     #endregion
 
     #region Public Methods
+
+    public bool NeedsAmmo()
+    {
+        foreach (Gun gun in loadout)
+        {
+            if (gun.NeedsAmmo()) return true;
+        }
+        return false;
+    }
+
+    public void AddAmmoPickup()
+    {
+        foreach (Gun gun in loadout)
+        {
+            gun.AddAmmo(gun.clipSize * clipsPerPickup);
+        }
+
+        // Reload straight away if the current gun is empty
+        if (loadout[currentIndex].GetClip() == 0 && !isBursting) StartReload();
+    }
 
     public void RefreshAmmo(Text text)
     {

@@ -43,7 +43,7 @@ public class FeedbackUI : MonoBehaviour
     private readonly List<GameObject> killFeedEntries = new List<GameObject>();
 
     private AudioSource audioSource;
-    private AudioClip hitClip, headshotClip, killClip, hurtClip;
+    private AudioClip hitClip, headshotClip, killClip, hurtClip, pickupClip;
 
     #region Setup
 
@@ -116,6 +116,7 @@ public class FeedbackUI : MonoBehaviour
         hitClip = MakeClip("Hit", 0.05f, t => Tone(t, 1900f) * Decay(t, 60f));
         headshotClip = MakeClip("Headshot", 0.18f, t => (Tone(t, 1500f) * Decay(t, 40f) + Tone(t, 2250f) * Decay(Mathf.Max(0f, t - 0.05f), 25f) * (t > 0.05f ? 1f : 0f)) * 0.6f);
         killClip = MakeClip("Kill", 0.35f, t => (Tone(t, 880f) + Tone(t, t > 0.09f ? 1320f : 0f)) * 0.5f * Decay(t, 9f));
+        pickupClip = MakeClip("Pickup", 0.2f, t => (Tone(t, t < 0.07f ? 660f : 990f) * 0.5f + Tone(t, t < 0.07f ? 1320f : 1980f) * 0.15f) * Decay(t, 12f));
         hurtClip = MakeClip("Hurt", 0.18f, t => (Tone(t, Mathf.Lerp(140f, 55f, t / 0.18f)) * 0.8f + Random.Range(-0.25f, 0.25f)) * Decay(t, 18f));
     }
 
@@ -146,6 +147,13 @@ public class FeedbackUI : MonoBehaviour
     {
         if (Instance == null) return;
         Instance.Play(headshot ? Instance.headshotClip : Instance.hitClip, headshot ? 0.8f : 0.6f);
+    }
+
+    // Local player picked up ammo
+    public static void Pickup()
+    {
+        if (Instance == null) return;
+        Instance.Play(Instance.pickupClip, 0.8f);
     }
 
     // Local player got a kill
