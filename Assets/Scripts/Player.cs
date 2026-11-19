@@ -87,6 +87,11 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
     [Range(0f, 1f)] public float teamTintStrength = 0.6f;
     private int teamVisualsVersion = -1;
 
+    // Updated every physics step, used by Weapon for accuracy
+    public bool IsGrounded { get; private set; } = true;
+    // Horizontal speed compared to normal walking speed (0 = standing still, 1 = walking or faster)
+    public float MoveSpeedRatio { get; private set; }
+
     // The player this client controls, or null while dead
     public static Player Local { get; private set; }
 
@@ -290,6 +295,11 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
 
         //States
         bool isgrounded = Physics.Raycast(groundDetector.position, Vector3.down, 0.1f,ground );
+        IsGrounded = isgrounded;
+        Vector3 horizontal = rig.linearVelocity;
+        horizontal.y = 0f;
+        float walkSpeed = speed * Time.fixedDeltaTime;
+        MoveSpeedRatio = walkSpeed > 0f ? Mathf.Clamp01(horizontal.magnitude / walkSpeed) : 0f;
         bool isJumping = jump && isgrounded;
         bool isSprinting = sprint && vmove > 0 && !isJumping && isgrounded;
         bool isSliding = isSprinting && slide && !sliding;
@@ -325,6 +335,9 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
             }else if (crouched){
                 adjustedSpeed *= crouchModifier;
             }
+
+            // Heavier guns, and aiming, slow you down
+            adjustedSpeed *= weapon.MoveSpeedMultiplier();
 
         }
         else

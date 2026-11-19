@@ -18,6 +18,7 @@ To play together, each player runs the game, picks a username and either creates
 - Several maps to choose from
 - Warmup until enough players have joined, then a countdown before the match starts
 - Three weapons (pistol, machine gun and sniper rifle) with aiming, reloading and weapon sway
+- Weapon balance: damage falls off over distance, per-weapon headshot multipliers, heavier guns and aiming slow you down, and shots spread more while moving or jumping
 - Sprinting, jumping, crouching and sliding
 - Smarter spawns (away from enemies and out of their sight) and 3 seconds of spawn protection, which ends early if you shoot
 - Health regeneration after 5 seconds without taking damage
