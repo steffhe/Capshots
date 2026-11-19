@@ -1,9 +1,24 @@
 using UnityEngine;
 
-// Player settings that aren't part of the profile, stored in PlayerPrefs.
-// Mouse sensitivity stays in the profile (profile.json), where it already was.
+// Player settings. Mouse sensitivity is saved in the profile (profile.json), where it always was;
+// everything else is stored in PlayerPrefs.
 public static class GameSettings
 {
+    public const float MinSensitivity = 10f;
+    public const float MaxSensitivity = 500f;
+
+    public static float XSensitivity
+    {
+        get => Launcher.myProfile.xsens;
+        set { Launcher.myProfile.xsens = Mathf.Clamp(value, MinSensitivity, MaxSensitivity); Data.SaveProfile(Launcher.myProfile); }
+    }
+
+    public static float YSensitivity
+    {
+        get => Launcher.myProfile.ysens;
+        set { Launcher.myProfile.ysens = Mathf.Clamp(value, MinSensitivity, MaxSensitivity); Data.SaveProfile(Launcher.myProfile); }
+    }
+
     private const string FovKey = "settings.fov";
     private const string VolumeKey = "settings.volume";
     private const string QualityKey = "settings.quality";

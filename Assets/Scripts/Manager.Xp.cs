@@ -1,0 +1,120 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using Photon.Pun;
+using Photon.Realtime;
+using ExitGames.Client.Photon;
+using UnityEngine.UI;
+
+// XP and the message popup used for XP, level ups and match messages.
+public partial class Manager
+{
+    [Header("XP")]
+    public int xpPerKill = 100;
+    public int xpMatchComplete = 150;
+    public int xpWin = 300;
+
+    private Text xpPopup;
+    private Coroutine xpPopupRoutine;
+
+    public static string UsernameWithLevel(ProfileData profile)
+    {
+        return $"{profile.username}  LVL {profile.level}";
+    }
+
+    private void AwardMatchXp()
+    {
+        if (IsTeamMode)
+        {
+            int myTeam = GetTeam(PhotonNetwork.LocalPlayer.ActorNumber);
+            int winner = WinningTeam();
+            if (myTeam >= 0 && myTeam == winner) AwardXp(xpMatchComplete + xpWin, "VICTORY");
+            else AwardXp(xpMatchComplete, winner < 0 ? "DRAW" : "MATCH COMPLETE");
+            return;
+        }
+
+        short myKills = (myind >= 0 && playerInfo.Count > myind) ? playerInfo[myind].kills : (short)0;
+        short topKills = 0;
+        foreach (PlayerInfo a in playerInfo)
+        {
+            if (a.kills > topKills) topKills = a.kills;
+        }
+
+        bool won = topKills > 0 && myKills == topKills;
+        if (won) AwardXp(xpMatchComplete + xpWin, "VICTORY");
+        else AwardXp(xpMatchComplete, "MATCH COMPLETE");
+    }
+
+    private void AwardXp(int amount, string reason)
+    {
+        ProfileData profile = Launcher.myProfile;
+        int levelsGained = profile.AddXp(amount);
+        Data.SaveProfile(profile);
+
+        string message = $"+{amount} XP  {reason}";
+        if (levelsGained > 0)
+        {
+            message += $"\nLEVEL UP!  LVL {profile.level}";
+            // Let everyone update this player's level on the scoreboard
+            ChangeStat_S(PhotonNetwork.LocalPlayer.ActorNumber, PlayerStat.Level, (byte)levelsGained);
+        }
+
+        if (uiUsername != null) uiUsername.text = UsernameWithLevel(profile);
+        ShowMessage(message);
+    }
+
+    private void CreateXpPopup()
+    {
+        // Built at runtime from the existing Kills text so it matches the HUD font and style
+        GameObject popupObject = Instantiate(myKills.gameObject, GameObject.Find("Canvas").transform);
+        popupObject.name = "XP Popup";
+
+        xpPopup = popupObject.GetComponent<Text>();
+        xpPopup.supportRichText = true;
+        xpPopup.alignment = TextAnchor.MiddleCenter;
+        xpPopup.horizontalOverflow = HorizontalWrapMode.Overflow;
+        xpPopup.verticalOverflow = VerticalWrapMode.Overflow;
+
+        RectTransform rect = popupObject.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 0.7f);
+        rect.anchorMax = new Vector2(0.5f, 0.7f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = Vector2.zero;
+        rect.sizeDelta = new Vector2(600f, 100f);
+
+        popupObject.SetActive(false);
+    }
+
+    private void ShowMessage(string message)
+    {
+        if (xpPopup == null) return;
+        if (xpPopupRoutine != null) StopCoroutine(xpPopupRoutine);
+        xpPopupRoutine = StartCoroutine(XpPopup(message));
+    }
+
+    private IEnumerator XpPopup(string message)
+    {
+        const float holdTime = 1.5f;
+        const float fadeTime = 0.5f;
+
+        xpPopup.text = message;
+        xpPopup.transform.SetAsLastSibling();
+        xpPopup.gameObject.SetActive(true);
+
+        Color color = xpPopup.color;
+        color.a = 1f;
+        xpPopup.color = color;
+
+        yield return new WaitForSeconds(holdTime);
+
+        for (float t = 0f; t < fadeTime; t += Time.deltaTime)
+        {
+            color.a = 1f - t / fadeTime;
+            xpPopup.color = color;
+            yield return null;
+        }
+
+        xpPopup.gameObject.SetActive(false);
+        xpPopupRoutine = null;
+    }
+}

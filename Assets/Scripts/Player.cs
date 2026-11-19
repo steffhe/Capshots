@@ -49,6 +49,8 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
     private float idleCounter;
     private Manager manager;
     private Weapon weapon;
+    private Look look;
+    private Pause pauseMenu;
 
     private bool isDead;
 
@@ -121,8 +123,9 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
     #region MonoBehaviour Callbacks
     private void Start()
     {
-        manager = GameObject.Find("Manager").GetComponent<Manager>();
+        manager = Manager.Instance != null ? Manager.Instance : FindAnyObjectByType<Manager>();
         weapon = GetComponent<Weapon>();
+        look = GetComponent<Look>();
 
         currentHealth = maxHealth;
         if (photonView.IsMine) Local = this;
@@ -132,15 +135,15 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
 
         if (!photonView.IsMine)
         {
-            gameObject.layer = 8;
-            standingCollider.layer = 8;
-            standingColliderHead.layer = 8;
-            crouchingCollider.layer = 8;
-            crouchingColliderHead.layer = 8;
+            gameObject.layer = Layers.RemotePlayer;
+            standingCollider.layer = Layers.RemotePlayer;
+            standingColliderHead.layer = Layers.RemotePlayer;
+            crouchingCollider.layer = Layers.RemotePlayer;
+            crouchingColliderHead.layer = Layers.RemotePlayer;
         }
         else
         {
-            int playerLayer = LayerMask.NameToLayer("LocalPlayer");
+            int playerLayer = Layers.LocalPlayer;
             normalCam.cullingMask &= ~(1 << playerLayer);
         }
 
@@ -210,7 +213,8 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         //Pause
         if (pause)
         {
-            GameObject.Find("Pause").GetComponent<Pause>().TogglePause();
+            if (pauseMenu == null) pauseMenu = FindAnyObjectByType<Pause>();
+            if (pauseMenu != null) pauseMenu.TogglePause();
         }
         if ( Pause.paused)
         {
@@ -393,9 +397,11 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
 
         if (weapon.isAiming)
         {
-            if (weapon.currentIndex == 2)
+            Gun gun = weapon.CurrentGun;
+            if (gun != null && gun.scopeFov > 0f)
             {
-                normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, 1f, Time.deltaTime * 15f);
+                // Scoped guns zoom to their own field of view
+                normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, gun.scopeFov, Time.deltaTime * 15f);
             }
             else
             {
@@ -495,7 +501,6 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
             // Feedback: screen flash, direction to the attacker and a small flinch
             Player attacker = FindPlayerByActor(actor);
             FeedbackUI.Damaged((float)damage / maxHealth, attacker != null ? attacker.transform.position : (Vector3?)null, transform);
-            Look look = GetComponent<Look>();
             if (look != null) look.AddRecoil(UnityEngine.Random.Range(0.5f, 1.5f), UnityEngine.Random.Range(-1f, 1f));
 
             if (currentHealth <= 0)
@@ -507,9 +512,9 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
 
                 manager.DropAmmo_S(GroundPosition());
                 manager.Spawn();
-                manager.ChangeStat_S(PhotonNetwork.LocalPlayer.ActorNumber, 1, 1);
+                manager.ChangeStat_S(PhotonNetwork.LocalPlayer.ActorNumber, PlayerStat.Deaths, 1);
 
-                if (actor >= 0) manager.ChangeStat_S(actor, 0, 1);
+                if (actor >= 0) manager.ChangeStat_S(actor, PlayerStat.Kills, 1);
 
                 manager.KillFeed_S(actor, PhotonNetwork.LocalPlayer.ActorNumber, weaponName, headshot);
                 FeedbackUI.ShowDeath(manager.GetPlayerName(actor), weaponName, headshot, manager.respawnTime);

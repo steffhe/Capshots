@@ -1,7 +1,7 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.UI;
+
+// A gun's settings, set up as an asset in Assets/ScriptableObjects/Guns, plus its ammo state.
+// Each player works on their own copy (see Weapon.Awake).
 
 [CreateAssetMenu(fileName ="New Gun", menuName ="Gun")]
 public class Gun : ScriptableObject
@@ -34,6 +34,10 @@ public class Gun : ScriptableObject
     public float aimBloomDivisor = 2f;
     // Spread multiplier at full running speed (scaled by how fast you move)
     public float movingBloomMultiplier = 1.5f;
+
+    [Header("Aiming")]
+    // Field of view while aiming with a scope. 0 = no scope: aiming zooms to a quarter of the normal field of view.
+    public float scopeFov = 0f;
 
     [Header("Movement")]
     // Movement speed multiplier while this gun is equipped, and while aiming with it

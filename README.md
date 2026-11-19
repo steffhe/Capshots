@@ -67,6 +67,10 @@ Steps:
 
 Photon is configured in `Assets/Photon/PhotonUnityNetworking/Resources/PhotonServerSettings.asset`. If you fork the project, consider creating your own free Photon app and replacing the App ID there.
 
+## Tests
+
+The tests in `Assets/Tests/EditMode` check gun ammo, damage falloff and XP. Run them in Unity from **Window → General → Test Runner → EditMode → Run All**. The build workflow also runs them before every build and stops if any fail.
+
 ## Releasing
 
 Builds are made automatically by GitHub Actions with [GameCI](https://game.ci) (`.github/workflows/build.yml`):
@@ -88,7 +92,10 @@ The workflow needs three repository secrets (**Settings → Secrets and variable
 
 | Path | Contents |
 | --- | --- |
-| `Assets/Scripts` | Game code: launcher/lobby, player movement, weapons, match manager, pause menu |
+| `Assets/Scripts` | Game code: launcher/lobby, player movement, weapons, input, settings, chat, pause menu |
+| `Assets/Scripts/Manager*.cs` | The match manager, split by topic: match flow (`Manager.cs`), teams, scoreboard, spawning, pickups, chat and XP |
+| `Assets/Scripts/Core` | Game logic with no scene dependencies (`Gun`, `ProfileData`), in its own assembly so it can be tested |
+| `Assets/Tests/EditMode` | Automated tests for the `Core` code |
 | `Assets/Scenes` | `Menu` plus the playable maps |
 | `Assets/Resources` | Networked prefabs spawned through Photon (player, weapons, bullet holes) |
 | `Assets/Prefabs` | UI and misc prefabs |

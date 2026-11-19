@@ -1,7 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.UI;
 using Photon.Pun;
 
 public class Look : MonoBehaviourPunCallbacks
@@ -20,16 +19,9 @@ public class Look : MonoBehaviourPunCallbacks
 
     private Quaternion camCenter;
 
-    private Slider xslider;
-    private Slider yslider;
-
-    private ProfileData myProfile;
-
     // Mouse input is already a per-frame movement, so it must not be scaled by Time.deltaTime.
     // This fixed scale keeps existing sensitivity values feeling the same as they did at 60 FPS.
     private const float SensitivityScale = 1f / 60f;
-    private UnityEngine.Events.UnityAction<float> onXSensChanged;
-    private UnityEngine.Events.UnityAction<float> onYSensChanged;
 
     [Header("Recoil")]
     // How fast the view snaps to a new kick, and how fast it settles back afterwards
@@ -46,30 +38,7 @@ public class Look : MonoBehaviourPunCallbacks
     void Start()
     {
         camCenter = cam.localRotation;
-
-        if (!photonView.IsMine) return;
-
-        // Share the profile with the rest of the game so saving sensitivity never overwrites XP or level
-        myProfile = Launcher.myProfile;
-        xSensitivity = myProfile.xsens;
-        ySensitivity = myProfile.ysens;
-
-        xslider = GameObject.Find("Canvas/Pause/Anchor/Sensitivity/XSens").GetComponent<Slider>();
-        yslider = GameObject.Find("Canvas/Pause/Anchor/Sensitivity/YSens").GetComponent<Slider>();
-
-        xslider.value = xSensitivity;
-        yslider.value = ySensitivity;
-
-        onXSensChanged = delegate { SetXSens(); };
-        onYSensChanged = delegate { SetYSens(); };
-        xslider.onValueChanged.AddListener(onXSensChanged);
-        yslider.onValueChanged.AddListener(onYSensChanged);
-    }
-
-    private void OnDestroy()
-    {
-        if (xslider != null && onXSensChanged != null) xslider.onValueChanged.RemoveListener(onXSensChanged);
-        if (yslider != null && onYSensChanged != null) yslider.onValueChanged.RemoveListener(onYSensChanged);
+        weaponComponent = GetComponent<Weapon>();
     }
 
 
@@ -78,6 +47,10 @@ public class Look : MonoBehaviourPunCallbacks
     {
         if (!photonView.IsMine) return;
         if (Pause.paused && photonView.IsMine) return;
+
+        // Sensitivity is changed in the settings menu and saved in the profile
+        xSensitivity = GameSettings.XSensitivity;
+        ySensitivity = GameSettings.YSensitivity;
 
         ApplyRecoil();
         SetX();
@@ -98,7 +71,6 @@ public class Look : MonoBehaviourPunCallbacks
     {
         Vector2 look = GameInput.MouseLookValue + GameInput.StickLookValue * StickLookScale * Time.deltaTime;
 
-        if (weaponComponent == null) weaponComponent = GetComponent<Weapon>();
         if (weaponComponent != null && weaponComponent.isAiming) look *= GameSettings.AdsSensitivity;
 
         return look;
@@ -167,21 +139,6 @@ public class Look : MonoBehaviourPunCallbacks
         if (Quaternion.Angle(camCenter, pitched) < maxAngle) cam.localRotation = pitched;
 
         player.localRotation *= Quaternion.AngleAxis(delta.y, Vector3.up);
-    }
-
-    public void SetXSens()
-    {
-        xSensitivity = xslider.value;
-        myProfile.xsens = xSensitivity;
-        Data.SaveProfile(myProfile);
-    }
-
-    public void SetYSens()
-    {
-        ySensitivity = yslider.value;
-        myProfile.ysens = ySensitivity;
-        Data.SaveProfile(myProfile);
-
     }
 
     #endregion

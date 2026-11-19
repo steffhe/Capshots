@@ -34,3 +34,4 @@ MonoBehaviour:
   movingBloomMultiplier: 3
   moveSpeedMultiplier: 0.85
   aimMoveSpeedMultiplier: 0.5
+  scopeFov: 1
