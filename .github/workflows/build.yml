@@ -7,10 +7,10 @@ name: Build
 #    matchmaking version, so different releases never share a room (and Windows and
 #    browser players on the same release can play together).
 #  - Pull requests that touch the project get test builds of both, downloadable from the run.
-#  - Pushes to main (merged pull requests) build too. Besides checking that main still builds,
-#    this saves Unity's Library cache on main, which every later pull request can start from.
+#  - Pushes to main (merged pull requests) build too, which shows right away when main breaks,
+#    and saves the tests job's Library cache on main for later pull requests to start from.
 #    (A pull request can only use caches saved by itself or by main.)
-#    Release builds (v* tags) skip the cache and always build from a clean Library.
+#  - The builds always start from a clean Library (no cache); see the note in the build job.
 #  - "Run workflow" on the Actions tab builds on demand.
 #  - The EditMode tests in Assets/Tests run in parallel with the builds. A release and the
 #    browser version are only published when the tests and both builds pass.
@@ -182,16 +182,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      # Release builds (v* tags) always start from a clean Library, so a bad cache can never
-      # break or affect a release. Pull request and main builds use the cache to save time.
-      - name: Cache Unity Library folder
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        uses: actions/cache@v4
-        with:
-          path: Library
-          key: Library-${{ matrix.targetPlatform }}-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
-          restore-keys: |
-            Library-${{ matrix.targetPlatform }}-
+      # No Library cache for the builds: with Unity 6.6, builds that restored a cached Library
+      # were killed (exit code 137) right after Unity started, while clean builds always passed.
+      # The tests job above keeps its cache, which works there.
 
       - name: Build with Unity
         uses: game-ci/unity-builder@v4
