@@ -44,6 +44,11 @@ public enum PlayerStat : byte
 public static class Layers
 {
     public const int LocalPlayer = 6;
+    // Other players' guns (and, before LocalGun existed, every gun). Bullets don't hit it.
+    public const int Gun = 7;
     // Other players' colliders, which bullets can hit
     public const int RemotePlayer = 8;
+    // The local player's own gun, drawn by the viewmodel camera on top of everything so it
+    // never clips into walls. Bullets don't hit it either.
+    public const int LocalGun = 9;
 }

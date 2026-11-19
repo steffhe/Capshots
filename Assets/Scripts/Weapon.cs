@@ -298,6 +298,7 @@ public class Weapon : MonoBehaviourPunCallbacks
         newWeapon.transform.localPosition = Vector3.zero;
         newWeapon.transform.localEulerAngles = Vector3.zero;
         newWeapon.GetComponent<Sway>().isMine = photonView.IsMine;
+        SetGunLayers(newWeapon);
         audioSource.clip = loadout[ind].shootingSound;
 
         currentWeapon = newWeapon;
@@ -315,6 +316,19 @@ public class Weapon : MonoBehaviourPunCallbacks
         }
     }
   
+    // The local player's gun goes on the LocalGun layer, which only the viewmodel camera draws, so it
+    // never clips into walls. Its bullet tracer stays on the Gun layer: the main camera draws that,
+    // so walls still hide the tracer. Other players' guns keep the Gun layer.
+    void SetGunLayers(GameObject gunObject)
+    {
+        if (!photonView.IsMine) return;
+
+        foreach (Transform t in gunObject.GetComponentsInChildren<Transform>(true))
+        {
+            t.gameObject.layer = t.GetComponent<LineRenderer>() != null ? Layers.Gun : Layers.LocalGun;
+        }
+    }
+
     float CurrentBloom()
     {
         Gun gun = loadout[currentIndex];

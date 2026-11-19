@@ -16,6 +16,7 @@ public partial class Manager
 
     private Text xpPopup;
     private Coroutine xpPopupRoutine;
+    private CanvasGroup xpPopupGroup;
 
     public static string UsernameWithLevel(ProfileData profile)
     {
@@ -70,6 +71,10 @@ public partial class Manager
         popupObject.name = "XP Popup";
 
         xpPopup = popupObject.GetComponent<Text>();
+        // Faded with a CanvasGroup so coloured words (like a team name) fade too
+        xpPopupGroup = popupObject.AddComponent<CanvasGroup>();
+        xpPopupGroup.interactable = false;
+        xpPopupGroup.blocksRaycasts = false;
         xpPopup.supportRichText = true;
         xpPopup.alignment = TextAnchor.MiddleCenter;
         xpPopup.horizontalOverflow = HorizontalWrapMode.Overflow;
@@ -101,16 +106,13 @@ public partial class Manager
         xpPopup.transform.SetAsLastSibling();
         xpPopup.gameObject.SetActive(true);
 
-        Color color = xpPopup.color;
-        color.a = 1f;
-        xpPopup.color = color;
+        xpPopupGroup.alpha = 1f;
 
         yield return new WaitForSeconds(holdTime);
 
         for (float t = 0f; t < fadeTime; t += Time.deltaTime)
         {
-            color.a = 1f - t / fadeTime;
-            xpPopup.color = color;
+            xpPopupGroup.alpha = 1f - t / fadeTime;
             yield return null;
         }
 

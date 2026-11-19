@@ -5,6 +5,7 @@ using Photon.Pun;
 using UnityEngine.UI;
 using System;
 using TMPro;
+using UnityEngine.Rendering.Universal;
 
 public class Player : MonoBehaviourPunCallbacks, IPunObservable
 {
@@ -94,6 +95,11 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
     // Horizontal speed compared to normal walking speed (0 = standing still, 1 = walking or faster)
     public float MoveSpeedRatio { get; private set; }
 
+    [Header("Viewmodel")]
+    // Field of view the player's own gun is drawn with. It stays the same when the
+    // field of view setting changes or the player aims, so the gun never stretches.
+    public float viewmodelFov = 70f;
+
     // The player this client controls, or null while dead
     public static Player Local { get; private set; }
 
@@ -145,6 +151,7 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         {
             int playerLayer = Layers.LocalPlayer;
             normalCam.cullingMask &= ~(1 << playerLayer);
+            CreateViewmodelCamera();
         }
 
             weaponParentorigin = weaponParent.localPosition;
@@ -556,6 +563,28 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
     private void OnDestroy()
     {
         if (Local == this) Local = null;
+    }
+
+    // Draws the player's own gun with a second camera on top of the world (a URP overlay camera),
+    // so the gun never clips into walls. The main camera skips the gun's layer.
+    private void CreateViewmodelCamera()
+    {
+        normalCam.cullingMask &= ~(1 << Layers.LocalGun);
+
+        GameObject go = new GameObject("Viewmodel Camera");
+        go.transform.SetParent(normalCam.transform, false);
+
+        Camera viewmodelCam = go.AddComponent<Camera>();
+        viewmodelCam.cullingMask = 1 << Layers.LocalGun;
+        viewmodelCam.fieldOfView = viewmodelFov;
+        viewmodelCam.nearClipPlane = 0.01f;
+        viewmodelCam.farClipPlane = 10f;
+
+        UniversalAdditionalCameraData viewmodelData = viewmodelCam.GetUniversalAdditionalCameraData();
+        viewmodelData.renderType = CameraRenderType.Overlay;
+        viewmodelData.renderShadows = false;
+
+        normalCam.GetUniversalAdditionalCameraData().cameraStack.Add(viewmodelCam);
     }
 
     private void RegenerateHealth()
