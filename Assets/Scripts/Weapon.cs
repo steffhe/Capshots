@@ -364,7 +364,10 @@ public class Weapon : MonoBehaviourPunCallbacks
             hitNormal = hit.normal;
 
             PhotonView target = hit.collider.gameObject.layer == 8 ? hit.collider.transform.root.gameObject.GetPhotonView() : null;
-            if (target != null && target.Owner != null)
+            // No friendly fire: teammates are hit like scenery, minus the bullet hole
+            bool friendly = target != null && Manager.Instance != null && !Manager.Instance.AreEnemies(photonView.OwnerActorNr, target.OwnerActorNr);
+
+            if (target != null && target.Owner != null && !friendly)
             {
                 bool headshot = hit.collider.gameObject.CompareTag("Head");
                 int damage = gun.damage * (headshot ? 2 : 1);
@@ -443,6 +446,8 @@ public class Weapon : MonoBehaviourPunCallbacks
     private void TakeDamage(int gunIndex, bool headshot, PhotonMessageInfo info)
     {
         if (gunIndex < 0 || gunIndex >= loadout.Length || info.Sender == null) return;
+        // The victim checks teams too, so a modified client can't damage teammates
+        if (Manager.Instance != null && !Manager.Instance.AreEnemies(info.Sender.ActorNumber, photonView.OwnerActorNr)) return;
 
         int damage = loadout[gunIndex].damage * (headshot ? 2 : 1);
         GetComponent<Player>().TakeDamage(damage, info.Sender.ActorNumber, loadout[gunIndex].gunName, headshot);

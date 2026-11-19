@@ -88,11 +88,17 @@ public class Launcher : MonoBehaviourPunCallbacks
     public MapData[] maps;
     private int currentmap = 0;
 
+    private static readonly string[] modeNames = { "FREE FOR ALL", "TEAM DEATHMATCH" };
+    private static readonly string[] modeShortNames = { "FFA", "TDM" };
+    private int currentmode = 0;
+    private Text modeValue;
+
     public void Awake()
     {
         PhotonNetwork.AutomaticallySyncScene = true;
         myProfile = Data.LoadProfile();
         usernameField.text = myProfile.username;
+        CreateModeButton();
         Connect();
     }
 
@@ -139,12 +145,13 @@ public class Launcher : MonoBehaviourPunCallbacks
         RoomOptions options = new RoomOptions();
         options.MaxPlayers = (byte) maxPlayersSlider.value;
 
-        options.CustomRoomPropertiesForLobby = new string[] { "map" };
+        options.CustomRoomPropertiesForLobby = new string[] { "map", "mode" };
 
         ExitGames.Client.Photon.Hashtable properties = new ExitGames.Client.Photon.Hashtable();
         properties.Add("map", currentmap);
         properties.Add("killcount", (int)killsToWinSlider.value);
         properties.Add("mapname", maps[currentmap].name);
+        properties.Add("mode", currentmode);
         if (matchLengthSlider != null) properties.Add("matchlength", Mathf.RoundToInt(matchLengthSlider.value) * 60);
         options.CustomRoomProperties = properties;
         PhotonNetwork.CreateRoom(roomnameField.text, options);
@@ -155,6 +162,62 @@ public class Launcher : MonoBehaviourPunCallbacks
         currentmap++;
         if (currentmap >= maps.Length) currentmap = 0;
         mapValue.text = "MAP: " + maps[currentmap].name.ToUpper();
+    }
+
+    public void ChangeMode()
+    {
+        currentmode = (currentmode + 1) % modeNames.Length;
+        RefreshModeText();
+    }
+
+    private void RefreshModeText()
+    {
+        if (modeValue != null) modeValue.text = "MODE: " + modeNames[currentmode];
+    }
+
+    // Adds a "Mode" button under the "Map" button in the create-room tab by copying it,
+    // and moves the rows below it down, so the menu scene doesn't need editing
+    private void CreateModeButton()
+    {
+        if (mapValue == null) return;
+
+        RectTransform mapRow = mapValue.transform.parent as RectTransform;
+        if (mapRow == null || mapRow.parent == null) return;
+
+        const float rowSpacing = 60f;
+        float mapY = mapRow.anchoredPosition.y;
+
+        foreach (Transform sibling in mapRow.parent)
+        {
+            RectTransform row = sibling as RectTransform;
+            if (row != null && row != mapRow && row.anchoredPosition.y < mapY - 1f)
+            {
+                row.anchoredPosition -= new Vector2(0f, rowSpacing);
+            }
+        }
+
+        GameObject modeRow = Instantiate(mapRow.gameObject, mapRow.parent);
+        modeRow.name = "Mode";
+        modeRow.transform.SetSiblingIndex(mapRow.GetSiblingIndex() + 1);
+        ((RectTransform)modeRow.transform).anchoredPosition = mapRow.anchoredPosition - new Vector2(0f, rowSpacing);
+
+        modeValue = modeRow.GetComponentInChildren<Text>();
+
+        Button button = modeRow.GetComponent<Button>();
+        if (button != null)
+        {
+            // The copy still calls ChangeMap from the Inspector: switch that off, keep anything else (like a click sound)
+            for (int i = 0; i < button.onClick.GetPersistentEventCount(); i++)
+            {
+                if (button.onClick.GetPersistentMethodName(i) == nameof(ChangeMap))
+                {
+                    button.onClick.SetPersistentListenerState(i, UnityEngine.Events.UnityEventCallState.Off);
+                }
+            }
+            button.onClick.AddListener(ChangeMode);
+        }
+
+        RefreshModeText();
     }
 
     public void ChangeMaxPlayersSlider (float value)
@@ -209,6 +272,9 @@ public class Launcher : MonoBehaviourPunCallbacks
         currentmap = 0;
         mapValue.text = "MAP: " + maps[currentmap].name.ToUpper();
 
+        currentmode = 0;
+        RefreshModeText();
+
         maxPlayersSlider.value = maxPlayersSlider.maxValue;
         maxPlayersValue.text = Mathf.RoundToInt(maxPlayersSlider.value).ToString(); 
 
@@ -248,7 +314,9 @@ public class Launcher : MonoBehaviourPunCallbacks
 
             if (a.CustomProperties.ContainsKey("map"))
             {
-                newRoomButton.transform.Find("Map/Name").GetComponent<Text>().text = maps[(int)a.CustomProperties["map"]].name;
+                string roomMap = maps[(int)a.CustomProperties["map"]].name;
+                if (a.CustomProperties.ContainsKey("mode")) roomMap += "  ·  " + modeShortNames[(int)a.CustomProperties["mode"] % modeShortNames.Length];
+                newRoomButton.transform.Find("Map/Name").GetComponent<Text>().text = roomMap;
             }
             else
             {

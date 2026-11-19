@@ -186,7 +186,8 @@ public class FeedbackUI : MonoBehaviour
         if (show) text.text = "SPAWN PROTECTION  " + secondsLeft.ToString("0.0");
     }
 
-    public static void AddKillFeed(string killer, string victim, string weapon, bool headshot, bool involvesMe)
+    // In team mode, killerColor and victimColor give each name its team colour
+    public static void AddKillFeed(string killer, string victim, string weapon, bool headshot, bool involvesMe, string killerColor = null, string victimColor = null)
     {
         if (Instance == null) return;
         FeedbackUI ui = Instance;
@@ -196,9 +197,11 @@ public class FeedbackUI : MonoBehaviour
         rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(1f, 1f);
         rect.sizeDelta = new Vector2(600f, 26f);
 
-        string killerColor = involvesMe ? "#ffd84a" : "#ff6a5a";
-        string victimColor = involvesMe ? "#ffd84a" : "#ffffff";
-        entry.text = $"<color={killerColor}>{killer}</color>  <color=#bbbbbb>[{weapon}{(headshot ? " · HS" : "")}]</color>  <color={victimColor}>{victim}</color>";
+        if (killerColor == null) killerColor = involvesMe ? "#ffd84a" : "#ff6a5a";
+        if (victimColor == null) victimColor = involvesMe ? "#ffd84a" : "#ffffff";
+        // In team mode the names are team coloured, so mark your own kills and deaths with an arrow
+        string marker = involvesMe ? "<color=#ffd84a>></color> " : "";
+        entry.text = marker + $"<color={killerColor}>{killer}</color>  <color=#bbbbbb>[{weapon}{(headshot ? " · HS" : "")}]</color>  <color={victimColor}>{victim}</color>";
 
         ui.killFeedEntries.Insert(0, entry.gameObject);
         while (ui.killFeedEntries.Count > ui.maxKillFeedEntries)

@@ -13,7 +13,8 @@ To play together, each player runs the game, picks a username and either creates
 ## Features
 
 - Online multiplayer through Photon: create rooms, browse and join open rooms, or quick-join a random one
-- Room options: map, max players and kills to win
+- Room options: game mode, map, max players and kills to win
+- Two game modes: Free For All, and Team Deathmatch (blue vs red, automatic team balancing, no friendly fire, first team to the kill limit wins)
 - Several maps to choose from
 - Warmup until enough players have joined, then a countdown before the match starts
 - Three weapons (pistol, machine gun and sniper rifle) with aiming, reloading and weapon sway
