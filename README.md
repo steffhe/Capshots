@@ -23,26 +23,32 @@ To play together, each player runs the game, picks a username and either creates
 - Smarter spawns (away from enemies and out of their sight) and 3 seconds of spawn protection, which ends early if you shoot
 - Health regeneration after 5 seconds without taking damage
 - Players drop an ammo box when they die; walk over it to refill your reserve ammo
-- Scoreboard with kills and deaths
+- Scoreboard with kills, deaths and ping
+- Text chat
+- Settings menu: field of view, aim sensitivity, volume, graphics quality and key rebinding
+- Gamepad support (Unity Input System)
 - Combat feedback: camera recoil, muzzle flash, hit and kill sounds, a damage flash with a direction indicator, a kill feed and a "killed by" screen
 - Levels and XP: earn XP for kills, finishing matches and winning, saved to your profile between sessions
 
 ## Controls
 
-| Action | Key |
-| --- | --- |
-| Move | `W` `A` `S` `D` |
-| Look | Mouse |
-| Shoot | Left mouse button |
-| Aim | Right mouse button |
-| Reload | `R` |
-| Switch weapon | `1` `2` `3` / mouse wheel |
-| Sprint | `Shift` |
-| Jump | `Space` |
-| Crouch | `Left Ctrl` |
-| Slide | `C` (while sprinting) |
-| Scoreboard | Hold `Tab` |
-| Pause | `Esc` |
+Keyboard and mouse controls can be changed in **Pause → Settings**. A gamepad also works.
+
+| Action | Keyboard / mouse | Gamepad |
+| --- | --- | --- |
+| Move | `W` `A` `S` `D` / arrow keys | Left stick |
+| Look | Mouse | Right stick |
+| Shoot | Left mouse button | Right trigger |
+| Aim | Right mouse button | Left trigger |
+| Reload | `R` | X / Square |
+| Switch weapon | `1` `2` `3` / mouse wheel | Bumpers |
+| Sprint | `Shift` | Left stick press |
+| Jump | `Space` | A / Cross |
+| Crouch | `Left Ctrl` | B / Circle |
+| Slide | `C` (while sprinting) | Right stick press |
+| Scoreboard | Hold `Tab` | View / Select |
+| Chat | `T` or `Enter` | - |
+| Pause | `Esc` | Menu / Start |
 
 ## Building from source
 

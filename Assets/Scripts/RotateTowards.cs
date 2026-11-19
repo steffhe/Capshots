@@ -15,10 +15,10 @@ public class RotateTowards : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        Vector3 moveInput = new Vector3(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"), 0f);
-        Vector3 moveVelocity = moveInput * moveSpeed;
+        if (UnityEngine.InputSystem.Mouse.current == null || Camera.main == null) return;
+        Vector2 mousePosition = UnityEngine.InputSystem.Mouse.current.position.ReadValue();
 
-        Ray cameraRay = Camera.main.ScreenPointToRay(Input.mousePosition);
+        Ray cameraRay = Camera.main.ScreenPointToRay(mousePosition);
 
 
         var filter = GetComponent<MeshFilter>();

@@ -89,9 +89,24 @@ public class Look : MonoBehaviourPunCallbacks
 
     #region Private Methods
 
+    // Gamepad stick: full deflection turns about as fast as 60 units of mouse movement per second
+    private const float StickLookScale = 60f;
+    private Weapon weaponComponent;
+
+    // Mouse and gamepad look combined, in old mouse-axis units, with the ADS multiplier from the settings
+    Vector2 LookInput()
+    {
+        Vector2 look = GameInput.MouseLookValue + GameInput.StickLookValue * StickLookScale * Time.deltaTime;
+
+        if (weaponComponent == null) weaponComponent = GetComponent<Weapon>();
+        if (weaponComponent != null && weaponComponent.isAiming) look *= GameSettings.AdsSensitivity;
+
+        return look;
+    }
+
     void SetY()
     {
-        float input = Input.GetAxis("Mouse Y") * ySensitivity * SensitivityScale;
+        float input = LookInput().y * ySensitivity * SensitivityScale;
         Quaternion adj = Quaternion.AngleAxis(input, -Vector3.right);
         Quaternion delta = cam.localRotation * adj;
         if (Quaternion.Angle(camCenter, delta) < maxAngle)
@@ -103,7 +118,7 @@ public class Look : MonoBehaviourPunCallbacks
 
     void SetX()
     {
-        float input = Input.GetAxis("Mouse X") * xSensitivity * SensitivityScale;
+        float input = LookInput().x * xSensitivity * SensitivityScale;
         Quaternion adj = Quaternion.AngleAxis(input, Vector3.up);
         Quaternion delta = player.localRotation * adj;
             player.localRotation = delta;
@@ -117,7 +132,7 @@ public class Look : MonoBehaviourPunCallbacks
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
 
-            if (Input.GetKeyDown(KeyCode.Escape))
+            if (GameInput.PausePressed)
             {
                 cursorLocked = false;
             }
@@ -126,7 +141,7 @@ public class Look : MonoBehaviourPunCallbacks
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
 
-            if (Input.GetKeyDown(KeyCode.Escape))
+            if (GameInput.PausePressed)
             {
                 cursorLocked = true;
             }

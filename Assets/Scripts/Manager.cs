@@ -122,7 +122,8 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         KillFeed,
         SpawnPickup,
         ClaimPickup,
-        PickupTaken
+        PickupTaken,
+        ChatMessage
     }
 
 
@@ -159,10 +160,10 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
     {
         if (state == GameState.Ending) return;
 
-        if (Input.GetKeyDown(KeyCode.Tab))
+        if (GameInput.Pressed(GameInput.Scoreboard))
         {
             Leaderboard(leaderboard);
-        }else if (Input.GetKeyUp(KeyCode.Tab))
+        }else if (GameInput.Released(GameInput.Scoreboard))
         {
            leaderboard.gameObject.SetActive(false);
         }
@@ -194,6 +195,8 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         CreateXpPopup();
         FeedbackUI.Create(GameObject.Find("Canvas").transform, myKills.font);
         CreateTeamScore();
+        ChatUI.Create(GameObject.Find("Canvas").transform, myKills.font, this);
+        StartCoroutine(SharePing());
        
 
         RefreshMyStats();
@@ -274,7 +277,10 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
             }
 
             newcard.transform.Find("Level").GetComponent<Text>().text = a.profile.level.ToString("00");
-            newcard.transform.Find("Username").GetComponent<Text>().text = a.profile.username;
+            Text usernameText = newcard.transform.Find("Username").GetComponent<Text>();
+            usernameText.supportRichText = true;
+            usernameText.horizontalOverflow = HorizontalWrapMode.Overflow;
+            usernameText.text = a.profile.username + PingLabel(a.actor);
             newcard.transform.Find("Score Value").GetComponent<Text>().text = (a.kills * 100).ToString();
             newcard.transform.Find("Kills Value").GetComponent<Text>().text = a.kills.ToString();
             newcard.transform.Find("Deaths Value").GetComponent<Text>().text = a.deaths.ToString();
@@ -568,6 +574,62 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         if (destroy && pickup != null) Destroy(pickup.gameObject);
     }
 
+    #region Chat and ping
+
+    public void SendChat_S(string message)
+    {
+        message = message.Trim();
+        if (message.Length == 0) return;
+        if (message.Length > ChatUI.MaxMessageLength) message = message.Substring(0, ChatUI.MaxMessageLength);
+
+        object[] package = new object[] { PhotonNetwork.LocalPlayer.ActorNumber, message };
+        PhotonNetwork.RaiseEvent((byte)EventCodes.ChatMessage, package, new RaiseEventOptions { Receivers = ReceiverGroup.All }, new SendOptions { Reliability = true });
+    }
+
+    public void ChatMessage_R(object[] data)
+    {
+        int actor = (int)data[0];
+        string message = (string)data[1];
+        if (message.Length > ChatUI.MaxMessageLength) message = message.Substring(0, ChatUI.MaxMessageLength);
+
+        int team = GetTeam(actor);
+        string color = team >= 0 ? TeamHex(team) : (actor == PhotonNetwork.LocalPlayer.ActorNumber ? "#ffd84a" : "#dddddd");
+        ChatUI.AddMessage(GetPlayerName(actor), color, message);
+    }
+
+    // Every couple of seconds, share this player's ping so others can see it on the scoreboard
+    private IEnumerator SharePing()
+    {
+        int lastShared = -1;
+        while (true)
+        {
+            int ping = PhotonNetwork.GetPing();
+            if (PhotonNetwork.InRoom && Mathf.Abs(ping - lastShared) >= 5)
+            {
+                lastShared = ping;
+                ExitGames.Client.Photon.Hashtable props = new ExitGames.Client.Photon.Hashtable { { "ping", ping } };
+                PhotonNetwork.LocalPlayer.SetCustomProperties(props);
+            }
+            yield return new WaitForSeconds(2f);
+        }
+    }
+
+    private string PingLabel(int actor)
+    {
+        Photon.Realtime.Player player = PhotonNetwork.CurrentRoom != null ? PhotonNetwork.CurrentRoom.GetPlayer(actor) : null;
+        if (player == null) return "";
+
+        int ping = actor == PhotonNetwork.LocalPlayer.ActorNumber ? PhotonNetwork.GetPing() : -1;
+        object value;
+        if (ping < 0 && player.CustomProperties.TryGetValue("ping", out value)) ping = (int)value;
+        if (ping < 0) return "";
+
+        string color = ping < 80 ? "#7ddc6f" : ping < 150 ? "#e8c84a" : "#e8604a";
+        return $"  <size=14><color={color}>{ping} ms</color></size>";
+    }
+
+    #endregion
+
     #region Teams
 
     // The player's team in team mode, or -1 in free for all or if they aren't known yet
@@ -726,6 +788,9 @@ public class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
                 break;
             case EventCodes.PickupTaken:
                 PickupTaken_R(o);
+                break;
+            case EventCodes.ChatMessage:
+                ChatMessage_R(o);
                 break;
                 
         }
