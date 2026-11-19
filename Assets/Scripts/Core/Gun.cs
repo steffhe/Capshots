@@ -38,6 +38,9 @@ public class Gun : ScriptableObject
     [Header("Aiming")]
     // Field of view while aiming with a scope. 0 = no scope: aiming zooms to a quarter of the normal field of view.
     public float scopeFov = 0f;
+    // Field of view of the gun model itself while aiming. A small value enlarges the gun, bringing
+    // a scope up to the eye so you aim through it. 0 = keep the normal viewmodel field of view.
+    public float scopeViewmodelFov = 0f;
 
     [Header("Movement")]
     // Movement speed multiplier while this gun is equipped, and while aiming with it

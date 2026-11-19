@@ -35,3 +35,4 @@ MonoBehaviour:
   moveSpeedMultiplier: 0.85
   aimMoveSpeedMultiplier: 0.5
   scopeFov: 1
+  scopeViewmodelFov: 10
