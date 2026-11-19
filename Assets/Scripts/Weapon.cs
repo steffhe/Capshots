@@ -298,11 +298,11 @@ public class Weapon : MonoBehaviourPunCallbacks
         newWeapon.transform.localPosition = Vector3.zero;
         newWeapon.transform.localEulerAngles = Vector3.zero;
         newWeapon.GetComponent<Sway>().isMine = photonView.IsMine;
-        SetGunLayers(newWeapon);
         audioSource.clip = loadout[ind].shootingSound;
 
         currentWeapon = newWeapon;
         lineRend = currentWeapon.GetComponentInChildren<LineRenderer>();
+        SetGunLayers(newWeapon);
         weaponAnchor = currentWeapon.transform.Find("Anchor");
         stateAds = currentWeapon.transform.Find("States/ADS");
         stateHip = currentWeapon.transform.Find("States/Hip");
@@ -317,16 +317,45 @@ public class Weapon : MonoBehaviourPunCallbacks
     }
   
     // The local player's gun goes on the LocalGun layer, which only the viewmodel camera draws, so it
-    // never clips into walls. Its bullet tracer stays on the Gun layer: the main camera draws that,
-    // so walls still hide the tracer. Other players' guns keep the Gun layer.
+    // never clips into walls. Other players' guns keep the Gun layer.
     void SetGunLayers(GameObject gunObject)
     {
         if (!photonView.IsMine) return;
 
         foreach (Transform t in gunObject.GetComponentsInChildren<Transform>(true))
         {
-            t.gameObject.layer = t.GetComponent<LineRenderer>() != null ? Layers.Gun : Layers.LocalGun;
+            t.gameObject.layer = Layers.LocalGun;
         }
+
+        // The tracer's LineRenderer sits on a visible part of the gun model (the barrel). Move it to
+        // its own child on the Gun layer, so the main camera draws it and walls still hide it,
+        // while the barrel itself stays with the rest of the gun on the viewmodel camera.
+        if (lineRend != null) lineRend = MoveTracerToOwnObject(lineRend);
+    }
+
+    LineRenderer MoveTracerToOwnObject(LineRenderer original)
+    {
+        GameObject tracerObject = new GameObject("Tracer");
+        tracerObject.layer = Layers.Gun;
+        tracerObject.transform.SetParent(original.transform, false);
+
+        LineRenderer tracer = tracerObject.AddComponent<LineRenderer>();
+        tracer.sharedMaterials = original.sharedMaterials;
+        tracer.useWorldSpace = original.useWorldSpace;
+        tracer.positionCount = original.positionCount;
+        tracer.widthCurve = original.widthCurve;
+        tracer.widthMultiplier = original.widthMultiplier;
+        tracer.colorGradient = original.colorGradient;
+        tracer.numCapVertices = original.numCapVertices;
+        tracer.numCornerVertices = original.numCornerVertices;
+        tracer.alignment = original.alignment;
+        tracer.textureMode = original.textureMode;
+        tracer.shadowCastingMode = original.shadowCastingMode;
+        tracer.receiveShadows = original.receiveShadows;
+        tracer.enabled = false;
+
+        original.enabled = false;
+        return tracer;
     }
 
     float CurrentBloom()
