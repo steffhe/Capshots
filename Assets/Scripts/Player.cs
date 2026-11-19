@@ -601,14 +601,22 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         normalCam.GetUniversalAdditionalCameraData().cameraStack.Add(viewmodelCam);
     }
 
+#if UNITY_WEBGL && !UNITY_EDITOR
+    // Plugins/WebGL/PointerLock.jslib
+    [System.Runtime.InteropServices.DllImport("__Internal")]
+    private static extern int IsBrowserPointerLocked();
+#endif
+
     // Browser builds only: the browser releases the mouse when the player presses Escape (or switches
     // tabs), and the game never sees that Escape. So open the pause menu when the mouse lock is lost.
     // Only the change from locked to unlocked counts: after resuming, the browser waits for a click
     // before locking the mouse again, and that wait must not pause the game again.
+    // The lock is read from the browser itself: Cursor.lockState only holds what the game last asked
+    // for, and Look sets it to Locked every frame, so it never shows the browser letting go.
     private void PauseWhenBrowserReleasesMouse()
     {
 #if UNITY_WEBGL && !UNITY_EDITOR
-        bool locked = Cursor.lockState == CursorLockMode.Locked;
+        bool locked = IsBrowserPointerLocked() != 0;
         if (wasCursorLocked && !locked && !Pause.paused)
         {
             if (pauseMenu == null) pauseMenu = FindAnyObjectByType<Pause>();
