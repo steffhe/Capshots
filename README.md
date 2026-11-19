@@ -31,6 +31,7 @@ To play together, each player runs the game, picks a username and either creates
 - Text chat
 - Settings menu: field of view, aim sensitivity, volume, graphics quality and key rebinding
 - Gamepad support (Unity Input System)
+- Graphics: colour grading, bloom, vignette, soft shadows, anti-aliasing (SMAA) and light fog on every map
 - Combat feedback: camera recoil, muzzle flash, hit and kill sounds, a damage flash with a direction indicator, a kill feed and a "killed by" screen
 - Levels and XP: earn XP for kills, finishing matches and winning, saved to your profile between sessions
 
