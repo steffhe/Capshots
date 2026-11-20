@@ -7,6 +7,7 @@ name: Build
 #    matchmaking version, so different releases never share a room (and Windows and
 #    browser players on the same release can play together).
 #  - Pull requests that touch the project get test builds of both, downloadable from the run.
+#    The WebGL test build uses the Debug C++ configuration to build faster (see the build job).
 #    Draft pull requests only run the tests; the builds start when the pull request is marked
 #    ready for review.
 #  - Pushes to main (merged pull requests) only run the tests, not the builds: the pull request
@@ -188,6 +189,22 @@ jobs:
             Library-Build-${{ matrix.targetPlatform }}-
             Library-Tests-
 
+      # Pull request WebGL builds compile the IL2CPP C++ code with the Debug configuration
+      # instead of Release. That skips most of the C++ and WebAssembly optimization, which takes
+      # about 6 minutes, so the test build runs slower and is larger than a release, but works
+      # the same. Only the runner's copy of the settings changes; releases still use Release.
+      # (Il2CppCompilerConfiguration: 0 = Debug, 1 = Release, 2 = Master.)
+      - name: Use the Debug C++ configuration for the test build
+        if: github.event_name == 'pull_request' && matrix.targetPlatform == 'WebGL'
+        run: |
+          file=ProjectSettings/ProjectSettings.asset
+          if ! grep -q '^  il2cppCompilerConfiguration: {}$' "$file"; then
+            echo "::error::Expected 'il2cppCompilerConfiguration: {}' in $file. If a configuration is now set in the Player settings, update this step."
+            exit 1
+          fi
+          sed -i 's/^  il2cppCompilerConfiguration: {}$/  il2cppCompilerConfiguration:\n    WebGL: 0/' "$file"
+          grep -n -A1 '^  il2cppCompilerConfiguration:' "$file"
+
       - name: Build with Unity
         id: build
         uses: game-ci/unity-builder@v4
@@ -202,6 +219,8 @@ jobs:
           buildName: ${{ env.BUILD_NAME }}
           versioning: Custom
           version: ${{ env.VERSION }}
+          # The step above edits the settings on pull requests
+          allowDirtyBuild: ${{ github.event_name == 'pull_request' }}
 
       - name: Remove cached Library after failed build
         id: clean
@@ -223,6 +242,8 @@ jobs:
           buildName: ${{ env.BUILD_NAME }}
           versioning: Custom
           version: ${{ env.VERSION }}
+          # The step above edits the settings on pull requests
+          allowDirtyBuild: ${{ github.event_name == 'pull_request' }}
 
       # Saved only after a successful build, so a broken Library is never cached
       - name: Save Unity Library folder
