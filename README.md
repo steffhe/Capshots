@@ -107,7 +107,7 @@ Builds are made automatically by GitHub Actions with [GameCI](https://game.ci) (
   git push origin v0.2
   ```
   The tag (without the `v`) becomes the game's version, which is also used as Photon's matchmaking version, so players on different releases never end up in the same room.
-- **Pull requests** that change the project get a browser test build. Download it from the workflow run's **Artifacts**. It's built with the Debug C++ configuration, so it builds faster but runs slower and is larger than a release. For a Windows test build, use **Run workflow** on the branch (Actions → Build). Draft pull requests only run the tests; the build starts when you mark the pull request ready for review.
+- **Pull requests** that change the project get a browser test build. Download it from the workflow run's **Artifacts**. It's built with WebGL's "Shorter Build Time" code optimization, so it builds faster but runs slower and is larger than a release. For a Windows test build, use **Run workflow** on the branch (Actions → Build). Draft pull requests only run the tests; the build starts when you mark the pull request ready for review.
 - **Merges to `main`** only run the tests, not the builds: the pull request already built that code, and a release builds it again with its real version. The test run on `main` saves Unity's Library cache for the tests in later pull requests. Builds always start from a clean Library.
 - **On demand:** run the **Build** workflow from the **Actions** tab.
 

@@ -7,7 +7,7 @@ name: Build
 #    matchmaking version, so different releases never share a room (and Windows and
 #    browser players on the same release can play together).
 #  - Pull requests that touch the project get a browser (WebGL) test build, downloadable from
-#    the run. It uses the Debug C++ configuration to build faster (see the build job). They
+#    the run. It uses the "Shorter Build Time" code optimization (see the build job). They
 #    don't build Windows; use "Run workflow" on the branch for a Windows test build.
 #    Draft pull requests only run the tests; the builds start when the pull request is marked
 #    ready for review.
@@ -182,22 +182,6 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      # Pull request WebGL builds compile the IL2CPP C++ code with the Debug configuration
-      # instead of Release. That skips most of the C++ and WebAssembly optimization, which takes
-      # about 6 minutes, so the test build runs slower and is larger than a release, but works
-      # the same. Only the runner's copy of the settings changes; releases still use Release.
-      # (Il2CppCompilerConfiguration: 0 = Debug, 1 = Release, 2 = Master.)
-      - name: Use the Debug C++ configuration for the test build
-        if: github.event_name == 'pull_request' && matrix.targetPlatform == 'WebGL'
-        run: |
-          file=ProjectSettings/ProjectSettings.asset
-          if ! grep -q '^  il2cppCompilerConfiguration: {}$' "$file"; then
-            echo "::error::Expected 'il2cppCompilerConfiguration: {}' in $file. If a configuration is now set in the Player settings, update this step."
-            exit 1
-          fi
-          sed -i 's/^  il2cppCompilerConfiguration: {}$/  il2cppCompilerConfiguration:\n    WebGL: 0/' "$file"
-          grep -n -A1 '^  il2cppCompilerConfiguration:' "$file"
-
       # Builds always start from a clean Library. A cached Library didn't make them any faster:
       # Unity still compiled every shader variant and nearly all the IL2CPP C++ code (measured
       # on runs #50 and #53), and builds from a restored Library were sometimes killed with
@@ -213,8 +197,11 @@ jobs:
           buildName: ${{ env.BUILD_NAME }}
           versioning: Custom
           version: ${{ env.VERSION }}
-          # The step above edits the settings on pull requests
-          allowDirtyBuild: ${{ github.event_name == 'pull_request' }}
+          # Pull request WebGL builds use the "Shorter Build Time" Code Optimization instead of
+          # the default, skipping most of the C++ and WebAssembly optimization. The test build is
+          # larger and runs slower than a release, but works the same. Releases keep the default.
+          # Set by Assets/Editor/CIWebGLCodeOptimization.cs.
+          customParameters: ${{ github.event_name == 'pull_request' && matrix.targetPlatform == 'WebGL' && '-webglCodeOptimization BuildTimes' || '' }}
 
       # ---- Windows: zip and upload (the release job attaches it on tags) ----
       - name: Zip build
