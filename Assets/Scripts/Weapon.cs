@@ -450,8 +450,9 @@ public class Weapon : MonoBehaviourPunCallbacks
                     FeedbackUI.Hit(headshot);
                 }
 
-                // Send which gun hit and whether it was a headshot, not a damage number: the victim works out the damage itself
-                target.RPC("TakeDamage", target.Owner, currentIndex, headshot, hit.distance);
+                // Send which gun hit and whether it was a headshot, not a damage number: the victim works out the damage itself.
+                // The bullet's direction and where on the body it hit are only used to throw the ragdoll on a kill.
+                target.RPC("TakeDamage", target.Owner, currentIndex, headshot, hit.distance, bloom, hit.point - target.transform.position);
             }
 
             hitWorld = hit.collider.gameObject.layer != Layers.RemotePlayer;
@@ -511,7 +512,7 @@ public class Weapon : MonoBehaviourPunCallbacks
     }
 
     [PunRPC]
-    private void TakeDamage(int gunIndex, bool headshot, float distance, PhotonMessageInfo info)
+    private void TakeDamage(int gunIndex, bool headshot, float distance, Vector3 bulletDirection, Vector3 hitOffset, PhotonMessageInfo info)
     {
         if (gunIndex < 0 || gunIndex >= loadout.Length || info.Sender == null) return;
         // The victim checks teams too, so a modified client can't damage teammates
@@ -519,7 +520,10 @@ public class Weapon : MonoBehaviourPunCallbacks
 
         // Damage comes from this game's own gun data. A wrong distance can only lower it, never raise it above full damage.
         int damage = loadout[gunIndex].DamageAt(Mathf.Max(0f, distance), headshot);
-        player.TakeDamage(damage, info.Sender.ActorNumber, loadout[gunIndex].gunName, headshot);
+        // Cosmetic only, but keep it sane: a unit direction and a point on (or near) the body
+        bulletDirection = bulletDirection.sqrMagnitude > 0.0001f ? bulletDirection.normalized : Vector3.zero;
+        hitOffset = Vector3.ClampMagnitude(hitOffset, 1.5f);
+        player.TakeDamage(damage, info.Sender.ActorNumber, loadout[gunIndex].gunName, headshot, bulletDirection, hitOffset);
     }
     #endregion
 

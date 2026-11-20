@@ -15,19 +15,32 @@ public class DeadPlayer : MonoBehaviour
     private Vector3 bodyScale, headScale;
     private float age;
 
-    // Sets the ragdoll going: velocity is the player's movement at death, hitDirection points away from the killer
-    public void Launch(Vector3 velocity, Vector3 hitDirection, bool headshot)
+    // Sets the ragdoll going.
+    // velocity: the player's movement at death. hitDirection: the killing bullet's direction.
+    // hitOffset: where the bullet hit, relative to the player's position. knockback: how hard (m/s) the hit throws the body.
+    public void Launch(Vector3 velocity, Vector3 hitDirection, Vector3 hitOffset, float knockback, bool headshot)
     {
         body = GetComponent<Rigidbody>();
         body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
 
         Vector3 push = hitDirection.sqrMagnitude > 0.001f ? hitDirection.normalized : -transform.forward;
 
-        // Body: keeps the player's momentum, gets knocked back and tips over
-        body.linearVelocity = velocity + push * 2.5f + Vector3.up * 1f;
-        body.angularVelocity = Vector3.Cross(Vector3.up, push) * 4f + Random.insideUnitSphere * 2f;
+        DetachHead(velocity, push, knockback, headshot);
+        // The head is no longer part of the body: work out the body's own balance point before pushing it
+        body.ResetCenterOfMass();
+        body.ResetInertiaTensor();
 
-        DetachHead(velocity, push, headshot);
+        // Body: keeps the player's momentum plus a small lift so it doesn't just slide along the floor
+        body.linearVelocity = velocity + Vector3.up * 0.5f;
+        body.angularVelocity = Random.insideUnitSphere * 1.5f;
+
+        // The bullet's push, applied where it hit: a chest shot from the front tips the body over backwards,
+        // a shot from above slams it down, one to the side spins it round. A headshot already took the
+        // head off, so the body only gets part of that push.
+        Vector3 hitPoint = transform.position + hitOffset;
+        float bodyShare = headshot ? 0.5f : 1f;
+        body.AddForceAtPosition(push * knockback * bodyShare * body.mass, hitPoint, ForceMode.Impulse);
+
         IgnoreNearbyPlayers();
     }
 
@@ -62,7 +75,7 @@ public class DeadPlayer : MonoBehaviour
         return all;
     }
 
-    private void DetachHead(Vector3 velocity, Vector3 push, bool headshot)
+    private void DetachHead(Vector3 velocity, Vector3 push, float knockback, bool headshot)
     {
         SphereCollider headCollider = GetComponentInChildren<SphereCollider>();
         if (headCollider == null) return;
@@ -76,10 +89,11 @@ public class DeadPlayer : MonoBehaviour
         headBody.interpolation = RigidbodyInterpolation.Interpolate;
         headBody.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
 
-        // A headshot sends the head flying; otherwise it just pops off and rolls away
-        float force = headshot ? 7f : 2.5f;
-        float lift = headshot ? 3f : 2f;
-        headBody.linearVelocity = velocity + push * force + Vector3.up * lift + Random.insideUnitSphere * 0.75f;
+        // A headshot sends the head flying along the bullet's path; otherwise it pops off and rolls away,
+        // still nudged a little the way the bullet was going
+        float force = knockback * (headshot ? 2f : 0.5f);
+        float lift = headshot ? 1.5f : 2f;
+        headBody.linearVelocity = velocity + push * force + Vector3.up * lift + Random.insideUnitSphere * 0.5f;
         headBody.angularVelocity = Random.insideUnitSphere * (headshot ? 15f : 8f);
 
         // Head and body start out touching: ignore each other briefly so they don't shove each other apart
@@ -106,7 +120,7 @@ public class DeadPlayer : MonoBehaviour
     {
         bodyScale = transform.localScale;
         // Spawned without Launch (e.g. dragged into a scene): still fall over
-        if (body == null) Launch(Vector3.zero, -transform.forward, false);
+        if (body == null) Launch(Vector3.zero, -transform.forward, Vector3.up * 0.3f, 3f, false);
     }
 
     private void Update()
