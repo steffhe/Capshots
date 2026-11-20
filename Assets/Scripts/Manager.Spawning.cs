@@ -80,9 +80,10 @@ public partial class Manager
 
     // Tells every client to spawn its own ragdoll for a player who just died. The ragdolls aren't
     // networked objects: each client simulates its copy locally, so they never fight a network sync.
-    public void SpawnRagdoll_S(Vector3 position, Quaternion rotation, Vector3 velocity, Vector3 hitDirection, Vector3 hitOffset, float knockback, bool headshot)
+    // actor: the dead player's actor number, which picks their cap colour
+    public void SpawnRagdoll_S(Vector3 position, Quaternion rotation, Vector3 velocity, Vector3 hitDirection, Vector3 hitOffset, float knockback, bool headshot, int actor)
     {
-        object[] package = new object[] { position, rotation, velocity, hitDirection, hitOffset, knockback, headshot };
+        object[] package = new object[] { position, rotation, velocity, hitDirection, hitOffset, knockback, headshot, actor };
         PhotonNetwork.RaiseEvent((byte)EventCodes.SpawnRagdoll, package, new RaiseEventOptions { Receivers = ReceiverGroup.All }, new SendOptions { Reliability = true });
     }
 
@@ -93,6 +94,6 @@ public partial class Manager
 
         GameObject ragdoll = Instantiate(prefab, (Vector3)data[0], (Quaternion)data[1]);
         DeadPlayer dead = ragdoll.GetComponent<DeadPlayer>();
-        if (dead != null) dead.Launch((Vector3)data[2], (Vector3)data[3], (Vector3)data[4], (float)data[5], (bool)data[6]);
+        if (dead != null) dead.Launch((Vector3)data[2], (Vector3)data[3], (Vector3)data[4], (float)data[5], (bool)data[6], PlayerCap.ColorFor((int)data[7]));
     }
 }

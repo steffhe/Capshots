@@ -4540,7 +4540,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: MultiplayerFPS
+  m_Text: Capshots
 --- !u!222 &916268702
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -5608,7 +5608,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: MultiplayerFPS
+  m_Text: Capshots
 --- !u!222 &1203849967
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -8422,7 +8422,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: MultiplayerFPS
+  m_Text: Capshots
 --- !u!222 &1877851698
 CanvasRenderer:
   m_ObjectHideFlags: 0

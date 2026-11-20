@@ -58,6 +58,7 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
     private bool isDead;
 
     private bool crouched;
+    private PlayerCap[] caps = new PlayerCap[0];
     // Crouching is synced to everyone through the SetCrouch RPC, so this is valid for remote players too
     public bool IsCrouched => crouched;
     private bool sliding;
@@ -180,6 +181,15 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
 
 
         }
+
+        // A cap on both heads (standing and crouching), after the layers above are set so it's drawn
+        // like the head: hidden from your own camera, visible to everyone else
+        Color capColor = PlayerCap.ColorFor(photonView.OwnerActorNr);
+        caps = new PlayerCap[]
+        {
+            PlayerCap.Attach(standingColliderHead != null ? standingColliderHead.transform : null, capColor),
+            PlayerCap.Attach(crouchingColliderHead != null ? crouchingColliderHead.transform : null, capColor),
+        };
     }
 
 
@@ -546,7 +556,7 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
                 if (hitOffset == Vector3.zero) hitOffset = Vector3.up * (headshot ? 0.75f : 0.3f);
                 // Harder hits throw the body further: about 3 m/s for a machine gun bullet, 6 m/s for a sniper round
                 float knockback = 2f + 4f * Mathf.Clamp01(damage / 800f);
-                manager.SpawnRagdoll_S(transform.position, transform.rotation, rig.linearVelocity, hitDirection.normalized, hitOffset, knockback, headshot);
+                manager.SpawnRagdoll_S(transform.position, transform.rotation, rig.linearVelocity, hitDirection.normalized, hitOffset, knockback, headshot, photonView.OwnerActorNr);
 
                 manager.DropAmmo_S(GroundPosition());
                 manager.Spawn();
@@ -579,8 +589,9 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         MaterialPropertyBlock block = new MaterialPropertyBlock();
         foreach (Renderer body in GetComponentsInChildren<Renderer>(true))
         {
-            // Body meshes only: not the name tag, the gun or effects
+            // Body meshes only: not the name tag, the gun, effects or the cap (coloured below)
             if (!(body is MeshRenderer || body is SkinnedMeshRenderer)) continue;
+            if (body.GetComponentInParent<PlayerCap>() != null) continue;
             if (body.GetComponent<TextMeshPro>() != null) continue;
             if (weaponParent != null && body.transform.IsChildOf(weaponParent)) continue;
 
@@ -589,6 +600,8 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
             block.SetColor("_Color", tint);     // built-in shaders
             body.SetPropertyBlock(block);
         }
+
+        foreach (PlayerCap cap in caps) if (cap != null) cap.SetColor(teamColor);
     }
 
     private void OnDestroy()
