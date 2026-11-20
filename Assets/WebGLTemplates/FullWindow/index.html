@@ -8,6 +8,18 @@
     <link rel="icon" type="image/png" sizes="192x192" href="favicon.png">
     <link rel="icon" href="favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <!-- Link previews (Discord, Slack, X, Facebook, ...). Previews need full URLs, so these point at the
+         GitHub Pages address; update them if the game moves. -->
+    <meta name="description" content="A fast online multiplayer shooter in your browser. Land a headshot and knock their cap off.">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="{{{ PRODUCT_NAME }}}">
+    <meta property="og:description" content="A fast online multiplayer shooter in your browser. Land a headshot and knock their cap off.">
+    <meta property="og:url" content="https://steffhe.github.io/Capshots/">
+    <meta property="og:image" content="https://steffhe.github.io/Capshots/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="The Capshots logo">
+    <meta name="twitter:card" content="summary_large_image">
     <style>
       html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
       /* touch-action: none keeps the browser from scrolling, zooming or going back on swipes,
@@ -22,10 +34,12 @@
       @media (pointer: coarse) and (orientation: portrait) { #rotate { display: flex; } }
       #loading {
         position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-        width: 320px; max-width: 80vw; color: #ccc; font: 14px/1.4 sans-serif; text-align: center;
+        width: 420px; max-width: 80vw; color: #ccc; font: 14px/1.4 sans-serif; text-align: center;
       }
+      #loading-logo { display: block; width: 100%; height: auto; margin-bottom: 18px; }
       #loading-track { height: 6px; margin-top: 10px; background: #333; border-radius: 3px; overflow: hidden; }
-      #loading-fill { width: 0; height: 100%; background: #e0e0e0; transition: width 0.2s; }
+      /* The blue of the cap in the logo */
+      #loading-fill { width: 0; height: 100%; background: #016bad; transition: width 0.2s; }
       #message {
         position: absolute; left: 50%; top: 16px; transform: translateX(-50%); display: none;
         max-width: 90vw; padding: 10px 16px; border-radius: 4px; font: 14px/1.4 sans-serif;
@@ -38,7 +52,8 @@
     <!-- Fills the whole browser window. Unity resizes the game to match whenever the window changes. -->
     <canvas id="unity-canvas" tabindex="-1"></canvas>
     <div id="loading">
-      Loading {{{ PRODUCT_NAME }}}...
+      <img id="loading-logo" src="logo.png" alt="{{{ PRODUCT_NAME }}}">
+      Loading...
       <div id="loading-track"><div id="loading-fill"></div></div>
     </div>
     <div id="message"></div>
