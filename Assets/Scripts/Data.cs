@@ -34,7 +34,7 @@ public class Data : MonoBehaviour
 #if UNITY_WEBGL && !UNITY_EDITOR
             string json = PlayerPrefs.GetString(ProfilePrefsKey, "");
 #else
-            string json = File.Exists(ProfilePath) ? File.ReadAllText(ProfilePath) : "";
+            string json = File.Exists(ProfilePath) ? File.ReadAllText(ProfilePath) : ReadOldProfile();
 #endif
             if (!string.IsNullOrEmpty(json))
             {
@@ -48,5 +48,26 @@ public class Data : MonoBehaviour
         }
 
         return new ProfileData();
+    }
+
+    // Before the game was called Capshots its product name was "Multiplayer", and desktop builds keep
+    // their save folder under the product name. Read the profile from the old folder once, so players
+    // keep their name, level and XP; the next save writes it to the new folder.
+    private const string OldProductName = "Multiplayer";
+
+    private static string ReadOldProfile()
+    {
+        try
+        {
+            DirectoryInfo company = Directory.GetParent(Application.persistentDataPath);
+            if (company == null) return "";
+            string oldPath = Path.Combine(company.FullName, OldProductName, "profile.json");
+            return File.Exists(oldPath) ? File.ReadAllText(oldPath) : "";
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning("Could not read the old profile: " + e.Message);
+            return "";
+        }
     }
 }

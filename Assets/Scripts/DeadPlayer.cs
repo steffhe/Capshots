@@ -18,14 +18,15 @@ public class DeadPlayer : MonoBehaviour
     // Sets the ragdoll going.
     // velocity: the player's movement at death. hitDirection: the killing bullet's direction.
     // hitOffset: where the bullet hit, relative to the player's position. knockback: how hard (m/s) the hit throws the body.
-    public void Launch(Vector3 velocity, Vector3 hitDirection, Vector3 hitOffset, float knockback, bool headshot)
+    // capColor: the colour of the cap on the head (see PlayerCap.ColorFor).
+    public void Launch(Vector3 velocity, Vector3 hitDirection, Vector3 hitOffset, float knockback, bool headshot, Color capColor)
     {
         body = GetComponent<Rigidbody>();
         body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
 
         Vector3 push = hitDirection.sqrMagnitude > 0.001f ? hitDirection.normalized : -transform.forward;
 
-        DetachHead(velocity, push, knockback, headshot);
+        DetachHead(velocity, push, knockback, headshot, capColor);
         // The head is no longer part of the body: work out the body's own balance point before pushing it
         body.ResetCenterOfMass();
         body.ResetInertiaTensor();
@@ -65,22 +66,24 @@ public class DeadPlayer : MonoBehaviour
         }
     }
 
+    // The head's colliders: the head itself and its cap's brim
     private Collider[] AppendHead(Collider[] colliders)
     {
-        Collider headCollider = head.GetComponent<Collider>();
-        if (headCollider == null) return colliders;
-        Collider[] all = new Collider[colliders.Length + 1];
+        Collider[] headColliders = head.GetComponentsInChildren<Collider>();
+        Collider[] all = new Collider[colliders.Length + headColliders.Length];
         colliders.CopyTo(all, 0);
-        all[colliders.Length] = headCollider;
+        headColliders.CopyTo(all, colliders.Length);
         return all;
     }
 
-    private void DetachHead(Vector3 velocity, Vector3 push, float knockback, bool headshot)
+    private void DetachHead(Vector3 velocity, Vector3 push, float knockback, bool headshot, Color capColor)
     {
         SphereCollider headCollider = GetComponentInChildren<SphereCollider>();
         if (headCollider == null) return;
 
         head = headCollider.transform;
+        // The cap sits on the head, so it flies off together with it
+        PlayerCap.Attach(head, capColor, true);
         head.SetParent(null, true);
 
         Rigidbody headBody = head.gameObject.AddComponent<Rigidbody>();
@@ -97,9 +100,10 @@ public class DeadPlayer : MonoBehaviour
         headBody.angularVelocity = Random.insideUnitSphere * (headshot ? 15f : 8f);
 
         // Head and body start out touching: ignore each other briefly so they don't shove each other apart
+        Collider[] headColliders = head.GetComponentsInChildren<Collider>();
         foreach (Collider bodyCollider in GetComponentsInChildren<Collider>())
         {
-            Physics.IgnoreCollision(headCollider, bodyCollider, true);
+            foreach (Collider part in headColliders) Physics.IgnoreCollision(part, bodyCollider, true);
         }
         Invoke(nameof(ReenableHeadCollision), 0.25f);
 
@@ -109,10 +113,13 @@ public class DeadPlayer : MonoBehaviour
     private void ReenableHeadCollision()
     {
         if (head == null) return;
-        Collider headCollider = head.GetComponent<Collider>();
+        Collider[] headColliders = head.GetComponentsInChildren<Collider>();
         foreach (Collider bodyCollider in GetComponentsInChildren<Collider>())
         {
-            if (headCollider != null && bodyCollider != null) Physics.IgnoreCollision(headCollider, bodyCollider, false);
+            foreach (Collider part in headColliders)
+            {
+                if (part != null && bodyCollider != null) Physics.IgnoreCollision(part, bodyCollider, false);
+            }
         }
     }
 
@@ -120,7 +127,7 @@ public class DeadPlayer : MonoBehaviour
     {
         bodyScale = transform.localScale;
         // Spawned without Launch (e.g. dragged into a scene): still fall over
-        if (body == null) Launch(Vector3.zero, -transform.forward, Vector3.up * 0.3f, 3f, false);
+        if (body == null) Launch(Vector3.zero, -transform.forward, Vector3.up * 0.3f, 3f, false, PlayerCap.ColorFor(0));
     }
 
     private void Update()

@@ -1,6 +1,8 @@
-# MultiplayerFPS
+# Capshots
 
-A simple online multiplayer first-person shooter made in Unity, built while following Welton King's YouTube tutorial series. Networking is handled by [Photon PUN](https://www.photonengine.com/pun), so players can host and join rooms over the internet without running their own server.
+<img src="Assets/Textures/UI/GameIcon.png" alt="Capshots logo: a capsule character in a cap, with a bullet hole through the cap" width="128" align="right">
+
+Capshots (formerly MultiplayerFPS) is a simple online multiplayer first-person shooter made in Unity, built while following Welton King's YouTube tutorial series. Networking is handled by [Photon PUN](https://www.photonengine.com/pun), so players can host and join rooms over the internet without running their own server.
 
 ## Play
 
@@ -26,12 +28,15 @@ To play together, each player runs the game, picks a username and either creates
 - Sprinting, jumping, crouching and sliding
 - Smarter spawns (away from enemies and out of their sight) and 3 seconds of spawn protection, which ends early if you shoot
 - Health regeneration after 5 seconds without taking damage
+- Every player wears a cap: the team colour in Team Deathmatch, otherwise a colour of their own
+- Physics ragdolls: the body is thrown along the killing bullet's path, and the head (cap and all) comes off and flies separately, harder on a headshot
 - Players drop an ammo box when they die; walk over it to refill your reserve ammo
 - Scoreboard with kills, deaths and ping
 - Text chat
 - Settings menu: field of view, aim sensitivity, volume, graphics quality and key rebinding
 - Gamepad support (Unity Input System)
 - Graphics: colour grading, bloom, vignette, soft shadows, anti-aliasing (SMAA) and light fog on every map
+- Sound: a distinct shot for each gun, footsteps (silent while crouching), landing and reload sounds, all heard in 3D from where they happen
 - Combat feedback: camera recoil, muzzle flash, hit and kill sounds, a damage flash with a direction indicator, a kill feed and a "killed by" screen
 - Levels and XP: earn XP for kills, finishing matches and winning, saved to your profile between sessions
 
