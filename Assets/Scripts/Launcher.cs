@@ -10,6 +10,8 @@ using UnityEngine.UI;
     {
         public string name;
         public int scene;
+        // Unticked maps are hidden from the create-room picker (e.g. while still in progress).
+        public bool enabled = true;
     }
 
 public class Launcher : MonoBehaviourPunCallbacks
@@ -111,9 +113,19 @@ public class Launcher : MonoBehaviourPunCallbacks
 
     public void ChangeMap()
     {
-        currentmap++;
-        if (currentmap >= maps.Length) currentmap = 0;
+        currentmap = NextEnabledMap(currentmap + 1);
         mapValue.text = "MAP: " + maps[currentmap].name.ToUpper();
+    }
+
+    // First enabled map at or after 'start' (wrapping around). Falls back to 0 if none are enabled.
+    private int NextEnabledMap(int start)
+    {
+        for (int i = 0; i < maps.Length; i++)
+        {
+            int index = (start + i) % maps.Length;
+            if (maps[index].enabled) return index;
+        }
+        return 0;
     }
 
     public void ChangeMode()
@@ -221,7 +233,7 @@ public class Launcher : MonoBehaviourPunCallbacks
 
         roomnameField.text = "";
 
-        currentmap = 0;
+        currentmap = NextEnabledMap(0);
         mapValue.text = "MAP: " + maps[currentmap].name.ToUpper();
 
         currentmode = 0;
