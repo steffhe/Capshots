@@ -72,7 +72,7 @@ public class PlayerCap : MonoBehaviour
     }
 
     // The colour of the cap in the logo, used on the main menu's player model
-    public static readonly Color LogoColor = new Color(1f, 0.36f, 0.21f);
+    public static readonly Color LogoColor = new Color(0.01f, 0.42f, 0.68f);
 
     // Puts a cap on every player head in the scene that doesn't have one yet, e.g. the main menu's
     // player model, which is a copy of the player without the Player script
