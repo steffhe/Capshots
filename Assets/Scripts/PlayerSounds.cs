@@ -12,6 +12,8 @@ public class PlayerSounds : MonoBehaviour
     public float footstepVolume = 0.45f;
     public float landingVolume = 0.6f;
     public float reloadVolume = 0.7f;
+    // Gunshots. Kept well below the old imported shot, which was far too loud.
+    public float shotVolume = 0.4f;
     // Slower than this (m/s) and steps aren't played, so small corrections don't tick
     private const float MinStepSpeed = 1f;
     // Falling faster than this (m/s) plays a landing sound when touching the ground
@@ -29,6 +31,8 @@ public class PlayerSounds : MonoBehaviour
 
     private static AudioClip[] footstepClips;
     private static AudioClip landingClip, magOutClip, magInClip, boltClip;
+    private static AudioClip[] pistolShots, machineGunShots, sniperShots;
+    private AudioSource shotSource;
 
     private void Awake()
     {
@@ -38,6 +42,8 @@ public class PlayerSounds : MonoBehaviour
         // Separate sources, because changing a source's pitch also bends sounds it is still playing
         movementSource = MakeSource();
         reloadSource = MakeSource();
+        shotSource = MakeSource();
+        shotSource.maxDistance = 150f; // shots carry much further than footsteps
 
         lastPosition = transform.position;
     }
@@ -145,6 +151,31 @@ public class PlayerSounds : MonoBehaviour
         source.PlayOneShot(clip, volume);
     }
 
+    // Called on every client for each shot this player fires
+    public void PlayShot(Gun gun)
+    {
+        if (gun == null) return;
+
+        // A clip assigned on the gun asset still wins, so real recordings can be dropped in later
+        if (gun.shootingSound != null)
+        {
+            shotSource.pitch = 1f;
+            shotSource.PlayOneShot(gun.shootingSound, shotVolume);
+            return;
+        }
+
+        AudioClip[] clips;
+        float volume = shotVolume;
+        string gunName = (gun.gunName ?? "").ToLowerInvariant();
+        if (gunName.Contains("sniper")) { clips = sniperShots; volume *= 1.3f; }
+        else if (gunName.Contains("machine") || gun.burst == 1) { clips = machineGunShots; volume *= 0.8f; }
+        else clips = pistolShots;
+
+        // Pitch stays at 1: changing it would bend the tails of earlier shots still ringing out
+        shotSource.pitch = 1f;
+        shotSource.PlayOneShot(clips[Random.Range(0, clips.Length)], volume);
+    }
+
     #region Synthesized clips
 
     private static void BuildClips()
@@ -201,6 +232,20 @@ public class PlayerSounds : MonoBehaviour
             });
         }
 
+        // Gunshots: a few variations each, so rapid fire doesn't sound like one sample on repeat
+        pistolShots = new AudioClip[3];
+        machineGunShots = new AudioClip[4];
+        sniperShots = new AudioClip[2];
+        for (int i = 0; i < pistolShots.Length; i++)
+            // Sharp, snappy crack with a short body
+            pistolShots[i] = MakeShot("Pistol Shot " + i, 200 + i, 0.4f, 0.55f, 32f, 170f, 75f, 22f, 0.12f, 9f, 0.35f, 1f + i * 0.04f);
+        for (int i = 0; i < machineGunShots.Length; i++)
+            // Short and punchy, lower and grittier, so it doesn't smear at a high fire rate
+            machineGunShots[i] = MakeShot("Machine Gun Shot " + i, 300 + i, 0.28f, 0.4f, 45f, 130f, 60f, 30f, 0.1f, 14f, 0.25f, 1f + i * 0.035f);
+        for (int i = 0; i < sniperShots.Length; i++)
+            // Loud crack, heavy boom and a long rolling tail
+            sniperShots[i] = MakeShot("Sniper Shot " + i, 400 + i, 1.4f, 0.7f, 55f, 95f, 38f, 7f, 0.04f, 2.8f, 0.6f, 1f + i * 0.05f);
+
         // Charging handle / slide: pulled back then snapped forward
         {
             System.Random rng = new System.Random(17);
@@ -212,6 +257,56 @@ public class PlayerSounds : MonoBehaviour
                 return back + forward;
             });
         }
+    }
+
+    // A gunshot: a bright noise crack, a low thump falling in pitch and a muffled echo tail.
+    // pitchScale shifts the whole shot slightly so the variations differ.
+    private static AudioClip MakeShot(string name, int seed, float length,
+        float crackBrightness, float crackDecay,
+        float thumpStart, float thumpEnd, float thumpDecay,
+        float tailBrightness, float tailDecay, float tailLevel, float pitchScale)
+    {
+        const int rate = 44100;
+        System.Random rng = new System.Random(seed);
+        int samples = Mathf.CeilToInt(length * rate);
+        float[] data = new float[samples];
+        float crackFilter = 0f, tailFilter = 0f, tailFilter2 = 0f, phase = 0f, peak = 0f;
+
+        for (int i = 0; i < samples; i++)
+        {
+            float t = (float)i / rate;
+            float noise = (float)rng.NextDouble() * 2f - 1f;
+
+            crackFilter += (noise - crackFilter) * crackBrightness;
+            float crack = crackFilter * Decay(t, crackDecay) * 1.4f;
+
+            // Thump with a pitch sweep, integrated so the sweep stays smooth
+            float freq = Mathf.Lerp(thumpEnd, thumpStart, Decay(t, 25f)) * pitchScale;
+            phase += 2f * Mathf.PI * freq / rate;
+            float thump = Mathf.Sin(phase) * Decay(t, thumpDecay);
+
+            // Two filter stages for a dull, distant-sounding reflection
+            tailFilter += (noise - tailFilter) * tailBrightness;
+            tailFilter2 += (tailFilter - tailFilter2) * tailBrightness;
+            float tail = tailFilter2 * 6f * tailLevel * Decay(t, tailDecay) * Mathf.Clamp01(t * 40f);
+
+            // Soft clip, like a real shot overloading slightly
+            float sample = (float)System.Math.Tanh(crack + thump + tail);
+            float edge = Mathf.Clamp01(i / 8f) * Mathf.Clamp01((samples - i) / 1024f);
+            data[i] = sample * edge;
+            peak = Mathf.Max(peak, Mathf.Abs(data[i]));
+        }
+
+        // Same peak level for every clip, so loudness is set only by the volume settings
+        if (peak > 0f)
+        {
+            float gain = 0.9f / peak;
+            for (int i = 0; i < samples; i++) data[i] *= gain;
+        }
+
+        AudioClip clip = AudioClip.Create(name, samples, 1, rate, false);
+        clip.SetData(data, 0);
+        return clip;
     }
 
     private static AudioClip MakeClip(string name, float length, System.Func<float, float> wave)

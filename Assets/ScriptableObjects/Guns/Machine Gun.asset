@@ -25,7 +25,7 @@ MonoBehaviour:
   burst: 1
   prefab: {fileID: 7466018458602090438, guid: e5bc1f9ffea6f394484f709da7d12aee, type: 3}
   image: {fileID: 2800000, guid: 1185ea86286b3124c9185a90f60b0c3d, type: 3}
-  shootingSound: {fileID: 8300000, guid: 09af806c153f0a6469dd4754a77daf5d, type: 3}
+  shootingSound: {fileID: 0}
   headshotMultiplier: 1.75
   falloffStart: 15
   falloffEnd: 40

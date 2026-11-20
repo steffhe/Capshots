@@ -41,7 +41,6 @@ public class Weapon : MonoBehaviourPunCallbacks
     private Coroutine burstRoutine;
 
     // Looked up once instead of every shot or frame
-    private AudioSource audioSource;
     private Player player;
     private Look look;
     private Transform playerCamera;
@@ -61,7 +60,6 @@ public class Weapon : MonoBehaviourPunCallbacks
             loadout[i] = Instantiate(loadout[i]);
         }
 
-        audioSource = GetComponent<AudioSource>();
         player = GetComponent<Player>();
         look = GetComponent<Look>();
         playerCamera = transform.Find("Cameras/Normal Camera");
@@ -310,7 +308,6 @@ public class Weapon : MonoBehaviourPunCallbacks
         newWeapon.transform.localPosition = Vector3.zero;
         newWeapon.transform.localEulerAngles = Vector3.zero;
         newWeapon.GetComponent<Sway>().isMine = photonView.IsMine;
-        audioSource.clip = loadout[ind].shootingSound;
 
         currentWeapon = newWeapon;
         lineRend = currentWeapon.GetComponentInChildren<LineRenderer>();
@@ -474,7 +471,8 @@ public class Weapon : MonoBehaviourPunCallbacks
     [PunRPC]
     void ShotEffects(Vector3 endPoint, Vector3 hitNormal, bool hitWorld)
     {
-        audioSource.PlayOneShot(loadout[currentIndex].shootingSound);
+        PlayerSounds sounds = GetComponent<PlayerSounds>();
+        if (sounds != null) sounds.PlayShot(loadout[currentIndex]);
 
         StartCoroutine(ShotLine(endPoint));
         MuzzleFlash();
