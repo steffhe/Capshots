@@ -506,7 +506,9 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
 
     #region Public Methods
 
-    public void TakeDamage(int damage, int actor, string weaponName, bool headshot)
+    // bulletDirection and hitOffset (where the bullet hit, relative to this player's position) throw the ragdoll on a kill.
+    // Leave them out for damage that isn't a bullet: the ragdoll is then knocked away from the attacker.
+    public void TakeDamage(int damage, int actor, string weaponName, bool headshot, Vector3 bulletDirection = default, Vector3 hitOffset = default)
     {
         if (photonView.IsMine)
         {
@@ -529,8 +531,22 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
             {
                 isDead = true;
 
-                GameObject dp = PhotonNetwork.Instantiate("Dead Player", transform.position, transform.rotation);
-                dp.GetComponent<Rigidbody>().linearVelocity = rig.linearVelocity;
+                // Thrown along the killing bullet's path, from the spot it hit. Without a bullet: away from the
+                // killer, or backwards for a fall or a suicide.
+                Vector3 hitDirection = bulletDirection;
+                if (hitDirection == Vector3.zero)
+                {
+                    hitDirection = -transform.forward;
+                    if (attacker != null && attacker != this)
+                    {
+                        hitDirection = transform.position - attacker.transform.position;
+                        hitDirection.y = 0f;
+                    }
+                }
+                if (hitOffset == Vector3.zero) hitOffset = Vector3.up * (headshot ? 0.75f : 0.3f);
+                // Harder hits throw the body further: about 3 m/s for a machine gun bullet, 6 m/s for a sniper round
+                float knockback = 2f + 4f * Mathf.Clamp01(damage / 800f);
+                manager.SpawnRagdoll_S(transform.position, transform.rotation, rig.linearVelocity, hitDirection.normalized, hitOffset, knockback, headshot);
 
                 manager.DropAmmo_S(GroundPosition());
                 manager.Spawn();
