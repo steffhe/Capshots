@@ -58,6 +58,8 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
     private bool isDead;
 
     private bool crouched;
+    // Crouching is synced to everyone through the SetCrouch RPC, so this is valid for remote players too
+    public bool IsCrouched => crouched;
     private bool sliding;
     private bool slideRequested;
     private float slideTime;
@@ -134,6 +136,7 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         manager = Manager.Instance != null ? Manager.Instance : FindAnyObjectByType<Manager>();
         weapon = GetComponent<Weapon>();
         look = GetComponent<Look>();
+        if (GetComponent<PlayerSounds>() == null) gameObject.AddComponent<PlayerSounds>();
 
         currentHealth = maxHealth;
         if (photonView.IsMine) Local = this;

@@ -8580,12 +8580,16 @@ MonoBehaviour:
   maps:
   - name: Battlefield
     scene: 1
+    enabled: 0
   - name: Arena
     scene: 2
+    enabled: 0
   - name: Test
     scene: 3
+    enabled: 1
   - name: Nuketown
     scene: 4
+    enabled: 0
 --- !u!4 &1909638675
 Transform:
   m_ObjectHideFlags: 0

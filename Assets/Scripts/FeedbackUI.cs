@@ -21,6 +21,8 @@ public class FeedbackUI : MonoBehaviour
     public float killFeedTime = 5f;
 
     [Header("Sounds")]
+    // Master level for the UI sounds. Each sound's own level is set so they sit 8-10 dB under a sniper
+    // shot (measured, A-weighted): clear over the action without being louder than the guns.
     [Range(0f, 1f)] public float volume = 0.6f;
 
     private Font font;
@@ -139,28 +141,28 @@ public class FeedbackUI : MonoBehaviour
             ui.indicatorTimeLeft = ui.indicatorTime;
         }
 
-        ui.Play(ui.hurtClip, 0.9f);
+        ui.Play(ui.hurtClip, 0.43f);
     }
 
     // Local player hit someone else
     public static void Hit(bool headshot)
     {
         if (Instance == null) return;
-        Instance.Play(headshot ? Instance.headshotClip : Instance.hitClip, headshot ? 0.8f : 0.6f);
+        Instance.Play(headshot ? Instance.headshotClip : Instance.hitClip, headshot ? 0.142f : 0.136f);
     }
 
     // Local player picked up ammo
     public static void Pickup()
     {
         if (Instance == null) return;
-        Instance.Play(Instance.pickupClip, 0.8f);
+        Instance.Play(Instance.pickupClip, 0.154f);
     }
 
     // Local player got a kill
     public static void Kill()
     {
         if (Instance == null) return;
-        Instance.Play(Instance.killClip, 0.8f);
+        Instance.Play(Instance.killClip, 0.162f);
     }
 
     public static void ShowDeath(string killerName, string weaponName, bool headshot, float duration)
