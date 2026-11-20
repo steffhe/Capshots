@@ -9,11 +9,15 @@ public class PlayerSounds : MonoBehaviour
 {
     // Metres walked between two footsteps. Sprinting covers ground faster, so steps come quicker on their own.
     public float strideLength = 2.1f;
-    public float footstepVolume = 0.45f;
-    public float landingVolume = 0.6f;
-    public float reloadVolume = 0.7f;
-    // Gunshots. Kept well below the old imported shot, which was far too loud.
-    public float shotVolume = 0.4f;
+    // Mix levels, set from loudness measurements of each synthesized clip (A-weighted) rather than by ear.
+    // Target, relative to a sniper shot: pistol -3 dB, machine gun -5, reload -12 to -15, landing -14,
+    // sprint step -18, walk step -22. UI sounds in FeedbackUI sit at -8 to -10.
+    public float footstepVolume = 0.075f;
+    public float landingVolume = 0.093f;
+    public float reloadVolume = 0.1f;
+    // Gunshots: this is the sniper rifle, the loudest sound in the game. The other guns are scaled from it.
+    // Kept well below the old imported shot, which was about 18 dB louder and clipped.
+    public float shotVolume = 0.52f;
     // Slower than this (m/s) and steps aren't played, so small corrections don't tick
     private const float MinStepSpeed = 1f;
     // Falling faster than this (m/s) plays a landing sound when touching the ground
@@ -114,8 +118,8 @@ public class PlayerSounds : MonoBehaviour
         index %= footstepClips.Length;
         lastFootstep = index;
 
-        // Running is a bit louder than walking
-        float loudness = Mathf.Lerp(0.8f, 1.15f, Mathf.InverseLerp(3f, 10f, speed));
+        // Sprinting is about 4 dB louder than walking
+        float loudness = Mathf.Lerp(0.76f, 1.21f, Mathf.InverseLerp(3f, 10f, speed));
         Play(movementSource, footstepClips[index], footstepVolume * loudness, 0.9f, 1.1f);
     }
 
@@ -136,11 +140,11 @@ public class PlayerSounds : MonoBehaviour
 
     private IEnumerator ReloadSequence(float reloadTime)
     {
-        Play(reloadSource, magOutClip, reloadVolume, 0.97f, 1.03f);
+        Play(reloadSource, magOutClip, reloadVolume * 1f, 0.97f, 1.03f);
         yield return new WaitForSeconds(reloadTime * 0.55f);
-        Play(reloadSource, magInClip, reloadVolume, 0.97f, 1.03f);
+        Play(reloadSource, magInClip, reloadVolume * 0.74f, 0.97f, 1.03f);
         yield return new WaitForSeconds(Mathf.Max(0f, reloadTime * 0.95f - reloadTime * 0.55f - 0.05f));
-        Play(reloadSource, boltClip, reloadVolume, 0.97f, 1.03f);
+        Play(reloadSource, boltClip, reloadVolume * 0.86f, 0.97f, 1.03f);
         reloadRoutine = null;
     }
 
@@ -167,9 +171,9 @@ public class PlayerSounds : MonoBehaviour
         AudioClip[] clips;
         float volume = shotVolume;
         string gunName = (gun.gunName ?? "").ToLowerInvariant();
-        if (gunName.Contains("sniper")) { clips = sniperShots; volume *= 1.3f; }
-        else if (gunName.Contains("machine") || gun.burst == 1) { clips = machineGunShots; volume *= 0.8f; }
-        else clips = pistolShots;
+        if (gunName.Contains("sniper")) { clips = sniperShots; }
+        else if (gunName.Contains("machine") || gun.burst == 1) { clips = machineGunShots; volume *= 0.55f; }
+        else { clips = pistolShots; volume *= 0.49f; }
 
         // Pitch stays at 1: changing it would bend the tails of earlier shots still ringing out
         shotSource.pitch = 1f;
@@ -183,8 +187,11 @@ public class PlayerSounds : MonoBehaviour
         if (footstepClips != null) return;
 
         footstepClips = new AudioClip[4];
+        // Evens out the variations (measured, A-weighted), so no step stands out as louder than the others
+        float[] stepGain = { 1.26f, 1f, 0.85f, 0.77f };
         for (int i = 0; i < footstepClips.Length; i++)
         {
+            float gain = stepGain[i];
             System.Random rng = new System.Random(100 + i);
             float body = 70f + i * 12f;     // low thud of the heel
             float grit = 0.35f + i * 0.08f; // how much the scuff comes through
@@ -193,7 +200,7 @@ public class PlayerSounds : MonoBehaviour
             {
                 float noise = (float)rng.NextDouble() * 2f - 1f;
                 lowpass += (noise - lowpass) * 0.25f; // soft, muffled scuff
-                return Tone(t, body) * Decay(t, 35f) * 0.9f + lowpass * grit * Decay(t, 28f) * 2f;
+                return (Tone(t, body) * Decay(t, 35f) * 0.9f + lowpass * grit * Decay(t, 28f) * 2f) * gain;
             });
         }
 
