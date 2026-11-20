@@ -55,6 +55,7 @@ public class Launcher : MonoBehaviourPunCallbacks
         CreateModeButton();
         // The player model in the menu wears a cap too, in the logo's colour
         PlayerCap.AttachToSceneHeads(PlayerCap.LogoColor);
+        ShowWordmark();
         Connect();
     }
 
@@ -139,6 +140,36 @@ public class Launcher : MonoBehaviourPunCallbacks
     private void RefreshModeText()
     {
         if (modeValue != null) modeValue.text = "MODE: " + modeNames[currentmode];
+    }
+
+    // Replaces the "Capshots" title text on each menu tab with the wordmark logo
+    // (Assets/Resources/UI/CapshotsWordmark.png). Done here so the scene needn't change.
+    private void ShowWordmark()
+    {
+        Sprite wordmark = Resources.Load<Sprite>("UI/CapshotsWordmark");
+        if (wordmark == null) return; // keep the text title
+
+        foreach (Text title in FindObjectsByType<Text>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            if (title.name != "Logo" || title.text != "Capshots") continue;
+
+            // The Text and Image can't share a GameObject, so the logo goes on a child centred on the title
+            GameObject logo = new GameObject("Wordmark", typeof(RectTransform), typeof(Image));
+            RectTransform rect = (RectTransform)logo.transform;
+            rect.SetParent(title.transform, false);
+            rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = Vector2.zero;
+            // A little wider than the old text title; the height follows the logo's shape
+            float width = 420f;
+            rect.sizeDelta = new Vector2(width, width * wordmark.rect.height / wordmark.rect.width);
+
+            Image image = logo.GetComponent<Image>();
+            image.sprite = wordmark;
+            image.preserveAspect = true;
+            image.raycastTarget = false;
+
+            title.enabled = false;
+        }
     }
 
     // Adds a "Mode" button under the "Map" button in the create-room tab by copying it,

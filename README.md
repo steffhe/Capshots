@@ -1,6 +1,6 @@
-# Capshots
+<p align="center"><img src="Assets/Resources/UI/CapshotsWordmark.png" alt="Capshots" width="560"></p>
 
-<img src="Assets/Textures/UI/GameIcon.png" alt="Capshots logo: a capsule character in a cap, with a bullet hole through the cap" width="128" align="right">
+# Capshots
 
 Capshots (formerly MultiplayerFPS) is a simple online multiplayer first-person shooter made in Unity, built while following Welton King's YouTube tutorial series. Networking is handled by [Photon PUN](https://www.photonengine.com/pun), so players can host and join rooms over the internet without running their own server.
 
