@@ -20,22 +20,16 @@ public class AmmoPickup : MonoBehaviour
         GameObject root = new GameObject("Ammo Pickup " + id);
         root.transform.position = position;
 
-        // Simple box made from a primitive, so no prefab or art is needed
+        // Simple dark grey box made from a primitive, so no prefab or art is needed
         GameObject box = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        Destroy(box.GetComponent<Collider>()); // mustn't block movement or bullets
+        // Remove the collider right away: a plain Destroy only happens at the end of the frame, and for that
+        // one physics step the solid box would sit inside the dead player's body and launch it upwards.
+        DestroyImmediate(box.GetComponent<Collider>());
         box.transform.SetParent(root.transform, false);
         box.transform.localScale = new Vector3(0.5f, 0.3f, 0.35f);
         Renderer boxRenderer = box.GetComponent<Renderer>();
-        boxRenderer.material.color = new Color(0.25f, 0.55f, 0.2f);
+        boxRenderer.sharedMaterial = BoxMaterial(boxRenderer.sharedMaterial);
         boxRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-
-        GameObject stripe = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        Destroy(stripe.GetComponent<Collider>());
-        stripe.transform.SetParent(box.transform, false);
-        stripe.transform.localScale = new Vector3(1.02f, 0.25f, 1.02f);
-        Renderer stripeRenderer = stripe.GetComponent<Renderer>();
-        stripeRenderer.material.color = new Color(1f, 0.8f, 0.2f);
-        stripeRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
 
         // Soft glow so it's easy to spot
         Light glow = root.AddComponent<Light>();
@@ -51,6 +45,25 @@ public class AmmoPickup : MonoBehaviour
         pickup.expiresAt = Time.time + lifetime;
         pickup.basePosition = position;
         return pickup;
+    }
+
+    private static Material boxMaterial;
+
+    // One shared dark grey URP material for every ammo box
+    private static Material BoxMaterial(Material fallback)
+    {
+        if (boxMaterial != null) return boxMaterial;
+
+        Shader lit = Shader.Find("Universal Render Pipeline/Lit");
+        boxMaterial = lit != null ? new Material(lit) : new Material(fallback);
+        boxMaterial.name = "Ammo Box";
+
+        Color darkGrey = new Color(0.2f, 0.2f, 0.2f);
+        if (boxMaterial.HasProperty("_BaseColor")) boxMaterial.SetColor("_BaseColor", darkGrey);
+        if (boxMaterial.HasProperty("_Color")) boxMaterial.SetColor("_Color", darkGrey);
+        if (boxMaterial.HasProperty("_BaseMap")) boxMaterial.SetTexture("_BaseMap", null);
+        if (boxMaterial.HasProperty("_Smoothness")) boxMaterial.SetFloat("_Smoothness", 0.3f);
+        return boxMaterial;
     }
 
     private void Update()
