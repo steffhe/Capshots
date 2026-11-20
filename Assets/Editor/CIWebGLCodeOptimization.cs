@@ -2,6 +2,8 @@ using System;
 using System.Linq;
 using System.Reflection;
 using UnityEditor;
+using UnityEditor.Build;
+using UnityEditor.Build.Reporting;
 using UnityEngine;
 
 // Lets the build workflow pick the WebGL "Code Optimization" build setting, which decides how
@@ -13,10 +15,27 @@ using UnityEngine;
 // It runs when the editor loads, before the build starts. UnityEditor.WebGL is only there
 // when the WebGL module is installed, so it's reached through reflection and this file still
 // compiles for the tests and the Windows build.
+//
+// Every WebGL build also logs the setting it was built with when it finishes ("WebGL build
+// used Code Optimization ..."), so the build log shows it for pull requests and releases alike.
 [InitializeOnLoad]
-public static class CIWebGLCodeOptimization
+public class CIWebGLCodeOptimization : IPostprocessBuildWithReport
 {
     private const string Argument = "-webglCodeOptimization";
+
+    public int callbackOrder => 0;
+
+    public void OnPostprocessBuild(BuildReport report)
+    {
+        if (report.summary.platform != BuildTarget.WebGL) return;
+        PropertyInfo property = FindProperty();
+        bool passed = Array.IndexOf(Environment.GetCommandLineArgs(), Argument) >= 0;
+        Debug.Log("CIWebGLCodeOptimization: WebGL build used Code Optimization " +
+            (property != null
+                ? property.GetValue(null) + " (options: " + string.Join(", ", Enum.GetNames(property.PropertyType)) + ")"
+                : "(unknown: setting not found)") +
+            "; " + Argument + (passed ? " was" : " wasn't") + " passed to Unity.");
+    }
 
     static CIWebGLCodeOptimization()
     {
@@ -31,12 +50,17 @@ public static class CIWebGLCodeOptimization
         Apply(args[index + 1]);
     }
 
-    private static void Apply(string value)
+    private static PropertyInfo FindProperty()
     {
         Type settings = AppDomain.CurrentDomain.GetAssemblies()
             .Select(assembly => assembly.GetType("UnityEditor.WebGL.UserBuildSettings"))
             .FirstOrDefault(type => type != null);
-        PropertyInfo property = settings?.GetProperty("codeOptimization", BindingFlags.Public | BindingFlags.Static);
+        return settings?.GetProperty("codeOptimization", BindingFlags.Public | BindingFlags.Static);
+    }
+
+    private static void Apply(string value)
+    {
+        PropertyInfo property = FindProperty();
         if (property == null)
         {
             Debug.LogError("CIWebGLCodeOptimization: UnityEditor.WebGL.UserBuildSettings.codeOptimization wasn't found. Is the WebGL module installed?");
