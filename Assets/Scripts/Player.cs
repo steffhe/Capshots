@@ -529,8 +529,14 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
             {
                 isDead = true;
 
-                GameObject dp = PhotonNetwork.Instantiate("Dead Player", transform.position, transform.rotation);
-                dp.GetComponent<Rigidbody>().linearVelocity = rig.linearVelocity;
+                // Knocked away from the killer (or backwards, for a fall or a suicide)
+                Vector3 hitDirection = -transform.forward;
+                if (attacker != null && attacker != this)
+                {
+                    hitDirection = transform.position - attacker.transform.position;
+                    hitDirection.y = 0f;
+                }
+                manager.SpawnRagdoll_S(transform.position, transform.rotation, rig.linearVelocity, hitDirection.normalized, headshot);
 
                 manager.DropAmmo_S(GroundPosition());
                 manager.Spawn();

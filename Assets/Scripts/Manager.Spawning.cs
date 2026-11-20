@@ -77,4 +77,22 @@ public partial class Manager
 
         return best;
     }
+
+    // Tells every client to spawn its own ragdoll for a player who just died. The ragdolls aren't
+    // networked objects: each client simulates its copy locally, so they never fight a network sync.
+    public void SpawnRagdoll_S(Vector3 position, Quaternion rotation, Vector3 velocity, Vector3 hitDirection, bool headshot)
+    {
+        object[] package = new object[] { position, rotation, velocity, hitDirection, headshot };
+        PhotonNetwork.RaiseEvent((byte)EventCodes.SpawnRagdoll, package, new RaiseEventOptions { Receivers = ReceiverGroup.All }, new SendOptions { Reliability = true });
+    }
+
+    public void SpawnRagdoll_R(object[] data)
+    {
+        GameObject prefab = Resources.Load<GameObject>("Dead Player");
+        if (prefab == null) return;
+
+        GameObject ragdoll = Instantiate(prefab, (Vector3)data[0], (Quaternion)data[1]);
+        DeadPlayer dead = ragdoll.GetComponent<DeadPlayer>();
+        if (dead != null) dead.Launch((Vector3)data[2], (Vector3)data[3], (bool)data[4]);
+    }
 }

@@ -60,7 +60,8 @@ public partial class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         SpawnPickup,
         ClaimPickup,
         PickupTaken,
-        ChatMessage
+        ChatMessage,
+        SpawnRagdoll
     }
 
 
@@ -387,6 +388,9 @@ public partial class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
                 break;
             case EventCodes.ChatMessage:
                 ChatMessage_R(o);
+                break;
+            case EventCodes.SpawnRagdoll:
+                SpawnRagdoll_R(o);
                 break;
                 
         }

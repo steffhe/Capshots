@@ -138,9 +138,7 @@ GameObject:
   m_Component:
   - component: {fileID: 2799757468120159469}
   - component: {fileID: 2799757468120159471}
-  - component: {fileID: -4101017664866082151}
   - component: {fileID: -2621738301321371339}
-  - component: {fileID: 6807974276704246375}
   m_Layer: 0
   m_Name: Dead Player
   m_TagString: Untagged
@@ -173,35 +171,12 @@ Rigidbody:
   serializedVersion: 2
   m_Mass: 1
   m_Drag: 0
-  m_AngularDrag: 0.05
+  m_AngularDrag: 0.5
   m_UseGravity: 1
   m_IsKinematic: 0
-  m_Interpolate: 0
+  m_Interpolate: 1
   m_Constraints: 0
   m_CollisionDetection: 0
---- !u!114 &-4101017664866082151
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2799757468120159465}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: aa584fbee541324448dd18d8409c7a41, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  ObservedComponentsFoldoutOpen: 1
-  Group: 0
-  prefixField: -1
-  observableSearch: 2
-  Synchronization: 2
-  OwnershipTransfer: 0
-  ObservedComponents:
-  - {fileID: 6807974276704246375}
-  viewIdField: 0
-  InstantiationId: 0
-  isRuntimeInstantiated: 0
 --- !u!114 &-2621738301321371339
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -214,22 +189,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7f0f2a9dfc425c04c94c763e6c518532, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
---- !u!114 &6807974276704246375
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2799757468120159465}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 627855c7f81362d41938ffe0b1475957, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_SynchronizePosition: 1
-  m_SynchronizeRotation: 1
-  m_SynchronizeScale: 0
-  m_UseLocal: 1
 --- !u!1 &9138600984809945585
 GameObject:
   m_ObjectHideFlags: 0
