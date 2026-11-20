@@ -53,6 +53,8 @@ public class Launcher : MonoBehaviourPunCallbacks
         myProfile = Data.LoadProfile();
         usernameField.text = myProfile.username;
         CreateModeButton();
+        // The player model in the menu wears a cap too, in the logo's colour
+        PlayerCap.AttachToSceneHeads(PlayerCap.LogoColor);
         Connect();
     }
 

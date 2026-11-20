@@ -6,11 +6,11 @@ Capshots (formerly MultiplayerFPS) is a simple online multiplayer first-person s
 
 ## Play
 
-**In your browser:** go to **[steffhe.github.io/MultiplayerFPS](https://steffhe.github.io/MultiplayerFPS/)**. It works in desktop browsers (Chrome, Edge or Firefox) and on phones and tablets, which get on-screen touch controls (see below). On a computer, click the game to lock the mouse. **Esc** releases the mouse and opens the pause menu; click again after resuming to lock it. Crouch is on `Z` in the browser, because Ctrl+W would close the tab. During a match the browser asks before closing or reloading the tab.
+**In your browser:** go to **[steffhe.github.io/Capshots](https://steffhe.github.io/Capshots/)**. It works in desktop browsers (Chrome, Edge or Firefox) and on phones and tablets, which get on-screen touch controls (see below). On a computer, click the game to lock the mouse. **Esc** releases the mouse and opens the pause menu; click again after resuming to lock it. Crouch is on `Z` in the browser, because Ctrl+W would close the tab. During a match the browser asks before closing or reloading the tab.
 
 **On Windows:**
 
-1. Go to the [latest release](https://github.com/steffhe/MultiplayerFPS/releases/latest).
+1. Go to the [latest release](https://github.com/steffhe/Capshots/releases/latest).
 2. Download the build from the **Assets** section and extract it.
 3. Run the `.exe` file and enjoy!
 
@@ -84,7 +84,7 @@ Steps:
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/steffhe/MultiplayerFPS.git
+   git clone https://github.com/steffhe/Capshots.git
    ```
 2. Open the project folder in Unity Hub with the editor version above.
 3. Open `Assets/Scenes/Menu.unity` and press Play, or build via **File → Build Profiles**. The menu scene must be first in the scene list, followed by the map scenes.
