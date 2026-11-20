@@ -10,9 +10,9 @@ public class PlayerCap : MonoBehaviour
     private static Material capMaterial;
 
     // Puts a cap on a head made from Unity's sphere mesh, sized to it and drawn on the head's layer.
-    // solidBrim gives the brim a collider, for a ragdoll head that rolls around (it then tips over onto the
-    // brim instead of the brim sinking into the floor). A living player's cap has no colliders at all.
-    public static PlayerCap Attach(Transform head, Color color, bool solidBrim = false)
+    // solid gives the cap colliders, for a ragdoll: on the head it tips over onto its brim instead of
+    // sinking into the floor, and knocked off it lands on its own. A living player's cap has no colliders.
+    public static PlayerCap Attach(Transform head, Color color, bool solid = false)
     {
         if (head == null) return null;
 
@@ -37,9 +37,16 @@ public class PlayerCap : MonoBehaviour
             // Button on top
             Part(root.transform, "Button", PrimitiveType.Sphere, new Vector3(0f, 1.08f * r, 0f), new Vector3(0.2f * r, 0.12f * r, 0.2f * r), Vector3.zero),
         };
-        cap.renderers[0].GetComponent<MeshFilter>().sharedMesh = DomeMesh();
+        cap.renderers[0].GetComponent<MeshFilter>().sharedMesh = domeMesh != null ? domeMesh : (domeMesh = BuildDome(10, 24, "Cap Crown"));
         cap.SetColor(color, dark);
-        if (solidBrim) cap.renderers[1].gameObject.AddComponent<BoxCollider>();
+        if (solid)
+        {
+            MeshCollider crown = cap.renderers[0].gameObject.AddComponent<MeshCollider>();
+            // A coarser copy for physics: a convex collider's hull must stay small, and nobody sees it
+            crown.sharedMesh = colliderDome != null ? colliderDome : (colliderDome = BuildDome(4, 12, "Cap Crown Collider"));
+            crown.convex = true; // needed on a moving Rigidbody
+            cap.renderers[1].gameObject.AddComponent<BoxCollider>();
+        }
         return cap;
     }
 
@@ -96,15 +103,12 @@ public class PlayerCap : MonoBehaviour
         return renderer;
     }
 
-    private static Mesh domeMesh;
+    private static Mesh domeMesh, colliderDome;
 
     // The top of a unit sphere (radius 1), down to a little above its middle, like the crown of a cap.
     // Unity has no such primitive, and a squashed sphere bulges out below its widest point.
-    private static Mesh DomeMesh()
+    private static Mesh BuildDome(int rings, int segments, string name)
     {
-        if (domeMesh != null) return domeMesh;
-
-        const int rings = 10, segments = 24;
         // Down to 78 degrees from the top: the edge sits at 0.2 of the radius above the centre
         float maxAngle = 78f * Mathf.Deg2Rad;
 
@@ -135,14 +139,14 @@ public class PlayerCap : MonoBehaviour
             }
         }
 
-        domeMesh = new Mesh { name = "Cap Crown" };
-        domeMesh.vertices = vertices;
-        domeMesh.uv = uvs;
-        domeMesh.triangles = triangles;
+        Mesh mesh = new Mesh { name = name };
+        mesh.vertices = vertices;
+        mesh.uv = uvs;
+        mesh.triangles = triangles;
         // On a unit sphere the normal is the position itself
-        domeMesh.normals = vertices;
-        domeMesh.RecalculateBounds();
-        return domeMesh;
+        mesh.normals = vertices;
+        mesh.RecalculateBounds();
+        return mesh;
     }
 
     // One shared white URP material; each cap's colour comes from a property block
