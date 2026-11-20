@@ -14,8 +14,7 @@ name: Build
 #    already built that code, and a release tag builds it again with its real version anyway.
 #    The tests run there to save their Library cache on main for later pull requests to start
 #    from. (A pull request can only use caches saved by itself or by main.)
-#  - Pull request builds start from a cached Library, and build again from a clean Library if
-#    that fails; release and on-demand builds always start clean. See the notes in the build job.
+#  - Builds always start from a clean Library; see the notes in the build job.
 #  - "Run workflow" on the Actions tab builds on demand, also on main.
 #  - The EditMode tests in Assets/Tests run in parallel with the builds. A release and the
 #    browser version are only published when the tests and both builds pass.
@@ -172,23 +171,6 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      # Library cache, for pull request builds only. With Unity 6.6, builds that restored a
-      # cached Library were sometimes killed (exit code 137) right after Unity started, while
-      # clean builds always passed; the cause isn't known. So a pull request build that fails
-      # with a restored cache builds again below from a clean Library, and release and
-      # on-demand builds never use the cache. Falls back to the tests job's cache from main,
-      # since main doesn't run the builds.
-      - name: Restore Unity Library folder
-        id: cache
-        if: github.event_name == 'pull_request'
-        uses: actions/cache/restore@v4
-        with:
-          path: Library
-          key: Library-Build-${{ matrix.targetPlatform }}-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
-          restore-keys: |
-            Library-Build-${{ matrix.targetPlatform }}-
-            Library-Tests-
-
       # Pull request WebGL builds compile the IL2CPP C++ code with the Debug configuration
       # instead of Release. That skips most of the C++ and WebAssembly optimization, which takes
       # about 6 minutes, so the test build runs slower and is larger than a release, but works
@@ -205,33 +187,11 @@ jobs:
           sed -i 's/^  il2cppCompilerConfiguration: {}$/  il2cppCompilerConfiguration:\n    WebGL: 0/' "$file"
           grep -n -A1 '^  il2cppCompilerConfiguration:' "$file"
 
+      # Builds always start from a clean Library. A cached Library didn't make them any faster:
+      # Unity still compiled every shader variant and nearly all the IL2CPP C++ code (measured
+      # on runs #50 and #53), and builds from a restored Library were sometimes killed with
+      # exit code 137. The tests job still caches its Library.
       - name: Build with Unity
-        id: build
-        uses: game-ci/unity-builder@v4
-        # With a restored cache, a failure goes on to the clean build below
-        continue-on-error: ${{ steps.cache.outputs.cache-matched-key != '' }}
-        env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-        with:
-          targetPlatform: ${{ matrix.targetPlatform }}
-          buildName: ${{ env.BUILD_NAME }}
-          versioning: Custom
-          version: ${{ env.VERSION }}
-          # The step above edits the settings on pull requests
-          allowDirtyBuild: ${{ github.event_name == 'pull_request' }}
-
-      - name: Remove cached Library after failed build
-        id: clean
-        if: steps.build.outcome == 'failure' && steps.cache.outputs.cache-matched-key != ''
-        run: |
-          echo "::warning::The build with the cached Library (${{ steps.cache.outputs.cache-matched-key }}) failed (exit code ${{ steps.build.outputs.engineExitCode }}). Building again from a clean Library."
-          # Unity runs in Docker as root, so its files need sudo to remove
-          sudo rm -rf Library build
-
-      - name: Build with Unity (clean Library)
-        if: steps.clean.outcome == 'success'
         uses: game-ci/unity-builder@v4
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
@@ -244,14 +204,6 @@ jobs:
           version: ${{ env.VERSION }}
           # The step above edits the settings on pull requests
           allowDirtyBuild: ${{ github.event_name == 'pull_request' }}
-
-      # Saved only after a successful build, so a broken Library is never cached
-      - name: Save Unity Library folder
-        if: github.event_name == 'pull_request' && steps.cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: Library
-          key: ${{ steps.cache.outputs.cache-primary-key }}
 
       # ---- Windows: zip and upload (the release job attaches it on tags) ----
       - name: Zip build
