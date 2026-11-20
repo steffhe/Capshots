@@ -209,6 +209,15 @@ public class Weapon : MonoBehaviourPunCallbacks
     {
         if (isReloading || !loadout[currentIndex].CanReload()) return;
         reloadRoutine = StartCoroutine(Reload(loadout[currentIndex]));
+        photonView.RPC("ReloadSound", RpcTarget.All, loadout[currentIndex].reloadTime);
+    }
+
+    // Runs on every client so everyone nearby hears the reload
+    [PunRPC]
+    void ReloadSound(float reloadTime)
+    {
+        PlayerSounds sounds = GetComponent<PlayerSounds>();
+        if (sounds != null) sounds.PlayReload(reloadTime);
     }
 
     IEnumerator BurstFire(Gun gun)
@@ -291,6 +300,9 @@ public class Weapon : MonoBehaviourPunCallbacks
         {
             CancelReload();
             CancelBurst();
+            // Equip runs on every client, so this also stops the reload sound everyone else hears
+            PlayerSounds sounds = GetComponent<PlayerSounds>();
+            if (sounds != null) sounds.StopReload();
             Destroy(currentWeapon);
         }
         currentIndex = ind;
