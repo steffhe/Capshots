@@ -7,7 +7,7 @@ name: Build
 #    matchmaking version, so different releases never share a room (and Windows and
 #    browser players on the same release can play together).
 #  - Pull requests that touch the project get a browser (WebGL) test build, downloadable from
-#    the run. It uses the "Shorter Build Time" code optimization (see the build job). They
+#    the run. It's built for build speed rather than runtime speed (see the build job). They
 #    don't build Windows; use "Run workflow" on the branch for a Windows test build.
 #    Draft pull requests only run the tests; the builds start when the pull request is marked
 #    ready for review.
@@ -197,11 +197,12 @@ jobs:
           buildName: ${{ env.BUILD_NAME }}
           versioning: Custom
           version: ${{ env.VERSION }}
-          # Pull request WebGL builds use the "Shorter Build Time" Code Optimization instead of
-          # the default, skipping most of the C++ and WebAssembly optimization. The test build is
-          # larger and runs slower than a release, but works the same. Releases keep the default.
-          # Set by Assets/Editor/CIWebGLCodeOptimization.cs.
-          customParameters: ${{ github.event_name == 'pull_request' && matrix.targetPlatform == 'WebGL' && '-webglCodeOptimization BuildTimes' || '' }}
+          # Release and on-demand WebGL builds use the "Runtime Speed" Code Optimization, so the
+          # game runs faster in the browser. Pull request builds keep Unity's default, "Shorter
+          # Build Time" (run #58's log showed it), which builds faster.
+          # Set by Assets/Editor/CIWebGLCodeOptimization.cs, which also logs the setting each
+          # WebGL build used at the end of its log.
+          customParameters: ${{ github.event_name != 'pull_request' && matrix.targetPlatform == 'WebGL' && '-webglCodeOptimization RuntimeSpeed' || '' }}
 
       # ---- Windows: zip and upload (the release job attaches it on tags) ----
       - name: Zip build

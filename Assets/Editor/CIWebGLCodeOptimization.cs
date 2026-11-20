@@ -7,9 +7,10 @@ using UnityEditor.Build.Reporting;
 using UnityEngine;
 
 // Lets the build workflow pick the WebGL "Code Optimization" build setting, which decides how
-// much Unity optimizes the game's C++ and WebAssembly code. Pull request test builds pass
-//   -webglCodeOptimization BuildTimes
-// to build faster ("Shorter Build Time"); releases don't pass it and keep the default.
+// much Unity optimizes the game's C++ and WebAssembly code. Release builds pass
+//   -webglCodeOptimization RuntimeSpeed
+// so the game runs faster in the browser. Pull request builds don't pass it and keep Unity's
+// default, "Shorter Build Time" (BuildTimes), which builds faster.
 //
 // The setting is stored in Library, not in the project, so it can't be set in a project file.
 // It runs when the editor loads, before the build starts. UnityEditor.WebGL is only there
@@ -17,7 +18,7 @@ using UnityEngine;
 // compiles for the tests and the Windows build.
 //
 // Every WebGL build also logs the setting it was built with when it finishes ("WebGL build
-// used Code Optimization ..."), so the build log shows it for pull requests and releases alike.
+// used Code Optimization ..."), so the end of the build log shows it for every build.
 [InitializeOnLoad]
 public class CIWebGLCodeOptimization : IPostprocessBuildWithReport
 {
@@ -44,7 +45,7 @@ public class CIWebGLCodeOptimization : IPostprocessBuildWithReport
         if (index < 0) return;
         if (index + 1 >= args.Length)
         {
-            Debug.LogError(Argument + " needs a value, for example BuildTimes or RuntimeSpeed.");
+            Debug.LogError(Argument + " needs a value, for example RuntimeSpeed or BuildTimes.");
             return;
         }
         Apply(args[index + 1]);
