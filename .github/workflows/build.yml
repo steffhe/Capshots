@@ -6,8 +6,9 @@ name: Build
 #    The tag (without the "v") becomes the game's version, which is also Photon's
 #    matchmaking version, so different releases never share a room (and Windows and
 #    browser players on the same release can play together).
-#  - Pull requests that touch the project get test builds of both, downloadable from the run.
-#    The WebGL test build uses the Debug C++ configuration to build faster (see the build job).
+#  - Pull requests that touch the project get a browser (WebGL) test build, downloadable from
+#    the run. It uses the Debug C++ configuration to build faster (see the build job). They
+#    don't build Windows; use "Run workflow" on the branch for a Windows test build.
 #    Draft pull requests only run the tests; the builds start when the pull request is marked
 #    ready for review.
 #  - Pushes to main (merged pull requests) only run the tests, not the builds: the pull request
@@ -68,6 +69,7 @@ jobs:
     outputs:
       available: ${{ steps.license.outputs.available }}
       version: ${{ steps.version.outputs.version }}
+      platforms: ${{ steps.platforms.outputs.platforms }}
     steps:
       - name: Check for Unity license
         id: license
@@ -99,6 +101,18 @@ jobs:
           else
             # Test builds get a unique version so they never match players on a real release
             echo "version=0.0.0-dev.${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Pull requests only build WebGL; releases and "Run workflow" build both
+      - name: Choose platforms to build
+        id: platforms
+        run: |
+          webgl='{"name":"WebGL","targetPlatform":"WebGL"}'
+          windows='{"name":"Windows","targetPlatform":"StandaloneWindows64"}'
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            echo "platforms=[$webgl]" >> "$GITHUB_OUTPUT"
+          else
+            echo "platforms=[$windows,$webgl]" >> "$GITHUB_OUTPUT"
           fi
 
   test:
@@ -157,11 +171,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: Windows
-            targetPlatform: StandaloneWindows64
-          - name: WebGL
-            targetPlatform: WebGL
+        # Set by the setup job: WebGL on pull requests, Windows and WebGL otherwise
+        include: ${{ fromJSON(needs.setup.outputs.platforms) }}
     permissions:
       contents: read
     env:
