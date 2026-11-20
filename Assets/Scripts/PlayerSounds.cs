@@ -47,7 +47,10 @@ public class PlayerSounds : MonoBehaviour
         movementSource = MakeSource();
         reloadSource = MakeSource();
         shotSource = MakeSource();
-        shotSource.maxDistance = 150f; // shots carry much further than footsteps
+        // Shots keep a plain linear fade, but carry much further than footsteps
+        shotSource.rolloffMode = AudioRolloffMode.Linear;
+        shotSource.minDistance = 2f;
+        shotSource.maxDistance = 150f;
 
         lastPosition = transform.position;
     }
@@ -97,11 +100,46 @@ public class PlayerSounds : MonoBehaviour
         AudioSource s = gameObject.AddComponent<AudioSource>();
         s.playOnAwake = false;
         s.spatialBlend = 1f; // 3D: other players are heard from where they are
-        s.rolloffMode = AudioRolloffMode.Linear;
-        s.minDistance = 2f;
-        s.maxDistance = 30f;
         s.dopplerLevel = 0f;
+        // Footsteps, landings and reloads: a soft fade with a long, quiet tail instead of a straight
+        // line that drops to silence at a fixed distance
+        s.rolloffMode = AudioRolloffMode.Custom;
+        s.maxDistance = FoleyMaxDistance;
+        s.SetCustomCurve(AudioSourceCurveType.CustomRolloff, FoleyRolloff());
         return s;
+    }
+
+    // Where footsteps, landings and reloads fade out completely
+    private const float FoleyMaxDistance = 45f;
+    private static AnimationCurve foleyRolloff;
+
+    // Volume at a distance in metres: full within 2 m, then falling off like a real sound
+    // (about -5 dB at 10 m, -11 dB at 20 m, -15 dB at 30 m) and easing to silence between 30 and 45 m.
+    private static float FoleyVolume(float distance)
+    {
+        float falloff = 1f / (1f + Mathf.Pow(Mathf.Max(0f, distance - 2f) / 10f, 1.5f));
+        float fade = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(30f, FoleyMaxDistance, distance));
+        return falloff * fade;
+    }
+
+    // The same curve as an AnimationCurve, which Unity reads over 0..1 of maxDistance
+    private static AnimationCurve FoleyRolloff()
+    {
+        if (foleyRolloff != null) return foleyRolloff;
+
+        const int steps = 30;
+        Keyframe[] keys = new Keyframe[steps + 1];
+        for (int i = 0; i <= steps; i++)
+        {
+            float x = (float)i / steps;
+            float d = x * FoleyMaxDistance;
+            // Slope from a small finite difference, so the curve between keys follows the function smoothly
+            const float h = 0.05f;
+            float slope = (FoleyVolume(d + h) - FoleyVolume(Mathf.Max(0f, d - h))) / (d + h - Mathf.Max(0f, d - h)) * FoleyMaxDistance;
+            keys[i] = new Keyframe(x, FoleyVolume(d), slope, slope);
+        }
+        foleyRolloff = new AnimationCurve(keys);
+        return foleyRolloff;
     }
 
     private bool IsGrounded()
