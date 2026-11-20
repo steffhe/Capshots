@@ -18,6 +18,8 @@ name: Build
 #  - "Run workflow" on the Actions tab builds on demand, also on main.
 #  - The EditMode tests in Assets/Tests run in parallel with the builds. A release and the
 #    browser version are only published when the tests and both builds pass.
+#  - There's no "free disk space" step: the ubuntu-latest runners have about 88 GB free, far
+#    more than the Unity image, Library and builds need, and freeing more took 1-2.5 minutes.
 #
 # Publishing the browser version needs GitHub Pages set up once:
 #   1. Settings > Pages > Build and deployment > Source: "GitHub Actions"
@@ -109,18 +111,6 @@ jobs:
       contents: read
       checks: write # lets the test runner post a test results check
     steps:
-      # The Unity Docker image is large, so make room on the runner first
-      - name: Free disk space
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          tool-cache: false
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: false
-          docker-images: true
-          swap-storage: true
-
       - name: Check out repository
         uses: actions/checkout@v4
 
@@ -178,18 +168,6 @@ jobs:
       VERSION: ${{ needs.setup.outputs.version }}
 
     steps:
-      # The Unity Docker image is large, so make room on the runner first
-      - name: Free disk space
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          tool-cache: false
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: false
-          docker-images: true
-          swap-storage: true
-
       - name: Check out repository
         uses: actions/checkout@v4
 
