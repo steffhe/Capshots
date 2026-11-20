@@ -1,10 +1,10 @@
 {
-    "name": "MultiplayerFPS.Tests.EditMode",
+    "name": "Capshots.Tests.EditMode",
     "rootNamespace": "",
     "references": [
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
-        "MultiplayerFPS.Core"
+        "Capshots.Core"
     ],
     "includePlatforms": [
         "Editor"
