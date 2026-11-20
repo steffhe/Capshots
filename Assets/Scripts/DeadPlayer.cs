@@ -13,6 +13,7 @@ public class DeadPlayer : MonoBehaviour
 
     private Rigidbody body;
     private Transform head, cap;
+    private Rigidbody capBody;
     private Vector3 bodyScale, headScale, capScale;
     private float age;
 
@@ -100,7 +101,11 @@ public class DeadPlayer : MonoBehaviour
 
         // A headshot also knocks the cap off: it flies up and on ahead of the head, spinning, and being
         // light it flutters down. Otherwise it stays on the head and rolls away with it.
-        if (headshot && headCap != null) KnockOffCap(headCap.transform, headVelocity, push, knockback);
+        if (headshot && headCap != null)
+        {
+            KnockOffCap(headCap.transform, headVelocity, push, knockback);
+            CapshotBurst.Spawn(head.position, push, capColor);
+        }
 
         // Head and body start out touching: ignore each other briefly so they don't shove each other apart
         IgnoreBriefly(head.GetComponentsInChildren<Collider>(), GetComponentsInChildren<Collider>());
@@ -123,15 +128,17 @@ public class DeadPlayer : MonoBehaviour
         cap.SetParent(null, true);
         capScale = cap.localScale;
 
-        Rigidbody capBody = cap.gameObject.AddComponent<Rigidbody>();
+        capBody = cap.gameObject.AddComponent<Rigidbody>();
         capBody.mass = 0.06f;
-        // High air resistance for its weight: it floats down instead of dropping like a stone
-        capBody.linearDamping = 1.2f;
+        // Little air resistance on the way up, so it shoots high; Update raises it once the cap starts
+        // falling, so it floats down instead of dropping like a stone
+        capBody.linearDamping = 0.3f;
         capBody.angularDamping = 0.6f;
         capBody.interpolation = RigidbodyInterpolation.Interpolate;
         capBody.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
 
-        capBody.linearVelocity = headVelocity + push * (knockback * 0.4f) + Vector3.up * 2.5f + Random.insideUnitSphere * 0.6f;
+        // Mostly straight up (about 3 m high), only partly following the bullet, so it's clearly a cap flying off
+        capBody.linearVelocity = headVelocity * 0.5f + push * (knockback * 0.3f) + Vector3.up * 8f + Random.insideUnitSphere * 0.6f;
         // Spins mostly end over end along the bullet's path, plus some wobble
         capBody.angularVelocity = Vector3.Cross(Vector3.up, push) * 18f + Random.insideUnitSphere * 8f;
     }
@@ -166,6 +173,9 @@ public class DeadPlayer : MonoBehaviour
     private void Update()
     {
         age += Time.deltaTime;
+
+        // A knocked-off cap that has started falling catches the air and flutters down
+        if (capBody != null && capBody.linearDamping < 2f && capBody.linearVelocity.y < 0f) capBody.linearDamping = 2f;
 
         float left = lifetime - age;
         if (left <= 0f)

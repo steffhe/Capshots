@@ -37,13 +37,13 @@ public class PlayerCap : MonoBehaviour
             // Button on top
             Part(root.transform, "Button", PrimitiveType.Sphere, new Vector3(0f, 1.08f * r, 0f), new Vector3(0.2f * r, 0.12f * r, 0.2f * r), Vector3.zero),
         };
-        cap.renderers[0].GetComponent<MeshFilter>().sharedMesh = domeMesh != null ? domeMesh : (domeMesh = BuildDome(10, 24, "Cap Crown"));
+        cap.renderers[0].GetComponent<MeshFilter>().sharedMesh = domeMesh != null ? domeMesh : (domeMesh = BuildDome(10, 24, "Cap Crown", true));
         cap.SetColor(color, dark);
         if (solid)
         {
             MeshCollider crown = cap.renderers[0].gameObject.AddComponent<MeshCollider>();
             // A coarser copy for physics: a convex collider's hull must stay small, and nobody sees it
-            crown.sharedMesh = colliderDome != null ? colliderDome : (colliderDome = BuildDome(4, 12, "Cap Crown Collider"));
+            crown.sharedMesh = colliderDome != null ? colliderDome : (colliderDome = BuildDome(4, 12, "Cap Crown Collider", false));
             crown.convex = true; // needed on a moving Rigidbody
             cap.renderers[1].gameObject.AddComponent<BoxCollider>();
         }
@@ -68,6 +68,21 @@ public class PlayerCap : MonoBehaviour
             block.SetColor("_BaseColor", c); // URP
             block.SetColor("_Color", c);     // built-in shaders
             renderers[i].SetPropertyBlock(block);
+        }
+    }
+
+    // The colour of the cap in the logo, used on the main menu's player model
+    public static readonly Color LogoColor = new Color(1f, 0.36f, 0.21f);
+
+    // Puts a cap on every player head in the scene that doesn't have one yet, e.g. the main menu's
+    // player model, which is a copy of the player without the Player script
+    public static void AttachToSceneHeads(Color color)
+    {
+        foreach (Transform t in Object.FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            if (!t.CompareTag("Head") || t.GetComponentInChildren<PlayerCap>(true) != null) continue;
+            if (t.GetComponent<MeshFilter>() == null) continue; // only visible sphere heads
+            Attach(t, color);
         }
     }
 
@@ -107,7 +122,9 @@ public class PlayerCap : MonoBehaviour
 
     // The top of a unit sphere (radius 1), down to a little above its middle, like the crown of a cap.
     // Unity has no such primitive, and a squashed sphere bulges out below its widest point.
-    private static Mesh BuildDome(int rings, int segments, string name)
+    // doubleSided adds the inside of the dome, so an upside-down or knocked-off cap doesn't turn
+    // invisible when seen from below (Unity only draws the side a triangle faces).
+    private static Mesh BuildDome(int rings, int segments, string name, bool doubleSided)
     {
         // Down to 78 degrees from the top: the edge sits at 0.2 of the radius above the centre
         float maxAngle = 78f * Mathf.Deg2Rad;
@@ -139,18 +156,45 @@ public class PlayerCap : MonoBehaviour
             }
         }
 
+        // On a unit sphere the outward normal is the position itself
+        Vector3[] normals = (Vector3[])vertices.Clone();
+
+        if (doubleSided)
+        {
+            // A second copy of every vertex with the normal pointing in, and every triangle wound the
+            // other way round, so the inside is drawn and lit as a surface of its own
+            int count = vertices.Length;
+            System.Array.Resize(ref vertices, count * 2);
+            System.Array.Resize(ref normals, count * 2);
+            System.Array.Resize(ref uvs, count * 2);
+            for (int v = 0; v < count; v++)
+            {
+                vertices[count + v] = vertices[v];
+                normals[count + v] = -normals[v];
+                uvs[count + v] = uvs[v];
+            }
+
+            int outside = triangles.Length;
+            System.Array.Resize(ref triangles, outside * 2);
+            for (int i = 0; i < outside; i += 3)
+            {
+                triangles[outside + i] = triangles[i] + count;
+                triangles[outside + i + 1] = triangles[i + 2] + count;
+                triangles[outside + i + 2] = triangles[i + 1] + count;
+            }
+        }
+
         Mesh mesh = new Mesh { name = name };
         mesh.vertices = vertices;
+        mesh.normals = normals;
         mesh.uv = uvs;
         mesh.triangles = triangles;
-        // On a unit sphere the normal is the position itself
-        mesh.normals = vertices;
         mesh.RecalculateBounds();
         return mesh;
     }
 
     // One shared white URP material; each cap's colour comes from a property block
-    private static Material SharedMaterial(Material fallback)
+    internal static Material SharedMaterial(Material fallback)
     {
         if (capMaterial != null) return capMaterial;
 
