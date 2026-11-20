@@ -17,4 +17,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Map 2.unity
     guid: ce0b452f85163664dae42d8b58b241d3
+  - enabled: 1
+    path: Assets/Scenes/Nuketown.unity
+    guid: d1ac5bb1b7da431e80ca687bef1a7023
   m_configObjects: {}

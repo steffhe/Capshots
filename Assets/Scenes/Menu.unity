@@ -8584,6 +8584,8 @@ MonoBehaviour:
     scene: 2
   - name: Test
     scene: 3
+  - name: Nuketown
+    scene: 4
 --- !u!4 &1909638675
 Transform:
   m_ObjectHideFlags: 0
