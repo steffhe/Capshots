@@ -2,6 +2,17 @@
 
 This plan moves the game's networking from **Photon PUN 2** (what the game uses today) to **Photon Fusion 2** in **Host mode**.
 
+## Status (November 2026)
+
+The code for stages 0–6 is written on the `fusion` branch, against Fusion 2.1.3. It compiles, but it has **not been play-tested yet**. Where the work differs from the plan below:
+
+- **PUN was removed in stage 0, not stage 6.** Fusion 2 brings Photon Realtime 5 into the same `Assets/Photon/PhotonRealtime` and `PhotonLibs` folders that PUN's Realtime 4 uses. The two can't be in one project, so stages couldn't be merged one at a time with PUN still working. The whole move is one change on `fusion`.
+- **The editor work is a script.** Run **Capshots → Set Up Fusion** once in the editor. It sets the App ID and adds `NetworkObject`, `NetworkTransform`, a `CharacterController` and the hitboxes to the Player prefab. It also adds a `NetworkObject` to each map's Manager and removes PUN leftovers. See `Assets/Editor/FusionSetup.cs`.
+- **Movement uses Unity's `CharacterController`, not Simple KCC.** It is driven in `FixedUpdateNetwork` and synced by `NetworkTransform`, so there's no add-on to download. The old speeds carry over: walk 10 m/s, sprint 20, crouch 5, slide 25, and a jump of about 13 m/s. Replace it with Simple KCC later if the feel isn't right.
+- **Hitboxes:** a box for each body and a sphere for each head, sized from the old colliders, on a new `Hitbox` layer (10). Shots use `Runner.LagCompensation.Raycast`, and the host applies damage.
+- **Pickups:** the host gives out ammo boxes by checking who stands on them, so the claim and answer messages are gone.
+- **WebGL:** Host mode works in the browser, but Photon recommends Shared mode there, and a browser host always goes through the relay. Test hosting from the WebGL build early.
+
 ## Why Fusion, and why Host mode
 
 PUN 2 is Photon's older networking library. It's still maintained, but Photon recommends Fusion for new work. For a shooter, Fusion's main gains are:

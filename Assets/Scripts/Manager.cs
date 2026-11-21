@@ -2,17 +2,19 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using Photon.Pun;
-using Photon.Realtime;
-using ExitGames.Client.Photon;
 using UnityEngine.UI;
+using Fusion;
 
-// The match: player list, game state and timer, network events and the end of the match.
+// The match: player list, game state and timer, and the end of the match.
+// A network object in each map scene. The host owns it: it keeps everyone's stats, runs the
+// match timer and spawns players; Fusion syncs that state to everyone else.
 // Other parts of this class are in Manager.Teams.cs, Manager.Scoreboard.cs, Manager.Spawning.cs,
 // Manager.Pickups.cs, Manager.Chat.cs and Manager.Xp.cs.
-public partial class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
+public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 {
     public static Manager Instance { get; private set; }
+
+    public const int MaxPlayers = 16;
 
     public int mainmenu = 0;
     public int killcount = 20;
@@ -28,8 +30,9 @@ public partial class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
     public string playerPrefab;
     public Transform[] spawnPoints;
 
+    // Everyone's stats, rebuilt from the networked Stats whenever they change
     public List<PlayerInfo> playerInfo = new List<PlayerInfo>();
-    public int myind;
+    public int myind = -1;
 
     private Text myKills;
     private Text myDeaths;
@@ -38,32 +41,29 @@ public partial class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
     public Transform leaderboard;
     private Transform endgame;
 
-    private int currentMatchTime;
-    private Coroutine timerCoroutine;
-
     public GameObject Hud;
 
     private Text uiUsername;
     private bool matchEnded = false;
+    private bool ready;
 
+    // This client's view of the match state, updated from the networked State
     private GameState state = GameState.Waiting;
+    private int currentMatchTime;
 
+    private ChangeDetector changes;
 
+    public bool MatchOver => matchEnded;
 
-    public enum EventCodes : byte
-    {
-        NewPlayer,
-        UpdatePlayers,
-        ChangeStat,
-        RefreshTimer,
-        KillFeed,
-        SpawnPickup,
-        ClaimPickup,
-        PickupTaken,
-        ChatMessage,
-        SpawnRagdoll
-    }
+    #region Networked state
 
+    [Networked, Capacity(MaxPlayers)] private NetworkDictionary<PlayerRef, PlayerStats> Stats => default;
+    [Networked] private GameState State { get; set; }
+    [Networked] private int MatchTime { get; set; }
+    // Ticks once a second on the host to run the match timer
+    [Networked] private TickTimer Heartbeat { get; set; }
+
+    #endregion
 
     private void Awake()
     {
@@ -77,25 +77,60 @@ public partial class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
 
     private void Start()
     {
-        killcount = (int)PhotonNetwork.CurrentRoom.CustomProperties["killcount"];
-        if (PhotonNetwork.CurrentRoom.CustomProperties.ContainsKey("mode"))
-        {
-            mode = (GameMode)(int)PhotonNetwork.CurrentRoom.CustomProperties["mode"];
-        }
-        if (PhotonNetwork.CurrentRoom.CustomProperties.ContainsKey("matchlength"))
-        {
-            matchlength = (int)PhotonNetwork.CurrentRoom.CustomProperties["matchlength"];
-        }
-        mapcam.SetActive(false);
-        ValidateConnection();
+        // A map scene opened without going through the menu has no session to be part of
+        if (NetworkSession.Runner == null) SceneManager.LoadScene(mainmenu);
+    }
+
+    public override void Spawned()
+    {
+        ReadMatchSettings();
+
         InitializeUI();
-        InitializeTimer();
-        NewPlayer_S(Launcher.myProfile);
-        Spawn();
+        changes = GetChangeDetector(ChangeDetector.Source.SimulationState);
+
+        if (HasStateAuthority)
+        {
+            State = GameState.Waiting;
+            MatchTime = matchlength;
+            Heartbeat = TickTimer.CreateFromSeconds(Runner, 1f);
+            foreach (PlayerRef player in Runner.ActivePlayers) AddPlayer(player);
+        }
+
+        // Tell the host our name and level for the scoreboard
+        RPC_Register(Launcher.myProfile.username, Launcher.myProfile.level);
+
+        state = State;
+        currentMatchTime = MatchTime;
+        OnStatsChanged();
+        RefreshTimerUI();
+        ready = true;
+    }
+
+    public override void Despawned(NetworkRunner runner, bool hasState)
+    {
+        ready = false;
+    }
+
+    private void ReadMatchSettings()
+    {
+        var properties = Runner.SessionInfo.Properties;
+        if (properties == null) return;
+
+        SessionProperty value;
+        if (properties.TryGetValue("killcount", out value)) killcount = (int)value;
+        if (properties.TryGetValue("mode", out value)) mode = (MatchMode)(int)value;
+        if (properties.TryGetValue("matchlength", out value)) matchlength = (int)value;
     }
 
     private void Update()
     {
+        if (!ready) return;
+
+        // The map camera shows while the local player is dead or the match is over
+        bool alive = Player.Local != null;
+        if (mapcam.activeSelf == alive && !matchEnded) mapcam.SetActive(!alive);
+        if (Hud.activeSelf != alive) Hud.SetActive(alive);
+
         if (state == GameState.Ending) return;
 
         if (GameInput.Pressed(GameInput.Scoreboard))
@@ -107,13 +142,34 @@ public partial class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         }
     }
 
-    private void OnEnable()
+    public override void Render()
     {
-        PhotonNetwork.AddCallbackTarget(this);
-    }
-        private void OnDisable()
-    {
-        PhotonNetwork.RemoveCallbackTarget(this);
+        bool statsChanged = false, stateChanged = false, timeChanged = false;
+        foreach (string change in changes.DetectChanges(this))
+        {
+            switch (change)
+            {
+                case nameof(Stats): statsChanged = true; break;
+                case nameof(State): stateChanged = true; break;
+                case nameof(MatchTime): timeChanged = true; break;
+            }
+        }
+
+        if (timeChanged)
+        {
+            currentMatchTime = MatchTime;
+            RefreshTimerUI();
+        }
+
+        if (statsChanged) OnStatsChanged();
+
+        if (stateChanged && State != state)
+        {
+            GameState previousState = state;
+            state = State;
+            OnStateChanged(previousState);
+            StateCheck();
+        }
     }
 
     public void InitializeUI()
@@ -129,32 +185,23 @@ public partial class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         CreateTeamScore();
         ChatUI.Create(GameObject.Find("Canvas").transform, myKills.font, this);
         TouchControls.Create(myKills.font);
-        StartCoroutine(SharePing());
-       
 
         RefreshMyStats();
     }
 
-    private void InitializeTimer()
-    {
-        currentMatchTime = matchlength;
-        RefreshTimerUI();
-        if (PhotonNetwork.IsMasterClient)
-        {
-            timerCoroutine = StartCoroutine(Timer());
-        }
-    }
-
     private void RefreshTimerUI()
     {
+        if (timer == null) return;
+
         if (state == GameState.Waiting)
         {
             timer.text = "WAITING";
             return;
         }
 
-        string minutes = (currentMatchTime / 60).ToString("00");
-        string seconds = (currentMatchTime % 60).ToString("00");
+        int time = Mathf.Max(0, currentMatchTime);
+        string minutes = (time / 60).ToString("00");
+        string seconds = (time % 60).ToString("00");
         timer.text = $"{minutes}:{seconds}";
     }
 
@@ -177,11 +224,6 @@ public partial class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         if (leaderboard.gameObject.activeSelf) Leaderboard(leaderboard);
     }
 
-    private void ValidateConnection() {
-        if (PhotonNetwork.IsConnected) return;
-        SceneManager.LoadScene(mainmenu);
-    }
-
     private void StateCheck()
     {
         if (state == GameState.Ending)
@@ -190,242 +232,38 @@ public partial class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         }
     }
 
-    public void NewPlayer_S(ProfileData p)
+    // Rebuilds the local scoreboard list from the host's stats
+    private void OnStatsChanged()
     {
-        object[] package = new object[6];
-
-        package[0] = p.username;
-        package[1] = p.level;
-        package[2] = p.xp;
-        package[3] = PhotonNetwork.LocalPlayer.ActorNumber;
-        package[4] = (short)0;
-        package[5] = (short)0;
-
-        PhotonNetwork.RaiseEvent((byte)EventCodes.NewPlayer, package, new RaiseEventOptions { Receivers = ReceiverGroup.MasterClient }, new SendOptions { Reliability = true });
-
-    }
-    public void NewPlayer_R(object[] data)
-    {
-
-        PlayerInfo p = new PlayerInfo(new ProfileData((string)data[0], (int)data[1], (int)data[2], 150f, 50f), (int)data[3], (short)data[4], (short)data[5]);
-
-        // A player re-sends NewPlayer if a host change lost the first one, so never add the same actor twice
-        if (FindPlayerIndex(p.actor) < 0)
+        List<PlayerInfo> list = new List<PlayerInfo>();
+        foreach (KeyValuePair<PlayerRef, PlayerStats> entry in Stats)
         {
-            p.team = ChooseTeamForNewPlayer();
-            playerInfo.Add(p);
+            PlayerStats s = entry.Value;
+            PlayerInfo p = new PlayerInfo(new ProfileData(s.Username.ToString(), s.Level, 0, 150f, 150f), entry.Key.PlayerId, s.Kills, s.Deaths);
+            p.team = s.Team;
+            p.ping = s.Ping;
+            list.Add(p);
         }
-
-        UpdatePlayers_S((int)state, playerInfo);
-
-    }
-    public void UpdatePlayers_S(int state, List<PlayerInfo> info)
-    {
-        object[] package = new object[info.Count + 1];
-
-        package[0] = state;
-        for(int i = 0; i < info.Count; i++)
-        {
-            object[] piece = new object[7];
-
-            piece[0] = info[i].profile.username;
-            piece[1] = info[i].profile.level;
-            piece[2] = info[i].profile.xp;
-            piece[3] = info[i].actor;
-            piece[4] = info[i].kills;
-            piece[5] = info[i].deaths;
-            piece[6] = info[i].team;
-
-            package[i + 1] = piece;
-        }
-
-
-        PhotonNetwork.RaiseEvent((byte)EventCodes.UpdatePlayers, package, new RaiseEventOptions { Receivers = ReceiverGroup.All }, new SendOptions { Reliability = true });
-
-    }
-
-    public void UpdatePlayers_R(object[] data)
-    {
-        GameState previousState = state;
-        state = (GameState)data[0];
-        playerInfo = new List<PlayerInfo>();
-
-
-        for (int i = 1; i < data.Length; i++)
-        {
-            object[] extract = (object[])data[i];
-
-            PlayerInfo p = new PlayerInfo(new ProfileData((string)extract[0], (int)extract[1], (int)extract[2], 150f, 150f), (int)extract[3], (short)extract[4], (short)extract[5]);
-            p.team = (byte)extract[6];
-
-            playerInfo.Add(p);
-        }
+        list.Sort((a, b) => a.actor.CompareTo(b.actor));
+        playerInfo = list;
 
         RecalculateMyIndex();
-
-        // If our NewPlayer event went to a host that left before handling it, we are missing from the list
-        if (myind < 0 && state != GameState.Ending) NewPlayer_S(Launcher.myProfile);
-
         TeamsVersion++;
         RefreshMyStats();
-        if (previousState != state) OnStateChanged(previousState);
         AnnounceTeam();
-        StateCheck();
-
-    }
-
-    public void ChangeStat_S(int actor, PlayerStat stat, byte amt)
-    {
-        object[] package = new object[] {actor, (byte)stat, amt };
-
-        PhotonNetwork.RaiseEvent((byte)EventCodes.ChangeStat, package, new RaiseEventOptions { Receivers = ReceiverGroup.All }, new SendOptions { Reliability = true });
-
-    }
-
-    public void ChangeStat_R(object[] data)
-    {
-        int actor = (int)data[0];
-        PlayerStat stat = (PlayerStat)(byte)data[1];
-        byte amt = (byte)data[2];
-
-        // Kills and deaths during warmup and the countdown don't count
-        if (stat != PlayerStat.Level && state != GameState.Playing) return;
-
-        for (int i = 0; i < playerInfo.Count; i++)
-        {
-            if (playerInfo[i].actor == actor)
-            {
-                switch (stat)
-                {
-                    case PlayerStat.Kills:
-                        playerInfo[i].kills += amt;
-                        Debug.Log($"Player {playerInfo[i].profile.username } : kills = {playerInfo[i].kills }");
-                        break;
-
-                    case PlayerStat.Deaths:
-                        playerInfo[i].deaths += amt;
-                        Debug.Log($"Player {playerInfo[i].profile.username } : deaths = {playerInfo[i].deaths }");
-                        break;
-
-                    case PlayerStat.Level:
-                        playerInfo[i].profile.level += amt;
-                        break;
-                }
-
-                if (stat == PlayerStat.Kills && actor == PhotonNetwork.LocalPlayer.ActorNumber && !matchEnded)
-                {
-                    AwardXp(xpPerKill * amt, "KILL");
-                }
-
-                if (i == myind) RefreshMyStats();
-
-                if (leaderboard.gameObject.activeSelf) Leaderboard(leaderboard);
-
-                break;
-            }
-        }
-
-        RefreshTeamScore();
-        ScoreCheck();
     }
 
     public string GetPlayerName(int actor)
     {
         int index = FindPlayerIndex(actor);
-        if (index >= 0) return playerInfo[index].profile.username;
-
-        Photon.Realtime.Player player = PhotonNetwork.CurrentRoom != null ? PhotonNetwork.CurrentRoom.GetPlayer(actor) : null;
-        return player != null && !string.IsNullOrEmpty(player.NickName) ? player.NickName : "Unknown";
+        if (index >= 0 && !string.IsNullOrEmpty(playerInfo[index].profile.username)) return playerInfo[index].profile.username;
+        return "Unknown";
     }
 
-    public void RefreshTimer_S()
+    public int GetPlayerLevel(int actor)
     {
-        object[] package = new object[] {currentMatchTime};
-
-
-        PhotonNetwork.RaiseEvent((byte)EventCodes.RefreshTimer, package, new RaiseEventOptions { Receivers = ReceiverGroup.All }, new SendOptions { Reliability = true });
-
-    }
-
-    public void RefreshTimer_R(object[] data)
-    {
-        currentMatchTime = (int)data[0];
-        RefreshTimerUI();
-    }
-
-    public void OnEvent(EventData photonEvent)
-    {
-        if (photonEvent.Code >= 200) return;
-
-        EventCodes e = (EventCodes)photonEvent.Code;
-        object[] o = (object[])photonEvent.CustomData;
-
-        switch (e)
-        {
-            case EventCodes.NewPlayer:
-                NewPlayer_R(o);
-                    break;
-            case EventCodes.UpdatePlayers:
-                UpdatePlayers_R(o);
-                break;
-            case EventCodes.ChangeStat:
-                ChangeStat_R(o);
-                break;
-            case EventCodes.RefreshTimer:
-                RefreshTimer_R(o);
-                break;
-            case EventCodes.KillFeed:
-                KillFeed_R(o);
-                break;
-            case EventCodes.SpawnPickup:
-                SpawnPickup_R(o);
-                break;
-            case EventCodes.ClaimPickup:
-                ClaimPickup_R(o);
-                break;
-            case EventCodes.PickupTaken:
-                PickupTaken_R(o);
-                break;
-            case EventCodes.ChatMessage:
-                ChatMessage_R(o);
-                break;
-            case EventCodes.SpawnRagdoll:
-                SpawnRagdoll_R(o);
-                break;
-                
-        }
-    }
-
-    public override void OnPlayerLeftRoom(Photon.Realtime.Player otherPlayer)
-    {
-        base.OnPlayerLeftRoom(otherPlayer);
-
-        // Every client removes the player itself, so this works no matter which host is in charge
-        int index = FindPlayerIndex(otherPlayer.ActorNumber);
-        if (index < 0) return;
-
-        playerInfo.RemoveAt(index);
-        TeamsVersion++;
-        RecalculateMyIndex();
-        RefreshMyStats();
-    }
-
-    public override void OnMasterClientSwitched(Photon.Realtime.Player newMasterClient)
-    {
-        base.OnMasterClientSwitched(newMasterClient);
-
-        if (!PhotonNetwork.IsMasterClient) return;
-
-        // Drop anyone who is no longer in the room, then share our list so everyone is in sync
-        playerInfo.RemoveAll(p => PhotonNetwork.CurrentRoom.GetPlayer(p.actor) == null);
-        RecalculateMyIndex();
-
-        if (state == GameState.Ending || matchEnded) return;
-
-        UpdatePlayers_S((int)state, playerInfo);
-
-        // The old host ran the match timer, so take it over from the last time it sent
-        if (timerCoroutine == null) timerCoroutine = StartCoroutine(Timer());
+        int index = FindPlayerIndex(actor);
+        return index >= 0 ? playerInfo[index].profile.level : 1;
     }
 
     private int FindPlayerIndex(int actor)
@@ -439,40 +277,217 @@ public partial class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
 
     private void RecalculateMyIndex()
     {
-        myind = FindPlayerIndex(PhotonNetwork.LocalPlayer.ActorNumber);
+        myind = Runner != null ? FindPlayerIndex(Runner.LocalPlayer.PlayerId) : -1;
     }
 
-    public override void OnLeftRoom()
+    private int LocalActor => Runner != null ? Runner.LocalPlayer.PlayerId : -1;
+
+    #region Host: players joining and leaving
+
+    public void PlayerJoined(PlayerRef player)
     {
-        base.OnLeftRoom();
-        SceneManager.LoadScene(mainmenu);
+        if (HasStateAuthority) AddPlayer(player);
+    }
+
+    public void PlayerLeft(PlayerRef player)
+    {
+        if (!HasStateAuthority) return;
+
+        Stats.Remove(player);
+        pendingSpawns.Remove(player);
+        NetworkObject body;
+        if (Runner.TryGetPlayerObject(player, out body) && body != null) Runner.Despawn(body);
+    }
+
+    private void AddPlayer(PlayerRef player)
+    {
+        if (Stats.ContainsKey(player)) return;
+
+        PlayerStats stats = new PlayerStats
+        {
+            Username = "PLAYER " + player.PlayerId,
+            Level = 1,
+            Team = ChooseTeamForNewPlayer(),
+            Ping = -1,
+        };
+        Stats.Set(player, stats);
+        ScheduleSpawn(player);
+    }
+
+    // Each player tells the host its name and level once it has joined
+    [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+    private void RPC_Register(string username, int level, RpcInfo info = default)
+    {
+        PlayerRef player = info.Source.IsRealPlayer ? info.Source : Runner.LocalPlayer;
+        if (!Stats.ContainsKey(player)) AddPlayer(player);
+
+        PlayerStats stats = Stats[player];
+        if (username != null && username.Length > 20) username = username.Substring(0, 20);
+        stats.Username = string.IsNullOrWhiteSpace(username) ? "PLAYER " + player.PlayerId : username;
+        stats.Level = Mathf.Max(1, level);
+        Stats.Set(player, stats);
+    }
+
+    #endregion
+
+    #region Host: match flow
+
+    public override void FixedUpdateNetwork()
+    {
+        if (!HasStateAuthority) return;
+
+        if (Heartbeat.ExpiredOrNotRunning(Runner))
+        {
+            Heartbeat = TickTimer.CreateFromSeconds(Runner, 1f);
+            TimerStep();
+            UpdatePings();
+        }
+
+        SpawnWaitingPlayers();
+        CheckPickups();
+    }
+
+    // Runs once a second on the host. Drives Waiting -> Starting -> Playing -> Ending.
+    private void TimerStep()
+    {
+        switch (State)
+        {
+            case GameState.Waiting:
+                if (EnoughPlayersToStart())
+                {
+                    MatchTime = startCountdown;
+                    State = GameState.Starting;
+                }
+                break;
+
+            case GameState.Starting:
+                if (!EnoughPlayersToStart())
+                {
+                    MatchTime = matchlength;
+                    State = GameState.Waiting;
+                    break;
+                }
+
+                MatchTime -= 1;
+                if (MatchTime <= 0)
+                {
+                    // Warmup is over: everyone starts the match on 0 kills and 0 deaths
+                    foreach (PlayerRef player in StatsKeys())
+                    {
+                        PlayerStats stats = Stats[player];
+                        stats.Kills = 0;
+                        stats.Deaths = 0;
+                        Stats.Set(player, stats);
+                    }
+                    MatchTime = matchlength;
+                    State = GameState.Playing;
+                }
+                break;
+
+            case GameState.Playing:
+                MatchTime -= 1;
+                if (MatchTime < 0)
+                {
+                    MatchTime = 0;
+                    EndMatch();
+                }
+                break;
+        }
+    }
+
+    private bool EnoughPlayersToStart()
+    {
+        int needed = minPlayersToStart;
+        int maxPlayers = Runner.SessionInfo.MaxPlayers;
+        if (maxPlayers > 0) needed = Mathf.Min(needed, maxPlayers);
+        return Stats.Count >= needed;
+    }
+
+    // Host only: a player died. Updates the score, tells everyone and schedules the respawn.
+    public void PlayerKilled(PlayerRef victim, PlayerRef killer, string weaponName, bool headshot)
+    {
+        if (!HasStateAuthority) return;
+
+        // Kills and deaths during warmup and the countdown don't count
+        if (State == GameState.Playing)
+        {
+            ChangeStats(victim, 0, 1);
+            if (killer.IsRealPlayer && killer != victim) ChangeStats(killer, 1, 0);
+        }
+
+        RPC_KillFeed(killer.IsRealPlayer ? killer.PlayerId : -1, victim.PlayerId, weaponName, headshot);
+
+        ScheduleSpawn(victim);
+        ScoreCheck();
+    }
+
+    private void ChangeStats(PlayerRef player, int kills, int deaths)
+    {
+        PlayerStats stats;
+        if (!Stats.TryGet(player, out stats)) return;
+        stats.Kills += (short)kills;
+        stats.Deaths += (short)deaths;
+        Stats.Set(player, stats);
     }
 
     private void ScoreCheck()
     {
-        bool detectwin = false;
+        if (State != GameState.Playing) return;
 
+        bool detectwin = false;
         if (IsTeamMode)
         {
-            detectwin = TeamKills(0) >= killcount || TeamKills(1) >= killcount;
+            detectwin = HostTeamKills(0) >= killcount || HostTeamKills(1) >= killcount;
         }
-        else foreach (PlayerInfo a in playerInfo)
+        else foreach (KeyValuePair<PlayerRef, PlayerStats> entry in Stats)
         {
-            if (a.kills >= killcount)
+            if (entry.Value.Kills >= killcount)
             {
                 detectwin = true;
-                    break;
+                break;
             }
         }
 
-        if (detectwin)
+        if (detectwin) EndMatch();
+    }
+
+    private int HostTeamKills(int team)
+    {
+        int kills = 0;
+        foreach (KeyValuePair<PlayerRef, PlayerStats> entry in Stats)
         {
-            if (PhotonNetwork.IsMasterClient && state == GameState.Playing)
-            {
-                UpdatePlayers_S((int)GameState.Ending, playerInfo);
-            }
+            if (entry.Value.Team == team) kills += entry.Value.Kills;
+        }
+        return kills;
+    }
+
+    // Host only: closes the session to new players and removes everyone's body
+    private void EndMatch()
+    {
+        if (State == GameState.Ending) return;
+        State = GameState.Ending;
+        pendingSpawns.Clear();
+
+        Runner.SessionInfo.IsOpen = false;
+        Runner.SessionInfo.IsVisible = false;
+
+        foreach (Player p in FindObjectsByType<Player>(FindObjectsSortMode.None))
+        {
+            if (p.Object != null && p.Object.IsValid) Runner.Despawn(p.Object);
         }
     }
+
+    // A copy of the keys, so Stats can be changed while going through them
+    private List<PlayerRef> StatsKeys()
+    {
+        List<PlayerRef> keys = new List<PlayerRef>();
+        foreach (KeyValuePair<PlayerRef, PlayerStats> entry in Stats) keys.Add(entry.Key);
+        return keys;
+    }
+
+    #endregion
+
+    #region Everyone: match state
 
     private void EndGame()
     {
@@ -483,98 +498,22 @@ public partial class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
 
         AwardMatchXp();
 
-        if (timerCoroutine != null) StopCoroutine(timerCoroutine);
         currentMatchTime = 0;
         RefreshTimerUI();
-         
-        if (PhotonNetwork.IsMasterClient)
-        {
-            PhotonNetwork.DestroyAll();
-            PhotonNetwork.CurrentRoom.IsVisible = false;
-            PhotonNetwork.CurrentRoom.IsOpen = false;
-        }
 
         mapcam.SetActive(true);
 
         endgame.gameObject.SetActive(true);
         Leaderboard(endgame.Find("Leaderboard"));
 
-        StartCoroutine(End(6f));
+        // The host waits a moment longer, so everyone else leaves on their own instead of seeing "host left"
+        StartCoroutine(End(HasStateAuthority ? 7f : 6f));
     }
 
     private IEnumerator End(float wait)
     {
         yield return new WaitForSeconds(wait);
-
-        PhotonNetwork.AutomaticallySyncScene = false;
-        PhotonNetwork.LeaveRoom();
-    }
-
-    // Runs on the host only. Drives Waiting -> Starting -> Playing -> Ending.
-    private IEnumerator Timer()
-    {
-        yield return new WaitForSeconds(1);
-
-        switch (state)
-        {
-            case GameState.Waiting:
-                if (EnoughPlayersToStart())
-                {
-                    currentMatchTime = startCountdown;
-                    UpdatePlayers_S((int)GameState.Starting, playerInfo);
-                    RefreshTimer_S();
-                }
-                break;
-
-            case GameState.Starting:
-                if (!EnoughPlayersToStart())
-                {
-                    currentMatchTime = matchlength;
-                    UpdatePlayers_S((int)GameState.Waiting, playerInfo);
-                    RefreshTimer_S();
-                    break;
-                }
-
-                currentMatchTime -= 1;
-                if (currentMatchTime <= 0)
-                {
-                    // Warmup is over: everyone starts the match on 0 kills and 0 deaths
-                    foreach (PlayerInfo p in playerInfo)
-                    {
-                        p.kills = 0;
-                        p.deaths = 0;
-                    }
-                    currentMatchTime = matchlength;
-                    UpdatePlayers_S((int)GameState.Playing, playerInfo);
-                }
-                RefreshTimer_S();
-                break;
-
-            case GameState.Playing:
-                currentMatchTime -= 1;
-                if (currentMatchTime < 0)
-                {
-                    timerCoroutine = null;
-                    UpdatePlayers_S((int)GameState.Ending, playerInfo);
-                    yield break;
-                }
-                RefreshTimer_S();
-                break;
-
-            default:
-                timerCoroutine = null;
-                yield break;
-        }
-
-        timerCoroutine = StartCoroutine(Timer());
-    }
-
-    private bool EnoughPlayersToStart()
-    {
-        int needed = minPlayersToStart;
-        int maxPlayers = PhotonNetwork.CurrentRoom.MaxPlayers;
-        if (maxPlayers > 0) needed = Mathf.Min(needed, maxPlayers);
-        return PhotonNetwork.CurrentRoom.PlayerCount >= needed;
+        NetworkSession.Leave();
     }
 
     private void OnStateChanged(GameState previousState)
@@ -595,13 +534,25 @@ public partial class Manager : MonoBehaviourPunCallbacks, IOnEventCallback
         }
     }
 
+    // The session ended without this player leaving (the host left or the connection dropped).
+    // Returns true if a message is shown, so the menu loads a little later.
+    public bool ShowDisconnected(ShutdownReason reason)
+    {
+        if (matchEnded) return false;
+        bool timedOut = reason == ShutdownReason.ConnectionTimeout || reason == ShutdownReason.PhotonCloudTimeout || reason == ShutdownReason.OperationTimeout;
+        ShowMessage(timedOut ? "CONNECTION LOST" : "THE HOST LEFT THE MATCH");
+        return true;
+    }
+
     private string CurrentMapName()
     {
-        object mapName;
-        if (PhotonNetwork.CurrentRoom != null && PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue("mapname", out mapName))
+        SessionProperty mapName;
+        if (Runner != null && Runner.SessionInfo.Properties != null && Runner.SessionInfo.Properties.TryGetValue("mapname", out mapName))
         {
-            return mapName.ToString();
+            return (string)mapName;
         }
         return SceneManager.GetActiveScene().name;
     }
+
+    #endregion
 }

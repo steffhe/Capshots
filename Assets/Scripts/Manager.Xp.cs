@@ -1,10 +1,8 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using Photon.Pun;
-using Photon.Realtime;
-using ExitGames.Client.Photon;
 using UnityEngine.UI;
+using Fusion;
 
 // XP and the message popup used for XP, level ups and match messages.
 public partial class Manager
@@ -27,7 +25,7 @@ public partial class Manager
     {
         if (IsTeamMode)
         {
-            int myTeam = GetTeam(PhotonNetwork.LocalPlayer.ActorNumber);
+            int myTeam = GetTeam(LocalActor);
             int winner = WinningTeam();
             if (myTeam >= 0 && myTeam == winner) AwardXp(xpMatchComplete + xpWin, "VICTORY");
             else AwardXp(xpMatchComplete, winner < 0 ? "DRAW" : "MATCH COMPLETE");
@@ -57,11 +55,22 @@ public partial class Manager
         {
             message += $"\nLEVEL UP!  LVL {profile.level}";
             // Let everyone update this player's level on the scoreboard
-            ChangeStat_S(PhotonNetwork.LocalPlayer.ActorNumber, PlayerStat.Level, (byte)levelsGained);
+            RPC_LevelUp(levelsGained);
         }
 
         if (uiUsername != null) uiUsername.text = UsernameWithLevel(profile);
         ShowMessage(message);
+    }
+
+    // Lets the host update this player's level on everyone's scoreboard
+    [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+    private void RPC_LevelUp(int levels, RpcInfo info = default)
+    {
+        PlayerRef player = info.Source.IsRealPlayer ? info.Source : Runner.LocalPlayer;
+        PlayerStats stats;
+        if (levels <= 0 || !Stats.TryGet(player, out stats)) return;
+        stats.Level += levels;
+        Stats.Set(player, stats);
     }
 
     private void CreateXpPopup()

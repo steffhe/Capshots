@@ -1,7 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using Photon.Pun;
 using UnityEngine.SceneManagement;
 
 public class Pause : MonoBehaviour
@@ -43,9 +42,8 @@ public class Pause : MonoBehaviour
     public void Quit()
     {
         disconnecting = true;
-        PhotonNetwork.AutomaticallySyncScene = false;
-        PhotonNetwork.LeaveRoom();
-        SceneManager.LoadScene(0);
+        // Shuts the runner down, which then loads the main menu
+        NetworkSession.Leave();
     }
 
 

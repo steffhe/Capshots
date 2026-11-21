@@ -1,12 +1,10 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using Photon.Pun;
-using Photon.Realtime;
-using ExitGames.Client.Photon;
-using UnityEngine.UI;
+using Fusion;
 
-// Respawning: choosing a spawn point away from enemies.
+// Spawning: the host spawns each player's body after a short wait, at a spawn point away from
+// enemies. Ragdolls of players who died.
 public partial class Manager
 {
     [Header("Respawn")]
@@ -16,31 +14,62 @@ public partial class Manager
     // Random metres added to each spawn point's score, so the choice isn't always the same
     public float spawnRandomness = 5f;
 
-    public void Spawn()
-    {
-        StartCoroutine(Spawn(respawnTime));
+    // Host only: players waiting to (re)spawn, and when
+    private readonly Dictionary<PlayerRef, TickTimer> pendingSpawns = new Dictionary<PlayerRef, TickTimer>();
+    private NetworkObject playerPrefabObject;
 
+    private void ScheduleSpawn(PlayerRef player)
+    {
+        if (!HasStateAuthority || State == GameState.Ending) return;
+        pendingSpawns[player] = TickTimer.CreateFromSeconds(Runner, respawnTime);
     }
 
-    private IEnumerator Spawn(float wait)
+    private void SpawnWaitingPlayers()
     {
-        mapcam.SetActive(true);
-        Hud.SetActive(false);
-        yield return new WaitForSeconds(wait);
-        Transform spawn = ChooseSpawnPoint();
-        mapcam.SetActive(false);
-        Hud.SetActive(true);
-        PhotonNetwork.Instantiate(playerPrefab, spawn.position, spawn.rotation);
+        if (pendingSpawns.Count == 0) return;
+
+        List<PlayerRef> due = null;
+        foreach (KeyValuePair<PlayerRef, TickTimer> entry in pendingSpawns)
+        {
+            if (!entry.Value.Expired(Runner)) continue;
+            if (due == null) due = new List<PlayerRef>();
+            due.Add(entry.Key);
+        }
+        if (due == null) return;
+
+        foreach (PlayerRef player in due)
+        {
+            pendingSpawns.Remove(player);
+            if (Stats.ContainsKey(player)) SpawnPlayer(player);
+        }
+    }
+
+    private void SpawnPlayer(PlayerRef player)
+    {
+        // Never two bodies for one player
+        NetworkObject existing;
+        if (Runner.TryGetPlayerObject(player, out existing) && existing != null && existing.IsValid) return;
+
+        if (playerPrefabObject == null) playerPrefabObject = Resources.Load<NetworkObject>(playerPrefab);
+        if (playerPrefabObject == null)
+        {
+            Debug.LogError($"No network object prefab called '{playerPrefab}' in Resources. Run Capshots > Set Up Fusion.");
+            return;
+        }
+
+        Transform spawn = ChooseSpawnPoint(player);
+        Runner.Spawn(playerPrefabObject, spawn.position, spawn.rotation, player);
     }
 
     // Picks the spawn point farthest from living enemies, avoiding points an enemy can see
-    private Transform ChooseSpawnPoint()
+    private Transform ChooseSpawnPoint(PlayerRef forPlayer)
     {
         List<Vector3> enemyEyes = new List<Vector3>();
         foreach (Player p in FindObjectsByType<Player>(FindObjectsSortMode.None))
         {
-            if (p.photonView.IsMine) continue;
-            if (!AreEnemies(PhotonNetwork.LocalPlayer.ActorNumber, p.photonView.OwnerActorNr)) continue;
+            if (p.Object == null || !p.Object.IsValid || p.IsDead) continue;
+            if (p.Owner == forPlayer) continue;
+            if (!AreEnemies(forPlayer.PlayerId, p.ActorId)) continue;
             enemyEyes.Add(p.normalCam != null ? p.normalCam.transform.position : p.transform.position + Vector3.up * 1.5f);
         }
 
@@ -49,8 +78,8 @@ public partial class Manager
             return spawnPoints[Random.Range(0, spawnPoints.Length)];
         }
 
-        // Players' own colliders shouldn't block line of sight
-        int sightMask = ~((1 << Layers.RemotePlayer) | (1 << Layers.LocalPlayer));
+        // Players' own bodies shouldn't block line of sight
+        int sightMask = ~((1 << Layers.RemotePlayer) | (1 << Layers.LocalPlayer) | (1 << Layers.Hitbox));
 
         Transform best = spawnPoints[0];
         float bestScore = float.MinValue;
@@ -78,22 +107,22 @@ public partial class Manager
         return best;
     }
 
-    // Tells every client to spawn its own ragdoll for a player who just died. The ragdolls aren't
-    // networked objects: each client simulates its copy locally, so they never fight a network sync.
-    // actor: the dead player's actor number, which picks their cap colour
-    public void SpawnRagdoll_S(Vector3 position, Quaternion rotation, Vector3 velocity, Vector3 hitDirection, Vector3 hitOffset, float knockback, bool headshot, int actor)
+    // Host only: tells every client to spawn its own ragdoll for a player who just died. The ragdolls
+    // aren't networked objects: each client simulates its copy locally, so they never fight a network sync.
+    // actor: the dead player's PlayerId, which picks their cap colour
+    public void SpawnRagdoll(Vector3 position, Quaternion rotation, Vector3 velocity, Vector3 hitDirection, Vector3 hitOffset, float knockback, bool headshot, int actor)
     {
-        object[] package = new object[] { position, rotation, velocity, hitDirection, hitOffset, knockback, headshot, actor };
-        PhotonNetwork.RaiseEvent((byte)EventCodes.SpawnRagdoll, package, new RaiseEventOptions { Receivers = ReceiverGroup.All }, new SendOptions { Reliability = true });
+        RPC_SpawnRagdoll(position, rotation, velocity, hitDirection, hitOffset, knockback, headshot, actor);
     }
 
-    public void SpawnRagdoll_R(object[] data)
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_SpawnRagdoll(Vector3 position, Quaternion rotation, Vector3 velocity, Vector3 hitDirection, Vector3 hitOffset, float knockback, NetworkBool headshot, int actor)
     {
         GameObject prefab = Resources.Load<GameObject>("Dead Player");
         if (prefab == null) return;
 
-        GameObject ragdoll = Instantiate(prefab, (Vector3)data[0], (Quaternion)data[1]);
+        GameObject ragdoll = Instantiate(prefab, position, rotation);
         DeadPlayer dead = ragdoll.GetComponent<DeadPlayer>();
-        if (dead != null) dead.Launch((Vector3)data[2], (Vector3)data[3], (Vector3)data[4], (float)data[5], (bool)data[6], PlayerCap.ColorFor((int)data[7]));
+        if (dead != null) dead.Launch(velocity, hitDirection, hitOffset, knockback, headshot, PlayerCap.ColorFor(actor));
     }
 }

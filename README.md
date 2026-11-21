@@ -2,7 +2,7 @@
 
 # Capshots
 
-Capshots (formerly MultiplayerFPS) is a simple online multiplayer first-person shooter made in Unity, built while following Welton King's YouTube tutorial series. Networking is handled by [Photon PUN](https://www.photonengine.com/pun), so players can host and join rooms over the internet without running their own server.
+Capshots (formerly MultiplayerFPS) is a simple online multiplayer first-person shooter made in Unity, built while following Welton King's YouTube tutorial series. Networking is handled by [Photon Fusion](https://www.photonengine.com/fusion) in Host mode: one player hosts the match and decides hits and scores, with lag compensation so shots count where they landed on the shooter's screen. Photon's cloud matches players and connects them to the host (through its relay when a direct connection isn't possible), so nobody needs to run a server.
 
 ## Play
 
@@ -18,7 +18,7 @@ To play together, each player runs the game, picks a username and either creates
 
 ## Features
 
-- Online multiplayer through Photon: create rooms, browse and join open rooms, or quick-join a random one
+- Online multiplayer through Photon Fusion: host rooms, browse and join open rooms, or quick-join a random one
 - Room options: game mode, map, max players and kills to win
 - Two game modes: Free For All, and Team Deathmatch (blue vs red, automatic team balancing, no friendly fire, first team to the kill limit wins)
 - Several maps to choose from
@@ -89,7 +89,7 @@ Steps:
 2. Open the project folder in Unity Hub with the editor version above.
 3. Open `Assets/Scenes/Menu.unity` and press Play, or build via **File → Build Profiles**. The menu scene must be first in the scene list, followed by the map scenes.
 
-Photon is configured in `Assets/Photon/PhotonUnityNetworking/Resources/PhotonServerSettings.asset`. If you fork the project, consider creating your own free Photon app and replacing the App ID there.
+Photon Fusion is configured in `Assets/Photon/Fusion/Resources/PhotonAppSettings.asset` (App ID) and `NetworkProjectConfig.fusion`. If you fork the project, create your own free Photon **Fusion** app and put its App ID there (or in `Assets/Editor/FusionSetup.cs` before running **Capshots → Set Up Fusion**).
 
 ## Tests
 
@@ -127,12 +127,12 @@ Publishing the browser version needs GitHub Pages set up once:
 | `Assets/Scripts/Core` | Game logic with no scene dependencies (`Gun`, `ProfileData`), in its own assembly so it can be tested |
 | `Assets/Tests/EditMode` | Automated tests for the `Core` code |
 | `Assets/Scenes` | `Menu` plus the playable maps |
-| `Assets/Resources` | Networked prefabs spawned through Photon (player, weapons, bullet holes) |
+| `Assets/Resources` | Prefabs loaded at runtime: the networked player, weapons, ragdoll and bullet holes |
 | `Assets/Prefabs` | UI and misc prefabs |
-| `Assets/Photon` | Photon PUN networking package |
+| `Assets/Photon` | Photon Fusion 2 networking SDK (with Photon Realtime 5) |
 
 ## Credits
 
 - Tutorial: Welton King's YouTube series on making a multiplayer FPS in Unity
-- Networking: Photon PUN by Exit Games
+- Networking: Photon Fusion by Exit Games
 - Assets: Robot Kyle, SimplePoly Town Pack and Unity Starter Assets

@@ -1,30 +1,17 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using Photon.Pun;
-using Photon.Realtime;
-using ExitGames.Client.Photon;
-using UnityEngine.UI;
+using Fusion;
 
 // Kill feed, text chat and ping.
 public partial class Manager
 {
-    // Sent by the player who died, so everyone can show it in the kill feed
-    public void KillFeed_S(int killer, int victim, string weapon, bool headshot)
+    // Sent by the host when a player dies, so everyone can show it in the kill feed.
+    // killer is -1 when nobody gets the kill.
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_KillFeed(int killer, int victim, string weapon, NetworkBool headshot)
     {
-        object[] package = new object[] { killer, victim, weapon, headshot };
-
-        PhotonNetwork.RaiseEvent((byte)EventCodes.KillFeed, package, new RaiseEventOptions { Receivers = ReceiverGroup.All }, new SendOptions { Reliability = true });
-    }
-
-    public void KillFeed_R(object[] data)
-    {
-        int killer = (int)data[0];
-        int victim = (int)data[1];
-        string weapon = (string)data[2];
-        bool headshot = (bool)data[3];
-
-        int me = PhotonNetwork.LocalPlayer.ActorNumber;
+        int me = LocalActor;
         if (IsTeamMode)
         {
             FeedbackUI.AddKillFeed(GetPlayerName(killer), GetPlayerName(victim), weapon, headshot, killer == me || victim == me,
@@ -35,7 +22,17 @@ public partial class Manager
             FeedbackUI.AddKillFeed(GetPlayerName(killer), GetPlayerName(victim), weapon, headshot, killer == me || victim == me);
         }
 
-        if (killer == me && victim != me) FeedbackUI.Kill();
+        if (killer == me && victim != me)
+        {
+            FeedbackUI.Kill();
+            // Kills during warmup and the countdown don't count
+            if (state == GameState.Playing && !matchEnded) AwardXp(xpPerKill, "KILL");
+        }
+
+        if (victim == me)
+        {
+            FeedbackUI.ShowDeath(GetPlayerName(killer), weapon, headshot, respawnTime);
+        }
     }
 
     public void SendChat_S(string message)
@@ -44,46 +41,44 @@ public partial class Manager
         if (message.Length == 0) return;
         if (message.Length > ChatUI.MaxMessageLength) message = message.Substring(0, ChatUI.MaxMessageLength);
 
-        object[] package = new object[] { PhotonNetwork.LocalPlayer.ActorNumber, message };
-        PhotonNetwork.RaiseEvent((byte)EventCodes.ChatMessage, package, new RaiseEventOptions { Receivers = ReceiverGroup.All }, new SendOptions { Reliability = true });
+        RPC_Chat(message);
     }
 
-    public void ChatMessage_R(object[] data)
+    // Sent to the host, which passes it on to everyone
+    [Rpc(RpcSources.All, RpcTargets.All)]
+    private void RPC_Chat(string message, RpcInfo info = default)
     {
-        int actor = (int)data[0];
-        string message = (string)data[1];
+        if (string.IsNullOrEmpty(message)) return;
+        int actor = info.Source.IsRealPlayer ? info.Source.PlayerId : LocalActor;
         if (message.Length > ChatUI.MaxMessageLength) message = message.Substring(0, ChatUI.MaxMessageLength);
 
         int team = GetTeam(actor);
-        string color = team >= 0 ? TeamHex(team) : (actor == PhotonNetwork.LocalPlayer.ActorNumber ? "#ffd84a" : "#dddddd");
+        string color = team >= 0 ? TeamHex(team) : (actor == LocalActor ? "#ffd84a" : "#dddddd");
         ChatUI.AddMessage(GetPlayerName(actor), color, message);
     }
 
-    // Every couple of seconds, share this player's ping so others can see it on the scoreboard
-    private IEnumerator SharePing()
+    // Host only, every second: measure everyone's round trip time for the scoreboard
+    private void UpdatePings()
     {
-        int lastShared = -1;
-        while (true)
+        foreach (PlayerRef player in StatsKeys())
         {
-            int ping = PhotonNetwork.GetPing();
-            if (PhotonNetwork.InRoom && Mathf.Abs(ping - lastShared) >= 5)
-            {
-                lastShared = ping;
-                ExitGames.Client.Photon.Hashtable props = new ExitGames.Client.Photon.Hashtable { { "ping", ping } };
-                PhotonNetwork.LocalPlayer.SetCustomProperties(props);
-            }
-            yield return new WaitForSeconds(2f);
+            int ping = player == Runner.LocalPlayer ? 0 : Mathf.RoundToInt((float)Runner.GetPlayerRtt(player) * 1000f);
+            PlayerStats stats = Stats[player];
+            // Only send real changes, so the scoreboard isn't resent every second
+            if (Mathf.Abs(stats.Ping - ping) < 5) continue;
+            stats.Ping = (short)Mathf.Clamp(ping, 0, short.MaxValue);
+            Stats.Set(player, stats);
         }
     }
 
     private string PingLabel(int actor)
     {
-        Photon.Realtime.Player player = PhotonNetwork.CurrentRoom != null ? PhotonNetwork.CurrentRoom.GetPlayer(actor) : null;
-        if (player == null) return "";
+        int index = FindPlayerIndex(actor);
+        if (index < 0) return "";
 
-        int ping = actor == PhotonNetwork.LocalPlayer.ActorNumber ? PhotonNetwork.GetPing() : -1;
-        object value;
-        if (ping < 0 && player.CustomProperties.TryGetValue("ping", out value)) ping = (int)value;
+        int ping = playerInfo[index].ping;
+        // Our own round trip to the host is known here first hand
+        if (actor == LocalActor && Runner != null && !HasStateAuthority) ping = Mathf.RoundToInt((float)Runner.GetPlayerRtt(Runner.LocalPlayer) * 1000f);
         if (ping < 0) return "";
 
         string color = ping < 80 ? "#7ddc6f" : ping < 150 ? "#e8c84a" : "#e8604a";

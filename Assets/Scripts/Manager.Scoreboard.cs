@@ -1,9 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using Photon.Pun;
-using Photon.Realtime;
-using ExitGames.Client.Photon;
 using UnityEngine.UI;
 
 // The scoreboard shown while holding the scoreboard key and at the end of the match.

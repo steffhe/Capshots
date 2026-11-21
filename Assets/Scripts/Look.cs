@@ -1,9 +1,11 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using Photon.Pun;
 
-public class Look : MonoBehaviourPunCallbacks
+// Mouse and stick look for the local player. Keeps the view as a yaw and pitch angle, which are
+// sent to the host with the player's input (see InputCollector) and also applied here every frame,
+// so turning never waits for the network.
+public class Look : MonoBehaviour
 {
 
     #region Variables
@@ -31,31 +33,60 @@ public class Look : MonoBehaviourPunCallbacks
     private Vector2 recoilTarget;   // x = pitch up, y = yaw right, in degrees
     private Vector2 recoilCurrent;
 
+    // Where the player looks, in degrees. Yaw turns the body; pitch (positive = up) tilts the camera.
+    public float Yaw { get; private set; }
+    public float Pitch { get; private set; }
+
+    private Player owner;
+    private Weapon weaponComponent;
+    private bool initialized;
+
     #endregion
 
     #region MonoBehaviour Callbacks
-    // Start is called before the first frame update
-    void Start()
+
+    void Awake()
     {
         camCenter = cam.localRotation;
         weaponComponent = GetComponent<Weapon>();
+        owner = GetComponent<Player>();
     }
 
+    // Called by Player when the local player spawns, facing the spawn point's direction
+    public void Initialize(float yaw)
+    {
+        Yaw = yaw;
+        Pitch = 0f;
+        recoilTarget = recoilCurrent = Vector2.zero;
+        initialized = true;
+    }
 
     // Update is called once per frame
     void Update()
     {
-        if (!photonView.IsMine) return;
-        if (Pause.paused && photonView.IsMine) return;
+        if (!initialized || owner == null || !owner.IsLocal) return;
+
+        if (Pause.paused) return;
 
         // Sensitivity is changed in the settings menu and saved in the profile
         xSensitivity = GameSettings.XSensitivity;
         ySensitivity = GameSettings.YSensitivity;
 
         ApplyRecoil();
-        SetX();
-        SetY();
+
+        Vector2 look = LookInput();
+        Yaw = Mathf.Repeat(Yaw + look.x * xSensitivity * SensitivityScale, 360f);
+        Pitch = Mathf.Clamp(Pitch + look.y * ySensitivity * SensitivityScale, -maxAngle, maxAngle);
+
         UpdateCursorLock();
+    }
+
+    // After Fusion has placed the body for this frame, turn it and the camera to the newest view,
+    // so looking around stays as responsive as it was before networking was added
+    void LateUpdate()
+    {
+        if (!initialized || owner == null || !owner.IsLocal) return;
+        ApplyView();
     }
 
     #endregion
@@ -64,7 +95,6 @@ public class Look : MonoBehaviourPunCallbacks
 
     // Gamepad stick: full deflection turns about as fast as 60 units of mouse movement per second
     private const float StickLookScale = 60f;
-    private Weapon weaponComponent;
 
     // Mouse and gamepad look combined, in old mouse-axis units, with the ADS multiplier from the settings
     Vector2 LookInput()
@@ -76,25 +106,11 @@ public class Look : MonoBehaviourPunCallbacks
         return look;
     }
 
-    void SetY()
+    void ApplyView()
     {
-        float input = LookInput().y * ySensitivity * SensitivityScale;
-        Quaternion adj = Quaternion.AngleAxis(input, -Vector3.right);
-        Quaternion delta = cam.localRotation * adj;
-        if (Quaternion.Angle(camCenter, delta) < maxAngle)
-        {
-            cam.localRotation = delta;
-        }
-            weapon.rotation = cam.rotation;
-    }
-
-    void SetX()
-    {
-        float input = LookInput().x * xSensitivity * SensitivityScale;
-        Quaternion adj = Quaternion.AngleAxis(input, Vector3.up);
-        Quaternion delta = player.localRotation * adj;
-            player.localRotation = delta;
-
+        player.rotation = Quaternion.Euler(0f, Yaw, 0f);
+        cam.localRotation = camCenter * Quaternion.AngleAxis(Pitch, -Vector3.right);
+        weapon.rotation = cam.rotation;
     }
 
     void UpdateCursorLock()
@@ -137,11 +153,8 @@ public class Look : MonoBehaviourPunCallbacks
         recoilTarget = Vector2.Lerp(recoilTarget, Vector2.zero, Time.deltaTime * recoilRecovery);
 
         Vector2 delta = recoilCurrent - previous;
-
-        Quaternion pitched = cam.localRotation * Quaternion.AngleAxis(delta.x, -Vector3.right);
-        if (Quaternion.Angle(camCenter, pitched) < maxAngle) cam.localRotation = pitched;
-
-        player.localRotation *= Quaternion.AngleAxis(delta.y, Vector3.up);
+        Pitch = Mathf.Clamp(Pitch + delta.x, -maxAngle, maxAngle);
+        Yaw = Mathf.Repeat(Yaw + delta.y, 360f);
     }
 
     #endregion
