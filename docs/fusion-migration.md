@@ -11,7 +11,7 @@ The code for stages 0–6 is written on the `fusion` branch, against Fusion 2.1.
 - **Movement uses Unity's `CharacterController`, not Simple KCC.** It is driven in `FixedUpdateNetwork` and synced by `NetworkTransform`, so there's no add-on to download. The old speeds carry over: walk 10 m/s, sprint 20, crouch 5, slide 25, and a jump of about 13 m/s. Replace it with Simple KCC later if the feel isn't right.
 - **Hitboxes:** a box for each body and a sphere for each head, sized from the old colliders, on a new `Hitbox` layer (10). Shots use `Runner.LagCompensation.Raycast`, and the host applies damage.
 - **Pickups:** the host gives out ammo boxes by checking who stands on them, so the claim and answer messages are gone.
-- **WebGL:** Host mode works in the browser, but Photon recommends Shared mode there, and a browser host always goes through the relay. Test hosting from the WebGL build early.
+- **WebGL:** Fusion blocks Host mode in WebGL builds by default, so `AllowClientServerModesInWebGL` is turned on in `NetworkProjectConfig.fusion`. Photon still recommends Shared mode for browsers, and a browser host always goes through the relay, so test hosting from the browser with players who are far apart.
 
 ## Why Fusion, and why Host mode
 
