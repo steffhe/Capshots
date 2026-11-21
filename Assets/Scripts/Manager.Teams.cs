@@ -1,16 +1,13 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using Photon.Pun;
-using Photon.Realtime;
-using ExitGames.Client.Photon;
 using UnityEngine.UI;
 
 // Team Deathmatch: teams, team score and team colours.
 public partial class Manager
 {
-    public GameMode mode = GameMode.FreeForAll;
-    public bool IsTeamMode => mode == GameMode.TeamDeathmatch;
+    public MatchMode mode = MatchMode.FreeForAll;
+    public bool IsTeamMode => mode == MatchMode.TeamDeathmatch;
 
     public static readonly string[] TeamNames = { "BLUE", "RED" };
     public static readonly Color[] TeamColors = { new Color(0.3f, 0.6f, 1f), new Color(1f, 0.35f, 0.3f) };
@@ -64,14 +61,15 @@ public partial class Manager
     // Host only: put new players on the smaller team, or the one that's behind
     private byte ChooseTeamForNewPlayer()
     {
+        // Counted from the networked stats, which are always up to date on the host
         int blueCount = 0, redCount = 0;
-        foreach (PlayerInfo p in playerInfo)
+        foreach (KeyValuePair<Fusion.PlayerRef, PlayerStats> entry in Stats)
         {
-            if (p.team == 0) blueCount++; else redCount++;
+            if (entry.Value.Team == 0) blueCount++; else redCount++;
         }
 
         if (blueCount != redCount) return (byte)(blueCount < redCount ? 0 : 1);
-        return (byte)(TeamKills(0) <= TeamKills(1) ? 0 : 1);
+        return (byte)(HostTeamKills(0) <= HostTeamKills(1) ? 0 : 1);
     }
 
     private string TeamHeader()
@@ -113,7 +111,7 @@ public partial class Manager
     {
         if (!IsTeamMode) return;
 
-        int myTeam = GetTeam(PhotonNetwork.LocalPlayer.ActorNumber);
+        int myTeam = GetTeam(LocalActor);
         if (myTeam < 0 || myTeam == announcedTeam) return;
 
         announcedTeam = myTeam;

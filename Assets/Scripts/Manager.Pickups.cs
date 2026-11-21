@@ -1,12 +1,10 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using Photon.Pun;
-using Photon.Realtime;
-using ExitGames.Client.Photon;
-using UnityEngine.UI;
+using Fusion;
 
-// Ammo boxes dropped by players. The master client decides who gets each box.
+// Ammo boxes dropped by players. Every client shows its own copy; the host decides who gets each box
+// by checking which player walks over it, so two players can never both take it.
 public partial class Manager
 {
     [Header("Ammo pickups")]
@@ -16,60 +14,59 @@ public partial class Manager
     private readonly Dictionary<int, AmmoPickup> pickups = new Dictionary<int, AmmoPickup>();
     private int pickupCounter;
 
-    // Drops an ammo box for everyone at the given position
-    public void DropAmmo_S(Vector3 position)
+    // Host only: drops an ammo box for everyone at the given position
+    public void DropAmmo(Vector3 position)
     {
-        if (!dropAmmoOnDeath) return;
-
-        int id = PhotonNetwork.LocalPlayer.ActorNumber * 10000 + (pickupCounter++ % 10000);
-        object[] package = new object[] { id, position };
-
-        PhotonNetwork.RaiseEvent((byte)EventCodes.SpawnPickup, package, new RaiseEventOptions { Receivers = ReceiverGroup.All }, new SendOptions { Reliability = true });
+        if (!dropAmmoOnDeath || !HasStateAuthority) return;
+        RPC_SpawnPickup(++pickupCounter, position);
     }
 
-    public void SpawnPickup_R(object[] data)
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_SpawnPickup(int id, Vector3 position)
     {
-        int id = (int)data[0];
-        Vector3 position = (Vector3)data[1];
         if (pickups.ContainsKey(id)) return;
-
         pickups[id] = AmmoPickup.Create(id, position, this, pickupLifetime);
     }
 
-    // Asks the master client for a pickup, so two players can't both take it
-    public void ClaimPickup_S(int id)
+    // Host only, every tick: gives a box to the first living player standing on it who needs ammo
+    private void CheckPickups()
     {
-        object[] package = new object[] { id, PhotonNetwork.LocalPlayer.ActorNumber };
+        if (pickups.Count == 0) return;
 
-        PhotonNetwork.RaiseEvent((byte)EventCodes.ClaimPickup, package, new RaiseEventOptions { Receivers = ReceiverGroup.MasterClient }, new SendOptions { Reliability = true });
-    }
+        Player[] players = FindObjectsByType<Player>(FindObjectsSortMode.None);
+        List<int> taken = null;
 
-    public void ClaimPickup_R(object[] data)
-    {
-        if (!PhotonNetwork.IsMasterClient) return;
-
-        int id = (int)data[0];
-        int actor = (int)data[1];
-
-        // First claim wins: remove it here straight away so later claims are ignored
-        if (!pickups.ContainsKey(id)) return;
-        RemovePickup(id, true);
-
-        object[] package = new object[] { id, actor };
-        PhotonNetwork.RaiseEvent((byte)EventCodes.PickupTaken, package, new RaiseEventOptions { Receivers = ReceiverGroup.All }, new SendOptions { Reliability = true });
-    }
-
-    public void PickupTaken_R(object[] data)
-    {
-        int id = (int)data[0];
-        int actor = (int)data[1];
-
-        RemovePickup(id, true);
-
-        if (actor == PhotonNetwork.LocalPlayer.ActorNumber && Player.Local != null)
+        foreach (KeyValuePair<int, AmmoPickup> entry in pickups)
         {
-            Weapon weapon = Player.Local.GetComponent<Weapon>();
-            if (weapon != null) weapon.AddAmmoPickup();
+            if (entry.Value == null) continue;
+            Vector3 boxPosition = entry.Value.BasePosition;
+
+            foreach (Player p in players)
+            {
+                if (p.Object == null || !p.Object.IsValid || p.IsDead) continue;
+                if (Vector3.Distance(p.transform.position, boxPosition) > AmmoPickup.PickupRadius) continue;
+
+                Weapon weapon = p.GetComponent<Weapon>();
+                if (weapon == null || !weapon.NeedsAmmo()) continue;
+
+                weapon.AddAmmoPickup();
+                if (taken == null) taken = new List<int>();
+                taken.Add(entry.Key);
+                RPC_PickupTaken(entry.Key, p.ActorId);
+                break;
+            }
+        }
+
+        if (taken != null) foreach (int id in taken) RemovePickup(id, true);
+    }
+
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_PickupTaken(int id, int actor)
+    {
+        RemovePickup(id, true);
+
+        if (actor == LocalActor)
+        {
             FeedbackUI.Pickup();
             ShowMessage("+ AMMO");
         }

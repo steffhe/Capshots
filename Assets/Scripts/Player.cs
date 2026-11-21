@@ -1,13 +1,16 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using Photon.Pun;
 using UnityEngine.UI;
-using System;
+using Fusion;
 using TMPro;
 using UnityEngine.Rendering.Universal;
 
-public class Player : MonoBehaviourPunCallbacks, IPunObservable
+// A player's body. The host runs movement, health and death from the player's input
+// (FixedUpdateNetwork); the player's own game predicts the same movement so it feels instant.
+// Everything else here (camera, head bob, HUD, team colours) is local presentation.
+[RequireComponent(typeof(CharacterController))]
+public class Player : NetworkBehaviour
 {
     #region Variables
     public float speed;
@@ -15,7 +18,6 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
     public float crouchModifier;
     public float jumpForce;
     public int maxHealth;
-    public int currentHealth;
     public Camera normalCam;
     public GameObject cameraParent;
     public Transform weaponParent;
@@ -31,14 +33,28 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
     public GameObject crouchingColliderHead;
     public GameObject deadPrefab;
 
+    [Header("Character controller")]
+    // Set by Capshots > Set Up Fusion from the old body colliders: the capsule's bottom (relative
+    // to the player's position) and its height standing and crouching
+    public float bodyBottom = -1f;
+    public float standingHeight = 2f;
+    public float crouchingHeight = 1.5f;
+
     public ProfileData playerProfile;
     public TextMeshPro playerUsername;
+
+    // Speeds and the jump force were tuned for the old Rigidbody movement, which multiplied them by
+    // the 0.02 s physics step (and a mass of 1). This turns them into metres per second.
+    private const float LegacyStep = 0.02f;
 
     private Transform uiHealthBar;
     private Text uiAmmo;
     private Text uiUsername;
 
-    private Rigidbody rig;
+    private CharacterController controller;
+    private HitboxRoot hitboxRoot;
+    private Hitbox[] standingHitboxes = new Hitbox[0];
+    private Hitbox[] crouchingHitboxes = new Hitbox[0];
     private float baseFOV;
     private float sprintFOVModifier = 1.25f;
 
@@ -55,50 +71,29 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
     private Camera viewmodelCam;
     private bool wasCursorLocked;
 
-    private bool isDead;
-
-    private bool crouched;
     private PlayerCap[] caps = new PlayerCap[0];
-    // Crouching is synced to everyone through the SetCrouch RPC, so this is valid for remote players too
-    public bool IsCrouched => crouched;
-    private bool sliding;
-    private bool slideRequested;
-    private float slideTime;
-    private Vector3 slideDirection;
+    private bool appliedCrouch;
+    private string shownName;
 
     private Vector3 origin;
-
-    private float aimAngle;
 
     [Header("Spawn protection")]
     // Seconds a freshly spawned player can't be damaged. Firing ends it early.
     public float spawnProtectionTime = 3f;
     public float protectionBlinkRate = 8f;
 
-    private bool isProtected;
-    private float protectionLeft;
     private Renderer[] blinkRenderers;
     private bool[] blinkRenderersEnabled;
-
-    public bool IsProtected => isProtected;
 
     [Header("Health regeneration")]
     // Seconds without taking damage before health starts coming back
     public float regenDelay = 5f;
     public float regenPerSecond = 150f;
 
-    private float lastDamageTime = float.NegativeInfinity;
-    private float regenBuffer;
-
     [Header("Team colours")]
     // How strongly other players' bodies are tinted with their team colour in team mode
     [Range(0f, 1f)] public float teamTintStrength = 0.6f;
     private int teamVisualsVersion = -1;
-
-    // Updated every physics step, used by Weapon for accuracy
-    public bool IsGrounded { get; private set; } = true;
-    // Horizontal speed compared to normal walking speed (0 = standing still, 1 = walking or faster)
-    public float MoveSpeedRatio { get; private set; }
 
     [Header("Viewmodel")]
     // Field of view the player's own gun is drawn with. It stays the same when the
@@ -108,44 +103,113 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
     // The player this client controls, or null while dead
     public static Player Local { get; private set; }
 
+    #endregion
 
+    #region Networked state
+
+    [Networked] public int Health { get; set; }
+    [Networked] private NetworkBool Crouched { get; set; }
+    [Networked] private NetworkBool Sliding { get; set; }
+    [Networked] private TickTimer SlideTimer { get; set; }
+    [Networked] private Vector3 SlideDirection { get; set; }
+    [Networked] private Vector3 Velocity { get; set; }
+    [Networked] private NetworkBool Grounded { get; set; }
+    // Where this player looks up or down, in degrees (positive = up). Other players see the gun tilt with it.
+    [Networked] public float Pitch { get; set; }
+    [Networked] private TickTimer ProtectionTimer { get; set; }
+    [Networked] private TickTimer RegenDelayTimer { get; set; }
+    [Networked] private float RegenBuffer { get; set; }
+    [Networked] private NetworkButtons PreviousButtons { get; set; }
+    [Networked] private NetworkBool Dead { get; set; }
 
     #endregion
 
-    #region Photon Callbacks
-    public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
+    #region Public state
+
+    public bool IsLocal => Object != null && Object.IsValid && HasInputAuthority;
+    // The PlayerRef.PlayerId of the player controlling this body
+    public int ActorId => Object != null && Object.IsValid ? Object.InputAuthority.PlayerId : -1;
+    public PlayerRef Owner => Object != null && Object.IsValid ? Object.InputAuthority : PlayerRef.None;
+    public int currentHealth => Object != null && Object.IsValid ? Health : maxHealth;
+    public bool IsCrouched => Object != null && Object.IsValid && Crouched;
+    public bool IsProtected => Object != null && Object.IsValid && ProtectionTimer.IsRunning;
+    public bool IsDead => Object != null && Object.IsValid && Dead;
+
+    // Updated every tick, used by Weapon for accuracy
+    public bool IsGrounded => Object == null || !Object.IsValid || Grounded;
+    // Horizontal speed compared to normal walking speed (0 = standing still, 1 = walking or faster)
+    public float MoveSpeedRatio
     {
-        if (stream.IsWriting)
+        get
         {
-            stream.SendNext(weaponParent.transform.localEulerAngles.x);
-            stream.SendNext(currentHealth);
-            stream.SendNext(isProtected);
-        }
-        else
-        {
-            aimAngle = (float)stream.ReceiveNext();
-            currentHealth = (int)stream.ReceiveNext();
-            isProtected = (bool)stream.ReceiveNext();
+            if (Object == null || !Object.IsValid) return 0f;
+            Vector3 horizontal = Velocity;
+            horizontal.y = 0f;
+            float walkSpeed = speed * LegacyStep;
+            return walkSpeed > 0f ? Mathf.Clamp01(horizontal.magnitude / walkSpeed) : 0f;
         }
     }
+
+    // Where shots come from: the camera position this tick, following crouching and sliding
+    public Vector3 EyePosition
+    {
+        get
+        {
+            float drop = 0f;
+            if (Sliding) drop = slideAmount;
+            else if (Crouched) drop = crouchAmount;
+            Vector3 local = origin + Vector3.down * drop;
+            return cameraParent.transform.TransformPoint(local);
+        }
+    }
+
     #endregion
 
+    #region Fusion Callbacks
 
-    #region MonoBehaviour Callbacks
-    private void Start()
+    private void Awake()
     {
-        manager = Manager.Instance != null ? Manager.Instance : FindAnyObjectByType<Manager>();
+        controller = GetComponent<CharacterController>();
+        hitboxRoot = GetComponent<HitboxRoot>();
         weapon = GetComponent<Weapon>();
         look = GetComponent<Look>();
+        origin = normalCam.transform.localPosition;
+        weaponParentorigin = weaponParent.localPosition;
+        weaponParentCurrentPosition = weaponParentorigin;
+
+        standingHitboxes = HitboxesUnder(standingCollider, standingColliderHead);
+        crouchingHitboxes = HitboxesUnder(crouchingCollider, crouchingColliderHead);
+
+        // The hitboxes sit under the body parts in the prefab, but the crouching parts start switched
+        // off, and a switched-off hitbox is never initialised. Move them to the player itself (same
+        // place in the world) so they're always active; the host turns each set on or off instead.
+        foreach (Hitbox h in standingHitboxes) h.transform.SetParent(transform, true);
+        foreach (Hitbox h in crouchingHitboxes) h.transform.SetParent(transform, true);
+        // Moving them changes their order, so the root has to list them again
+        if (hitboxRoot != null) hitboxRoot.InitHitboxes();
+    }
+
+    public override void Spawned()
+    {
+        manager = Manager.Instance != null ? Manager.Instance : FindAnyObjectByType<Manager>();
         if (GetComponent<PlayerSounds>() == null) gameObject.AddComponent<PlayerSounds>();
 
-        currentHealth = maxHealth;
-        if (photonView.IsMine) Local = this;
-        isProtected = spawnProtectionTime > 0f;
-        protectionLeft = spawnProtectionTime;
-            cameraParent.SetActive(photonView.IsMine);
+        if (HasStateAuthority)
+        {
+            Health = maxHealth;
+            ProtectionTimer = spawnProtectionTime > 0f ? TickTimer.CreateFromSeconds(Runner, spawnProtectionTime) : TickTimer.None;
+            Runner.SetPlayerObject(Object.InputAuthority, Object);
+            SetHitboxes(false);
+        }
 
-        if (!photonView.IsMine)
+        // The HUD is hidden while the local player has no body, and GameObject.Find can't see hidden objects
+        if (HasInputAuthority && manager != null && manager.Hud != null) manager.Hud.SetActive(true);
+
+        SetControllerShape(false);
+
+        cameraParent.SetActive(IsLocal);
+
+        if (!IsLocal)
         {
             gameObject.layer = Layers.RemotePlayer;
             standingCollider.layer = Layers.RemotePlayer;
@@ -155,36 +219,27 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         }
         else
         {
+            Local = this;
+            look.Initialize(transform.eulerAngles.y);
+
             int playerLayer = Layers.LocalPlayer;
             normalCam.cullingMask &= ~(1 << playerLayer);
             CreateViewmodelCamera();
-        }
 
-            weaponParentorigin = weaponParent.localPosition;
-        weaponParentCurrentPosition = weaponParentorigin;
-        baseFOV = GameSettings.Fov;
-        origin = normalCam.transform.localPosition;
-
-        // if (Camera.main)Camera.main.enabled = false;
-
-        rig = GetComponent<Rigidbody>();
-
-        if (photonView.IsMine)
-        {
-            uiHealthBar =  GameObject.Find("HUD/Health/Bar").transform;
+            uiHealthBar = GameObject.Find("HUD/Health/Bar").transform;
             uiAmmo = GameObject.Find("HUD/Ammo/Text").GetComponent<Text>();
             uiUsername = GameObject.Find("HUD/Username/Text").GetComponent<Text>();
             RefreshHealthBar();
 
             uiUsername.text = Manager.UsernameWithLevel(Launcher.myProfile);
-            photonView.RPC("SyncProfile", RpcTarget.All, Launcher.myProfile.username, Launcher.myProfile.level, Launcher.myProfile.xp);
-
-
         }
+
+        baseFOV = GameSettings.Fov;
+        ApplyCrouchVisuals(true);
 
         // A cap on both heads (standing and crouching), after the layers above are set so it's drawn
         // like the head: hidden from your own camera, visible to everyone else
-        Color capColor = PlayerCap.ColorFor(photonView.OwnerActorNr);
+        Color capColor = PlayerCap.ColorFor(ActorId);
         caps = new PlayerCap[]
         {
             PlayerCap.Attach(standingColliderHead != null ? standingColliderHead.transform : null, capColor),
@@ -192,10 +247,185 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         };
     }
 
+    public override void Despawned(NetworkRunner runner, bool hasState)
+    {
+        if (Local == this) Local = null;
+    }
+
+    public override void FixedUpdateNetwork()
+    {
+        if (Dead) return;
+
+        bool hasInput = GetInput(out PlayerInputData input);
+        if (!hasInput)
+        {
+            // No input arrived for this tick: keep facing the same way and stand still
+            input = default;
+            input.Yaw = transform.eulerAngles.y;
+            input.Pitch = Pitch;
+        }
+
+        NetworkButtons pressed = hasInput ? input.Buttons.GetPressed(PreviousButtons) : default;
+        if (hasInput) PreviousButtons = input.Buttons;
+
+        transform.rotation = Quaternion.Euler(0f, input.Yaw, 0f);
+        Pitch = input.Pitch;
+
+        // When this machine re-runs ticks to correct a prediction, the crouch state is rolled back
+        // too; the capsule has to match it
+        if (Runner.IsResimulation) SetControllerShape(Crouched);
+
+        Move(input, pressed);
+
+        if (HasStateAuthority)
+        {
+            if (ProtectionTimer.Expired(Runner)) ProtectionTimer = TickTimer.None;
+            RegenerateHealth();
+        }
+    }
+
+    #endregion
+
+    #region Movement
+
+    private void Move(PlayerInputData input, NetworkButtons pressed)
+    {
+        float dt = Runner.DeltaTime;
+
+        float hmove = input.Move.x;
+        float vmove = input.Move.y;
+
+        bool sprint = input.Buttons.IsSet(InputButton.Sprint);
+        bool jump = pressed.IsSet(InputButton.Jump);
+        bool crouch = pressed.IsSet(InputButton.Crouch);
+        bool slide = pressed.IsSet(InputButton.Slide);
+
+        //States
+        bool isgrounded = controller.isGrounded || Physics.Raycast(groundDetector.position, Vector3.down, 0.15f, ground, QueryTriggerInteraction.Ignore);
+        Grounded = isgrounded;
+        bool isJumping = jump && isgrounded;
+        bool isSprinting = sprint && vmove > 0 && !isJumping && isgrounded;
+        bool isCrouching = crouch && !isJumping && !isSprinting && isgrounded;
+        bool isSliding = isSprinting && slide && !Sliding;
+
+        Vector3 velocity = Velocity;
+
+        //Crouching
+        if (isCrouching) SetCrouch(!Crouched);
+
+        //Jumping
+        if (isJumping)
+        {
+            if (Crouched) SetCrouch(false);
+            velocity.y = jumpForce * LegacyStep;
+        }
+
+        Vector3 direction;
+        float adjustedSpeed = speed;
+
+        //Movement
+        if (!Sliding)
+        {
+            direction = new Vector3(hmove, 0, vmove);
+            direction.Normalize();
+            direction = transform.TransformDirection(direction);
+
+            if (isSprinting)
+            {
+                if (Crouched) SetCrouch(false);
+                adjustedSpeed *= sprintModifier;
+            }
+            else if (Crouched)
+            {
+                adjustedSpeed *= crouchModifier;
+            }
+
+            // Heavier guns, and aiming, slow you down
+            adjustedSpeed *= weapon.MoveSpeedMultiplier();
+        }
+        else
+        {
+            direction = SlideDirection;
+            adjustedSpeed *= slideModifier;
+            if (SlideTimer.ExpiredOrNotRunning(Runner))
+            {
+                if (Crouched) SetCrouch(false);
+                Sliding = false;
+                SlideTimer = TickTimer.None;
+            }
+        }
+
+        //Sliding
+        if (isSliding)
+        {
+            Sliding = true;
+            SlideDirection = direction;
+            SlideTimer = TickTimer.CreateFromSeconds(Runner, lengthOfSlide);
+            if (!Crouched) SetCrouch(true);
+        }
+
+        Vector3 horizontal = direction * adjustedSpeed * LegacyStep;
+        velocity.x = horizontal.x;
+        velocity.z = horizontal.z;
+
+        // Gravity, with a small push down while standing so the controller stays on slopes and steps
+        if (isgrounded && velocity.y < 0f) velocity.y = -2f;
+        else velocity.y += Physics.gravity.y * dt;
+
+        controller.Move(velocity * dt);
+        if (controller.isGrounded && velocity.y < 0f) velocity.y = -2f;
+        // Hitting a ceiling stops the jump
+        if ((controller.collisionFlags & CollisionFlags.Above) != 0 && velocity.y > 0f) velocity.y = 0f;
+
+        Velocity = velocity;
+    }
+
+    void SetCrouch(bool state)
+    {
+        if (Crouched == state) return;
+        Crouched = state;
+        SetControllerShape(state);
+        SetHitboxes(state);
+    }
+
+    // Only the standing or the crouching body can be hit. Hitbox state is networked, so the host sets it.
+    private void SetHitboxes(bool crouched)
+    {
+        if (hitboxRoot == null || !HasStateAuthority) return;
+        foreach (Hitbox h in standingHitboxes) hitboxRoot.SetHitboxActive(h, !crouched);
+        foreach (Hitbox h in crouchingHitboxes) hitboxRoot.SetHitboxActive(h, crouched);
+    }
+
+    // The character controller's capsule shrinks while crouching, so crouching fits under low ceilings
+    private void SetControllerShape(bool crouched)
+    {
+        float height = crouched ? crouchingHeight : standingHeight;
+        controller.height = height;
+        controller.center = new Vector3(0f, bodyBottom + height / 2f, 0f);
+    }
+
+    private static Hitbox[] HitboxesUnder(params GameObject[] parts)
+    {
+        List<Hitbox> found = new List<Hitbox>();
+        foreach (GameObject part in parts)
+        {
+            if (part != null) found.AddRange(part.GetComponentsInChildren<Hitbox>(true));
+        }
+        return found.ToArray();
+    }
+
+    #endregion
+
+    #region Presentation
 
     private void Update()
     {
-        if (!photonView.IsMine)
+        if (Object == null || !Object.IsValid) return;
+
+        ApplyCrouchVisuals(false);
+        RefreshNameTag();
+
+        if (!IsLocal)
         {
             RefreshMultiplayerState();
             UpdateProtectionBlink();
@@ -203,14 +433,8 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
             return;
         }
 
-        RegenerateHealth();
-
-        if (isProtected)
-        {
-            protectionLeft -= Time.deltaTime;
-            if (protectionLeft <= 0f) EndSpawnProtection();
-            else FeedbackUI.SpawnProtection(protectionLeft);
-        }
+        float protectionLeft = ProtectionTimer.RemainingTime(Runner) ?? 0f;
+        FeedbackUI.SpawnProtection(protectionLeft);
 
         //Axis'
         Vector2 moveInput = GameInput.MoveValue;
@@ -219,18 +443,11 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
 
         //Controls
         bool sprint = GameInput.Held(GameInput.Sprint);
-        bool jump = GameInput.Pressed(GameInput.Jump);
-        bool crouch = GameInput.Pressed(GameInput.Crouch);
         bool pause = GameInput.PausePressed;
 
-        // A press is only true for one rendered frame, so read it here and let FixedUpdate consume it
-        if (GameInput.Pressed(GameInput.Slide)) slideRequested = true;
-
         //States
-        bool isgrounded = Physics.Raycast(groundDetector.position, Vector3.down, 0.15f, ground);
-        bool isJumping = jump && isgrounded;
-        bool isSprinting = sprint && vmove > 0 && !isJumping && isgrounded;
-        bool isCrouching = crouch && !isJumping && !isSprinting && isgrounded;
+        bool isgrounded = Grounded;
+        bool isSprinting = sprint && vmove > 0 && isgrounded;
 
         //Pause
         if (pause)
@@ -239,37 +456,20 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
             if (pauseMenu != null) pauseMenu.TogglePause();
         }
         PauseWhenBrowserReleasesMouse();
-        if ( Pause.paused)
+        if (Pause.paused)
         {
-             hmove = 0f;
-             vmove = 0f;
-             sprint = false;
-             jump = false;
-             crouch = false;
-             isgrounded = false;
-             isJumping = false;
-             isSprinting = false;
-             isCrouching = false;
+            hmove = 0f;
+            vmove = 0f;
+            isSprinting = false;
         }
 
-        //Crouching
-        if (isCrouching)
-        {
-           photonView.RPC("SetCrouch", RpcTarget.All, !crouched);
-        }
-
-        //Jumping
-        if (isJumping)
-        {
-            if (crouched) photonView.RPC("SetCrouch", RpcTarget.All, false);
-            rig.AddForce(Vector3.up * jumpForce);
-        }
-
-        //TEST
-        //if (Input.GetKeyDown(KeyCode.U)) TakeDamage(100);
+        // The gun sits lower while crouching, and lower still while sliding
+        weaponParentCurrentPosition = weaponParentorigin;
+        if (Sliding) weaponParentCurrentPosition += Vector3.down * slideAmount;
+        else if (Crouched) weaponParentCurrentPosition += Vector3.down * crouchAmount;
 
         //Headbob
-        if (sliding) {
+        if (Sliding) {
             HeadBob(movementCounter, .15f, .075f);
             weaponParent.localPosition = Vector3.Lerp(weaponParent.localPosition, targetWeaponBobPosition, Time.deltaTime * 10f);
         }
@@ -279,13 +479,13 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
             idleCounter += Time.deltaTime * 2f;
             weaponParent.localPosition = Vector3.Lerp(weaponParent.localPosition, targetWeaponBobPosition, Time.deltaTime * 2f);
         }
-        else if (!isSprinting && !crouched)
+        else if (!isSprinting && !Crouched)
         {
             HeadBob(movementCounter, .035f, .035f);
             movementCounter += Time.deltaTime * 3f;
             weaponParent.localPosition = Vector3.Lerp(weaponParent.localPosition, targetWeaponBobPosition, Time.deltaTime * 6f);
         }
-        else if (crouched)
+        else if (Crouched)
         {
             HeadBob(movementCounter, .002f, .002f);
             movementCounter += Time.deltaTime * 3f;
@@ -295,127 +495,35 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         {
             HeadBob(movementCounter, .15f, .075f);
             movementCounter += Time.deltaTime * 7f;
-        weaponParent.localPosition = Vector3.Lerp(weaponParent.localPosition, targetWeaponBobPosition, Time.deltaTime * 10f);
+            weaponParent.localPosition = Vector3.Lerp(weaponParent.localPosition, targetWeaponBobPosition, Time.deltaTime * 10f);
         }
+
+        UpdateCamera(isSprinting);
 
         //UI Refreshes
         RefreshHealthBar();
         weapon.RefreshAmmo(uiAmmo);
-
     }
 
-
-    // Update is called once per frame
-    void FixedUpdate()
+    // Field of view and camera height: wider while sprinting and sliding, lower while crouching
+    private void UpdateCamera(bool isSprinting)
     {
-        if(!photonView.IsMine) return;
-
         // Picks up changes made in the settings menu
         baseFOV = GameSettings.Fov;
+        float t = Time.deltaTime;
 
-        //Axis'
-        Vector2 moveInput = GameInput.MoveValue;
-        float hmove = moveInput.x;
-        float vmove = moveInput.y;
-
-        //Controls
-        bool sprint = GameInput.Held(GameInput.Sprint);
-        bool jump = GameInput.Held(GameInput.Jump);
-        bool slide = slideRequested;
-        slideRequested = false;
-
-
-        //States
-        bool isgrounded = Physics.Raycast(groundDetector.position, Vector3.down, 0.1f,ground );
-        IsGrounded = isgrounded;
-        Vector3 horizontal = rig.linearVelocity;
-        horizontal.y = 0f;
-        float walkSpeed = speed * Time.fixedDeltaTime;
-        MoveSpeedRatio = walkSpeed > 0f ? Mathf.Clamp01(horizontal.magnitude / walkSpeed) : 0f;
-        bool isJumping = jump && isgrounded;
-        bool isSprinting = sprint && vmove > 0 && !isJumping && isgrounded;
-        bool isSliding = isSprinting && slide && !sliding;
-
-        if (Pause.paused)
+        if (Sliding)
         {
-            hmove = 0f;
-            vmove = 0f;
-            sprint = false;
-            jump = false;
-            isgrounded = false;
-            isJumping = false;
-            isSprinting = false;
-            isSliding = false;
-            slide = false;
-        }
-
-        Vector3 direction = Vector3.zero;
-        float adjustedSpeed = speed;
-
-        //Movement
-        if (!sliding)
-        {
-
-        direction = new Vector3(hmove, 0, vmove);
-        direction.Normalize();
-            direction = transform.TransformDirection(direction);
-
-            if (isSprinting)
-            {
-                if (crouched) photonView.RPC("SetCrouch", RpcTarget.All, false);
-                adjustedSpeed *= sprintModifier;
-            }else if (crouched){
-                adjustedSpeed *= crouchModifier;
-            }
-
-            // Heavier guns, and aiming, slow you down
-            adjustedSpeed *= weapon.MoveSpeedMultiplier();
-
+            normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, baseFOV * sprintFOVModifier * 1.25f, t * 8);
+            normalCam.transform.localPosition = Vector3.Lerp(normalCam.transform.localPosition, origin + Vector3.down * slideAmount, t * 6f);
         }
         else
         {
-            direction = slideDirection;
-            adjustedSpeed *= slideModifier;
-            slideTime -= Time.deltaTime;
-            if (slideTime <= 0)
-            {
-                if (crouched) photonView.RPC("SetCrouch", RpcTarget.All, false);
-                sliding = false;
-                weaponParentCurrentPosition += Vector3.up * (slideAmount - crouchAmount);
-            }
-        }
+            if (isSprinting) { normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, baseFOV * sprintFOVModifier, t * 8); }
+            else { normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, baseFOV, t * 8); }
 
-        Vector3 targetVelocity = direction * adjustedSpeed * Time.deltaTime;
-        targetVelocity.y = rig.linearVelocity.y;
-
-        rig.linearVelocity = targetVelocity;
-
-        //Sliding
-        if (isSliding)
-        {
-            sliding = true;
-            slideDirection = direction;
-            slideTime = lengthOfSlide;
-            // Adjust cam
-            weaponParentCurrentPosition += Vector3.down * (slideAmount - crouchAmount);
-            if (!crouched) photonView.RPC("SetCrouch", RpcTarget.All, true);
-
-        }
-
-        //Camera stuff
-        if (sliding)
-        {
-            normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, baseFOV * sprintFOVModifier * 1.25f, Time.deltaTime * 8);
-            normalCam.transform.localPosition = Vector3.Lerp(normalCam.transform.localPosition, origin + Vector3.down * slideAmount, Time.deltaTime * 6f);
-        }
-        else{
-
-         if (isSprinting) { normalCam.fieldOfView =  Mathf.Lerp(normalCam.fieldOfView,baseFOV * sprintFOVModifier, Time.deltaTime * 8) ; }
-        else { normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, baseFOV, Time.deltaTime * 8); }
-
-            if (crouched) { normalCam.transform.localPosition = Vector3.Lerp(normalCam.transform.localPosition, origin + Vector3.down * crouchAmount, Time.deltaTime * 6f); }
-            else { normalCam.transform.localPosition = Vector3.Lerp(normalCam.transform.localPosition, origin, Time.deltaTime * 6f); }
-
+            if (Crouched) { normalCam.transform.localPosition = Vector3.Lerp(normalCam.transform.localPosition, origin + Vector3.down * crouchAmount, t * 6f); }
+            else { normalCam.transform.localPosition = Vector3.Lerp(normalCam.transform.localPosition, origin, t * 6f); }
         }
 
         if (weapon.isAiming)
@@ -424,12 +532,11 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
             if (gun != null && gun.scopeFov > 0f)
             {
                 // Scoped guns zoom to their own field of view
-                normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, gun.scopeFov, Time.deltaTime * 15f);
+                normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, gun.scopeFov, t * 15f);
             }
             else
             {
-            normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, baseFOV / 4f, Time.deltaTime * 8);
-
+                normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, baseFOV / 4f, t * 8);
             }
         }
 
@@ -439,54 +546,42 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
             Gun currentGun = weapon.CurrentGun;
             bool scoped = weapon.isAiming && currentGun != null && currentGun.scopeViewmodelFov > 0f;
             float targetFov = scoped ? currentGun.scopeViewmodelFov : viewmodelFov;
-            viewmodelCam.fieldOfView = Mathf.Lerp(viewmodelCam.fieldOfView, targetFov, Time.deltaTime * 15f);
+            viewmodelCam.fieldOfView = Mathf.Lerp(viewmodelCam.fieldOfView, targetFov, t * 15f);
         }
     }
 
-    #endregion
-
-    #region Private Methods
-
+    // Other players' guns tilt up and down with where they look
     private void RefreshMultiplayerState()
     {
-        float cacheEulY = weaponParent.localEulerAngles.y;
-
-        Quaternion targetRotation = Quaternion.identity * Quaternion.AngleAxis(aimAngle, Vector3.right);
-        weaponParent.rotation = Quaternion.Slerp(weaponParent.rotation, targetRotation, Time.deltaTime * 8f);
-
-        Vector3 finalRotation = weaponParent.localEulerAngles;
-        finalRotation.y = cacheEulY;
-
-        weaponParent.localEulerAngles = finalRotation;
+        Quaternion targetRotation = Quaternion.AngleAxis(-Pitch, Vector3.right);
+        weaponParent.localRotation = Quaternion.Slerp(weaponParent.localRotation, targetRotation, Time.deltaTime * 8f);
     }
 
-
-    [PunRPC]
-    void SetCrouch(bool state)
+    // Shows the standing or crouching body to match the networked crouch
+    private void ApplyCrouchVisuals(bool force)
     {
-        if (crouched == state) return;
+        bool crouched = Crouched;
+        if (!force && crouched == appliedCrouch) return;
+        appliedCrouch = crouched;
 
-        crouched = state;
+        standingCollider.SetActive(!crouched);
+        standingColliderHead.SetActive(!crouched);
+        crouchingCollider.SetActive(crouched);
+        crouchingColliderHead.SetActive(crouched);
 
-        if (crouched)
-        {
-            standingCollider.SetActive(false);
-            standingColliderHead.SetActive(false);
-            crouchingCollider.SetActive(true);
-            crouchingColliderHead.SetActive(true);
-            weaponParentCurrentPosition += Vector3.down * crouchAmount;
+        // Prediction can change the crouch on this machine before the host does; keep the capsule in step
+        if (!HasStateAuthority && !IsLocal) SetControllerShape(crouched);
+    }
 
-        }
-        else
-        {
-            standingCollider.SetActive(true);
-            standingColliderHead.SetActive(true);
-            crouchingCollider.SetActive(false);
-            crouchingColliderHead.SetActive(false);
-            weaponParentCurrentPosition -= Vector3.down * crouchAmount;
-
-        }
-
+    // The name above the player's head comes from the host's scoreboard
+    private void RefreshNameTag()
+    {
+        if (playerUsername == null || manager == null) return;
+        string name = manager.GetPlayerName(ActorId);
+        if (name == shownName) return;
+        shownName = name;
+        playerUsername.text = name;
+        playerProfile = new ProfileData(name, manager.GetPlayerLevel(ActorId), 0, 150f, 150f);
     }
 
     void HeadBob(float z, float xIntensity, float yIntensity)
@@ -501,76 +596,87 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
 
     void RefreshHealthBar()
     {
-        float healthRatio = (float)currentHealth / (float)maxHealth;
+        if (uiHealthBar == null) return;
+        float healthRatio = (float)Health / (float)maxHealth;
         uiHealthBar.localScale = new Vector3(healthRatio, 1, 1);
     }
 
-    [PunRPC]
-    private void SyncProfile(string username, int level, int xp)
-    {
-        playerProfile = new ProfileData(username, level,xp,150f, 150f);
-        playerUsername.text = playerProfile.username;
-    }
     #endregion
 
+    #region Damage
 
-    #region Public Methods
-
-    // bulletDirection and hitOffset (where the bullet hit, relative to this player's position) throw the ragdoll on a kill.
-    // Leave them out for damage that isn't a bullet: the ragdoll is then knocked away from the attacker.
-    public void TakeDamage(int damage, int actor, string weaponName, bool headshot, Vector3 bulletDirection = default, Vector3 hitOffset = default)
+    // Host only. Applies a hit and reports whether it killed. bulletDirection and hitOffset (where
+    // the bullet hit, relative to this player's position) throw the ragdoll on a kill. Leave them out
+    // for damage that isn't a bullet: the ragdoll is then knocked away from the attacker.
+    public bool TakeDamage(int damage, PlayerRef attacker, string weaponName, bool headshot, Vector3 bulletDirection = default, Vector3 hitOffset = default)
     {
-        if (photonView.IsMine)
+        if (!HasStateAuthority || Dead || IsProtected) return false;
+
+        RegenDelayTimer = TickTimer.CreateFromSeconds(Runner, regenDelay);
+        RegenBuffer = 0f;
+        Health = Mathf.Max(0, Health - damage);
+
+        Player attackerPlayer = FindPlayer(attacker);
+        RPC_Damaged((float)damage / maxHealth, attackerPlayer != null ? attackerPlayer.transform.position : transform.position, attackerPlayer != null && attackerPlayer != this);
+
+        if (Health > 0) return false;
+
+        Dead = true;
+
+        // Thrown along the killing bullet's path, from the spot it hit. Without a bullet: away from the
+        // killer, or backwards for a fall or a suicide.
+        Vector3 hitDirection = bulletDirection;
+        if (hitDirection == Vector3.zero)
         {
-            if (isDead || isProtected) return;
-
-            lastDamageTime = Time.time;
-            regenBuffer = 0f;
-
-            currentHealth -= damage;
-            if (currentHealth < 0) currentHealth = 0;
-
-            RefreshHealthBar();
-
-            // Feedback: screen flash, direction to the attacker and a small flinch
-            Player attacker = FindPlayerByActor(actor);
-            FeedbackUI.Damaged((float)damage / maxHealth, attacker != null ? attacker.transform.position : (Vector3?)null, transform);
-            if (look != null) look.AddRecoil(UnityEngine.Random.Range(0.5f, 1.5f), UnityEngine.Random.Range(-1f, 1f));
-
-            if (currentHealth <= 0)
+            hitDirection = -transform.forward;
+            if (attackerPlayer != null && attackerPlayer != this)
             {
-                isDead = true;
-
-                // Thrown along the killing bullet's path, from the spot it hit. Without a bullet: away from the
-                // killer, or backwards for a fall or a suicide.
-                Vector3 hitDirection = bulletDirection;
-                if (hitDirection == Vector3.zero)
-                {
-                    hitDirection = -transform.forward;
-                    if (attacker != null && attacker != this)
-                    {
-                        hitDirection = transform.position - attacker.transform.position;
-                        hitDirection.y = 0f;
-                    }
-                }
-                if (hitOffset == Vector3.zero) hitOffset = Vector3.up * (headshot ? 0.75f : 0.3f);
-                // Harder hits throw the body further: about 3 m/s for a machine gun bullet, 6 m/s for a sniper round
-                float knockback = 2f + 4f * Mathf.Clamp01(damage / 800f);
-                manager.SpawnRagdoll_S(transform.position, transform.rotation, rig.linearVelocity, hitDirection.normalized, hitOffset, knockback, headshot, photonView.OwnerActorNr);
-
-                manager.DropAmmo_S(GroundPosition());
-                manager.Spawn();
-                manager.ChangeStat_S(PhotonNetwork.LocalPlayer.ActorNumber, PlayerStat.Deaths, 1);
-
-                if (actor >= 0) manager.ChangeStat_S(actor, PlayerStat.Kills, 1);
-
-                manager.KillFeed_S(actor, PhotonNetwork.LocalPlayer.ActorNumber, weaponName, headshot);
-                FeedbackUI.ShowDeath(manager.GetPlayerName(actor), weaponName, headshot, manager.respawnTime);
-
-                PhotonNetwork.Destroy(gameObject);
+                hitDirection = transform.position - attackerPlayer.transform.position;
+                hitDirection.y = 0f;
             }
         }
+        if (hitOffset == Vector3.zero) hitOffset = Vector3.up * (headshot ? 0.75f : 0.3f);
+        // Harder hits throw the body further: about 3 m/s for a machine gun bullet, 6 m/s for a sniper round
+        float knockback = 2f + 4f * Mathf.Clamp01(damage / 800f);
+
+        if (manager != null)
+        {
+            manager.SpawnRagdoll(transform.position, transform.rotation, Velocity, hitDirection.normalized, hitOffset, knockback, headshot, ActorId);
+            manager.DropAmmo(GroundPosition());
+            manager.PlayerKilled(Object.InputAuthority, attacker, weaponName, headshot);
+        }
+
+        Runner.Despawn(Object);
+        return true;
     }
+
+    // On the victim's own game: screen flash, direction to the attacker and a small flinch
+    [Rpc(RpcSources.StateAuthority, RpcTargets.InputAuthority)]
+    private void RPC_Damaged(float fraction, Vector3 attackerPosition, NetworkBool hasAttacker)
+    {
+        FeedbackUI.Damaged(fraction, hasAttacker ? attackerPosition : (Vector3?)null, transform);
+        if (look != null) look.AddRecoil(Random.Range(0.5f, 1.5f), Random.Range(-1f, 1f));
+    }
+
+    private void RegenerateHealth()
+    {
+        if (Health >= maxHealth || !RegenDelayTimer.ExpiredOrNotRunning(Runner)) return;
+
+        float buffer = RegenBuffer + regenPerSecond * Runner.DeltaTime;
+        int amount = (int)buffer;
+        RegenBuffer = buffer - amount;
+        if (amount > 0) Health = Mathf.Min(maxHealth, Health + amount);
+    }
+
+    public void EndSpawnProtection()
+    {
+        if (Object == null || !Object.IsValid || !ProtectionTimer.IsRunning) return;
+        ProtectionTimer = TickTimer.None;
+    }
+
+    #endregion
+
+    #region Helpers
 
     // Colours this player's name tag and body by team. Runs again whenever the team list changes.
     private void RefreshTeamVisuals()
@@ -579,7 +685,7 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         teamVisualsVersion = Manager.TeamsVersion;
 
         Manager m = Manager.Instance;
-        int team = m != null ? m.GetTeam(photonView.OwnerActorNr) : -1;
+        int team = m != null ? m.GetTeam(ActorId) : -1;
         if (team < 0) return;
 
         Color teamColor = Manager.TeamColors[team % 2];
@@ -660,18 +766,6 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
 #endif
     }
 
-    private void RegenerateHealth()
-    {
-        if (isDead || currentHealth >= maxHealth || Time.time - lastDamageTime < regenDelay) return;
-
-        regenBuffer += regenPerSecond * Time.deltaTime;
-        int amount = (int)regenBuffer;
-        if (amount <= 0) return;
-
-        regenBuffer -= amount;
-        currentHealth = Mathf.Min(maxHealth, currentHealth + amount);
-    }
-
     // Where an ammo box dropped by this player should rest
     private Vector3 GroundPosition()
     {
@@ -683,18 +777,10 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         return transform.position;
     }
 
-    public void EndSpawnProtection()
-    {
-        if (!isProtected) return;
-        isProtected = false;
-        protectionLeft = 0f;
-        if (photonView.IsMine) FeedbackUI.SpawnProtection(0f);
-    }
-
     // Other players see a protected player blink
     private void UpdateProtectionBlink()
     {
-        if (isProtected)
+        if (IsProtected)
         {
             if (blinkRenderers == null)
             {
@@ -721,18 +807,16 @@ public class Player : MonoBehaviourPunCallbacks, IPunObservable
         }
     }
 
-    private static Player FindPlayerByActor(int actor)
+    // The body of the given player, or null if they're dead or gone
+    public static Player FindPlayer(PlayerRef player)
     {
+        if (player == PlayerRef.None) return null;
         foreach (Player p in FindObjectsByType<Player>(FindObjectsSortMode.None))
         {
-            if (p.photonView.OwnerActorNr == actor) return p;
+            if (p.Object != null && p.Object.IsValid && p.Object.InputAuthority == player) return p;
         }
         return null;
     }
 
-
-
-
     #endregion
-
 }

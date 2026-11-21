@@ -1,19 +1,20 @@
 using UnityEngine;
 
-// An ammo box lying on the ground. Every client creates its own copy when the
-// Manager receives a SpawnPickup event. When the local player walks over it,
-// the Manager asks the master client for it, so only one player can take it.
+// An ammo box lying on the ground. Every client creates its own copy when the host tells
+// it a box was dropped. The host checks who walks over it (Manager.CheckPickups), so only
+// one player can take it.
 public class AmmoPickup : MonoBehaviour
 {
     public int id;
 
     private Manager manager;
     private float expiresAt;
-    private float nextClaimTime;
     private Vector3 basePosition;
 
-    private const float PickupRadius = 1.6f;
-    private const float ClaimRetryDelay = 1f;
+    public const float PickupRadius = 1.6f;
+
+    // Where the box rests, without its bobbing
+    public Vector3 BasePosition => basePosition;
 
     public static AmmoPickup Create(int id, Vector3 position, Manager manager, float lifetime)
     {
@@ -78,17 +79,5 @@ public class AmmoPickup : MonoBehaviour
         // Spin and bob
         transform.position = basePosition + Vector3.up * (Mathf.Sin(Time.time * 2.5f) * 0.1f);
         transform.Rotate(0f, 90f * Time.deltaTime, 0f, Space.World);
-
-        Player local = Player.Local;
-        if (local == null || manager == null || Time.time < nextClaimTime) return;
-
-        Weapon weapon = local.GetComponent<Weapon>();
-        if (weapon == null || !weapon.NeedsAmmo()) return;
-
-        if (Vector3.Distance(local.transform.position, basePosition) <= PickupRadius)
-        {
-            nextClaimTime = Time.time + ClaimRetryDelay;
-            manager.ClaimPickup_S(id);
-        }
     }
 }

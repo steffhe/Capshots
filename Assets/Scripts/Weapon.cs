@@ -1,10 +1,14 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using Photon.Pun;
 using UnityEngine.UI;
+using Fusion;
 
-public class Weapon : MonoBehaviourPunCallbacks
+// A player's guns. Firing, ammo, reloading and switching run in FixedUpdateNetwork from the
+// player's input: the host decides what is hit (with lag compensation, so shots are checked against
+// where targets were on the shooter's screen) and the shooter's own game predicts the rest, so
+// shooting feels instant. Tracers, sounds and the gun model are local presentation.
+public class Weapon : NetworkBehaviour
 {
     #region Variables
     public Gun[] loadout;
@@ -12,7 +16,6 @@ public class Weapon : MonoBehaviourPunCallbacks
     public GameObject bulletholePrefab;
     public GameObject hitmark;
     public LayerMask canBeShot;
-    public bool isAiming = false;
     public LineRenderer lineRend;
 
     public GameObject weaponImagePrefab;
@@ -31,45 +34,66 @@ public class Weapon : MonoBehaviourPunCallbacks
     // Each pickup adds this many clips of reserve ammo to every gun
     public int clipsPerPickup = 2;
 
+    private const int MaxGuns = 4;
 
-    private float currentCooldown;
-    public int currentIndex;
     private GameObject currentWeapon;
-    private bool isReloading;
-    private Coroutine reloadRoutine;
-    private bool isBursting;
-    private Coroutine burstRoutine;
+    private int shownIndex = -1;
 
     // Looked up once instead of every shot or frame
     private Player player;
     private Look look;
-    private Transform playerCamera;
     private Image hitmarkImage;
     private readonly List<Image> arsenalImages = new List<Image>();
     private Transform weaponAnchor, stateAds, stateHip;
+    private Coroutine hitmarkRoutine;
 
-    public Gun CurrentGun => loadout != null && currentIndex >= 0 && currentIndex < loadout.Length ? loadout[currentIndex] : null;
+    public int EquippedIndex => Object != null && Object.IsValid ? Equipped : 0;
+    public Gun CurrentGun => loadout != null && EquippedIndex >= 0 && EquippedIndex < loadout.Length ? loadout[EquippedIndex] : null;
+    public bool isAiming => Object != null && Object.IsValid && Aiming;
     #endregion
 
-    #region MonoBehaviour Callbacks
+    #region Networked state
+
+    [Networked, OnChangedRender(nameof(OnEquippedChanged))] private int Equipped { get; set; }
+    [Networked, Capacity(MaxGuns)] private NetworkArray<int> Clips => default;
+    [Networked, Capacity(MaxGuns)] private NetworkArray<int> Stashes => default;
+    [Networked] private TickTimer FireCooldown { get; set; }
+    [Networked] private TickTimer ReloadTimer { get; set; }
+    [Networked] private TickTimer BurstTimer { get; set; }
+    [Networked] private int BurstLeft { get; set; }
+    [Networked] private NetworkBool Aiming { get; set; }
+    [Networked] private NetworkButtons PreviousButtons { get; set; }
+    // Counts every shot, so each one gets its own (but on every machine the same) random spread
+    [Networked] private int ShotCount { get; set; }
+
+    #endregion
+
+    #region Fusion Callbacks
+
     void Awake()
     {
-        // Work on per-player copies so ammo state never modifies the shared Gun assets
-        for (int i = 0; i < loadout.Length; i++)
-        {
-            loadout[i] = Instantiate(loadout[i]);
-        }
-
         player = GetComponent<Player>();
         look = GetComponent<Look>();
-        playerCamera = transform.Find("Cameras/Normal Camera");
+        if (loadout.Length > MaxGuns) Debug.LogError($"Weapon supports at most {MaxGuns} guns");
     }
 
-    // Start is called before the first frame update
-    void Start()
+    public override void Spawned()
     {
-        if (photonView.IsMine)
+        if (HasStateAuthority)
         {
+            for (int i = 0; i < loadout.Length && i < MaxGuns; i++)
+            {
+                Clips.Set(i, loadout[i].clipSize);
+                Stashes.Set(i, loadout[i].ammo);
+            }
+            Equipped = 0;
+        }
+
+        if (HasInputAuthority)
+        {
+            // The HUD is hidden while the local player has no body, and GameObject.Find can't see hidden objects
+            if (Manager.Instance != null && Manager.Instance.Hud != null) Manager.Instance.Hud.SetActive(true);
+
             GameObject arsenal = GameObject.Find("HUD/Arsenal");
             foreach (Transform child in arsenal.transform)
             {
@@ -79,8 +103,6 @@ public class Weapon : MonoBehaviourPunCallbacks
             int ind = 0;
             foreach (Gun gun in loadout)
             {
-                gun.Initialize();
-
                 Vector3 position = arsenal.transform.position + Vector3.up * (ind * 120f);
                 GameObject weaponimageObject = Instantiate(weaponImagePrefab, position, arsenal.transform.rotation, arsenal.transform);
                 weaponimageObject.name = "WeaponImage" + ind.ToString();
@@ -96,77 +118,87 @@ public class Weapon : MonoBehaviourPunCallbacks
             hitmark = GameObject.Find("HUD/Crosshair/Hitmark");
             if (hitmark != null) hitmarkImage = hitmark.GetComponent<Image>();
         }
-        photonView.RPC("Equip", RpcTarget.All, 0);
 
+        ShowGun(Equipped);
     }
 
-    // Update is called once per frame
+    public override void FixedUpdateNetwork()
+    {
+        if (player.IsDead) return;
+        if (!GetInput(out PlayerInputData input)) return;
+
+        NetworkButtons pressed = input.Buttons.GetPressed(PreviousButtons);
+        PreviousButtons = input.Buttons;
+
+        Aiming = input.Buttons.IsSet(InputButton.Aim);
+
+        // Switching guns cancels a reload or burst in progress
+        int slot = input.WeaponSlot - 1;
+        if (slot >= 0 && slot < loadout.Length && slot != Equipped)
+        {
+            Equipped = slot;
+            ReloadTimer = TickTimer.None;
+            BurstLeft = 0;
+        }
+
+        Gun gun = loadout[Equipped];
+
+        if (ReloadTimer.Expired(Runner))
+        {
+            ReloadTimer = TickTimer.None;
+            FinishReload(Equipped);
+        }
+
+        if (BurstLeft > 0)
+        {
+            // The rest of a burst fires on its own, one shot every fireRate seconds
+            if (BurstTimer.ExpiredOrNotRunning(Runner))
+            {
+                if (Clips[Equipped] > 0) FireBurstShot(gun, input);
+                else BurstLeft = 0;
+            }
+        }
+        else if (!ReloadTimer.IsRunning)
+        {
+            bool fireInput = gun.burst == 1 ? input.Buttons.IsSet(InputButton.Fire) : pressed.IsSet(InputButton.Fire);
+
+            if (fireInput && FireCooldown.ExpiredOrNotRunning(Runner))
+            {
+                if (Clips[Equipped] <= 0)
+                {
+                    StartReload();
+                }
+                else if (gun.burst == 2)
+                {
+                    BurstLeft = Mathf.Max(1, gun.burstCount);
+                    FireBurstShot(gun, input);
+                }
+                else
+                {
+                    Fire(input);
+                }
+            }
+
+            if (pressed.IsSet(InputButton.Reload))
+            {
+                StartReload();
+            }
+        }
+    }
+
+    // Presentation only: gun model position, aiming and the reload pose
     void Update()
     {
-        if (Pause.paused && photonView.IsMine) return;
+        if (Object == null || !Object.IsValid || currentWeapon == null) return;
 
-        int weaponSwitch = photonView.IsMine ? GameInput.WeaponSwitch : 0;
-        if (weaponSwitch > 0) // forward
-        {
-            currentIndex = Mathf.Min(currentIndex + 1, loadout.Length - 1);
-            photonView.RPC("Equip", RpcTarget.All, currentIndex);
-        }
-        else if (weaponSwitch < 0) // backwards
-        {
-            currentIndex = Mathf.Max(currentIndex - 1, 0);
-            photonView.RPC("Equip", RpcTarget.All, currentIndex);
-        }
+        // The gun is put away while reloading
+        bool reloading = ReloadTimer.IsRunning;
+        if (currentWeapon.activeSelf == reloading) currentWeapon.SetActive(!reloading);
 
-        if (photonView.IsMine && GameInput.Pressed(GameInput.Weapon1))
-        {
-            photonView.RPC("Equip", RpcTarget.All, 0);
-        }
-        if (photonView.IsMine && GameInput.Pressed(GameInput.Weapon2))
-        {
-            photonView.RPC("Equip", RpcTarget.All, 1);
-        }
-        if (photonView.IsMine && GameInput.Pressed(GameInput.Weapon3))
-        {
-            photonView.RPC("Equip", RpcTarget.All, 2);
-        }
+        if (HasInputAuthority && !Pause.paused) Aim(isAiming);
 
-        if (currentWeapon != null)
-        {
-           if (photonView.IsMine)
-            {
-
-         Aim(GameInput.Held(GameInput.Aim));
-                bool fireInput = loadout[currentIndex].burst == 1 ? GameInput.Held(GameInput.Fire) : GameInput.Pressed(GameInput.Fire);
-
-                if (!isReloading && !isBursting)
-                {
-                    if (fireInput && currentCooldown <= 0)
-                    {
-                        if (loadout[currentIndex].burst == 2)
-                        {
-                            burstRoutine = StartCoroutine(BurstFire(loadout[currentIndex]));
-                        }
-                        else if (loadout[currentIndex].FireBullet()) { Fire(); }
-                        else
-                        {
-                            StartReload();
-                        }
-                    }
-
-                    if (GameInput.Pressed(GameInput.Reload))
-                    {
-                        StartReload();
-                    }
-                }
-
-                //cooldown
-                if (currentCooldown > 0) currentCooldown -= Time.deltaTime;
-            }
         //weapon position elasticity
-        currentWeapon.transform.localPosition = Vector3.Lerp(currentWeapon.transform.localPosition, Vector3.zero,Time.deltaTime * 4f);
-        }
-
-
+        currentWeapon.transform.localPosition = Vector3.Lerp(currentWeapon.transform.localPosition, Vector3.zero, Time.deltaTime * 4f);
     }
     #endregion
 
@@ -174,110 +206,234 @@ public class Weapon : MonoBehaviourPunCallbacks
 
     public bool NeedsAmmo()
     {
-        foreach (Gun gun in loadout)
+        for (int i = 0; i < loadout.Length; i++)
         {
-            if (gun.NeedsAmmo()) return true;
+            if (Stashes[i] < loadout[i].ammo) return true;
         }
         return false;
     }
 
+    // Host only: an ammo box was picked up
     public void AddAmmoPickup()
     {
-        foreach (Gun gun in loadout)
+        for (int i = 0; i < loadout.Length; i++)
         {
-            gun.AddAmmo(gun.clipSize * clipsPerPickup);
+            Stashes.Set(i, Mathf.Min(loadout[i].ammo, Stashes[i] + loadout[i].clipSize * clipsPerPickup));
         }
 
         // Reload straight away if the current gun is empty
-        if (loadout[currentIndex].GetClip() == 0 && !isBursting) StartReload();
+        if (Clips[Equipped] == 0 && BurstLeft == 0) StartReload();
     }
 
     public void RefreshAmmo(Text text)
     {
-        int clip = loadout[currentIndex].GetClip();
-        int stash = loadout[currentIndex].GetStash();
+        if (text == null || Object == null || !Object.IsValid) return;
+        text.text = Clips[Equipped].ToString("d2") + " / " + Stashes[Equipped].ToString("d2");
+    }
 
-        text.text = clip.ToString("d2") + " / " + stash.ToString("d2");
+    // How fast the player can move with the current gun, relative to normal
+    public float MoveSpeedMultiplier()
+    {
+        if (loadout == null || loadout.Length == 0) return 1f;
+        Gun gun = loadout[Equipped];
+        return gun.moveSpeedMultiplier * (Aiming ? gun.aimMoveSpeedMultiplier : 1f);
     }
     #endregion
 
-    #region Private Methods
+    #region Simulation
 
     void StartReload()
     {
-        if (isReloading || !loadout[currentIndex].CanReload()) return;
-        reloadRoutine = StartCoroutine(Reload(loadout[currentIndex]));
-        photonView.RPC("ReloadSound", RpcTarget.All, loadout[currentIndex].reloadTime);
+        Gun gun = loadout[Equipped];
+        if (ReloadTimer.IsRunning || Clips[Equipped] >= gun.clipSize || Stashes[Equipped] <= 0) return;
+
+        ReloadTimer = TickTimer.CreateFromSeconds(Runner, gun.reloadTime);
+
+        // Everyone nearby hears the reload: the reloading player straight away, others through the host
+        if (Runner.IsForward)
+        {
+            if (HasInputAuthority) PlayReloadSound(gun.reloadTime);
+            if (HasStateAuthority) RPC_ReloadSound(gun.reloadTime);
+        }
     }
 
-    // Runs on every client so everyone nearby hears the reload
-    [PunRPC]
-    void ReloadSound(float reloadTime)
+    void FinishReload(int index)
+    {
+        Gun gun = loadout[index];
+        int stash = Stashes[index] + Clips[index];
+        int clip = Mathf.Min(gun.clipSize, stash);
+        Clips.Set(index, clip);
+        Stashes.Set(index, stash - clip);
+    }
+
+    void FireBurstShot(Gun gun, PlayerInputData input)
+    {
+        Fire(input);
+        BurstLeft--;
+        BurstTimer = BurstLeft > 0 ? TickTimer.CreateFromSeconds(Runner, gun.fireRate) : TickTimer.None;
+    }
+
+    float CurrentBloom()
+    {
+        Gun gun = loadout[Equipped];
+        float bloom = gun.bloom;
+        if (Aiming) bloom /= Mathf.Max(1f, gun.aimBloomDivisor);
+
+        // Less accurate while moving, and much less while in the air
+        if (player != null)
+        {
+            bloom *= Mathf.Lerp(1f, gun.movingBloomMultiplier, player.MoveSpeedRatio);
+            if (!player.IsGrounded) bloom *= airborneBloomMultiplier;
+        }
+        return bloom;
+    }
+
+    // One shot. Runs on the host (which decides hits and damage) and is predicted on the shooter's
+    // own game (ammo, cooldown, tracer and sound without waiting for the host).
+    void Fire(PlayerInputData input)
+    {
+        Gun gun = loadout[Equipped];
+
+        Clips.Set(Equipped, Clips[Equipped] - 1);
+        FireCooldown = TickTimer.CreateFromSeconds(Runner, gun.fireRate);
+        ShotCount++;
+
+        // Shooting gives up spawn protection
+        player.EndSpawnProtection();
+
+        //bloom: the same random spread on every machine, from the shot number
+        Vector3 origin = player.EyePosition;
+        Quaternion view = Quaternion.Euler(-input.Pitch, input.Yaw, 0f);
+        float spread = CurrentBloom();
+        int seed = ShotCount * 7919 + (int)Object.Id.Raw * 104729;
+        Vector3 bloom = view * Vector3.forward * 1000f;
+        bloom += Spread(seed) * spread * (view * Vector3.up);
+        bloom += Spread(seed + 1) * spread * (view * Vector3.right);
+        bloom.Normalize();
+
+        Vector3 endPoint = origin + bloom * 1000f;
+        Vector3 hitNormal = Vector3.zero;
+        bool hitWorld = false;
+
+        // Scenery is hit with normal physics; players with their hitboxes, rewound to where they were
+        // on the shooter's screen. Player bodies' own colliders are left out.
+        int mask = (canBeShot.value & ~((1 << Layers.LocalPlayer) | (1 << Layers.RemotePlayer))) | (1 << Layers.Hitbox);
+        HitOptions options = HitOptions.IncludePhysX | HitOptions.IgnoreInputAuthority | HitOptions.SubtickAccuracy;
+
+        if (Runner.LagCompensation.Raycast(origin, bloom, 1000f, Object.InputAuthority, out LagCompensatedHit hit, mask, options, QueryTriggerInteraction.Ignore))
+        {
+            endPoint = hit.Point;
+            hitNormal = hit.Normal;
+
+            Player target = hit.Hitbox != null ? hit.Hitbox.Root.GetComponent<Player>() : null;
+            if (target != null)
+            {
+                // No friendly fire: teammates are hit like scenery, minus the bullet hole
+                bool friendly = Manager.Instance != null && !Manager.Instance.AreEnemies(player.ActorId, target.ActorId);
+                if (!friendly && HasStateAuthority && Runner.IsForward)
+                {
+                    bool headshot = IsHead(hit.Hitbox.transform);
+                    int damage = gun.DamageAt(hit.Distance, headshot);
+                    bool wasProtected = target.IsProtected;
+                    bool killed = target.TakeDamage(damage, Object.InputAuthority, gun.gunName, headshot, bloom, hit.Point - target.transform.position);
+                    // No hit feedback on spawn-protected players
+                    if (!wasProtected) RPC_HitConfirm(headshot, killed);
+                }
+            }
+            else
+            {
+                hitWorld = true;
+            }
+        }
+
+        if (Runner.IsForward)
+        {
+            if (HasInputAuthority)
+            {
+                PlayShotEffects(endPoint, hitNormal, hitWorld);
+
+                // Kick the view up and slightly sideways. Look recovers it over the next moments.
+                if (look != null)
+                {
+                    float kick = gun.recoil * cameraRecoilScale * (Aiming ? aimingRecoilMultiplier : 1f);
+                    look.AddRecoil(kick, Random.Range(-kick, kick) * 0.35f);
+                }
+            }
+            if (HasStateAuthority) RPC_ShotEffects(endPoint, hitNormal, hitWorld);
+        }
+    }
+
+    // A number from -1 to 1 that only depends on the seed
+    static float Spread(int seed)
+    {
+        unchecked
+        {
+            uint h = (uint)seed * 2654435761u;
+            h ^= h >> 13;
+            h *= 0x5bd1e995u;
+            h ^= h >> 15;
+            return h / (float)uint.MaxValue * 2f - 1f;
+        }
+    }
+
+    // The head hitbox sits on (or under) the object tagged Head
+    static bool IsHead(Transform hitbox)
+    {
+        for (Transform t = hitbox; t != null; t = t.parent)
+        {
+            if (t.CompareTag("Head")) return true;
+            if (t.GetComponent<HitboxRoot>() != null) break;
+        }
+        return false;
+    }
+
+    #endregion
+
+    #region RPCs
+
+    // The shooter's own game hears and sees its shots straight away, so skip them here
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_ShotEffects(Vector3 endPoint, Vector3 hitNormal, NetworkBool hitWorld)
+    {
+        if (HasInputAuthority) return;
+        PlayShotEffects(endPoint, hitNormal, hitWorld);
+    }
+
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_ReloadSound(float reloadTime)
+    {
+        if (HasInputAuthority) return;
+        PlayReloadSound(reloadTime);
+    }
+
+    // The host confirms a hit to the shooter: hit marker and sound
+    [Rpc(RpcSources.StateAuthority, RpcTargets.InputAuthority)]
+    private void RPC_HitConfirm(NetworkBool headshot, NetworkBool killed)
+    {
+        if (hitmarkRoutine != null) StopCoroutine(hitmarkRoutine);
+        hitmarkRoutine = StartCoroutine(HitPlayer(killed));
+        FeedbackUI.Hit(headshot);
+    }
+
+    #endregion
+
+    #region Presentation
+
+    void PlayReloadSound(float reloadTime)
     {
         PlayerSounds sounds = GetComponent<PlayerSounds>();
         if (sounds != null) sounds.PlayReload(reloadTime);
     }
 
-    IEnumerator BurstFire(Gun gun)
-    {
-        isBursting = true;
-        int shots = Mathf.Max(1, gun.burstCount);
-
-        for (int i = 0; i < shots; i++)
-        {
-            if (!gun.FireBullet())
-            {
-                // Out of ammo: reload only if the trigger pull didn't fire anything
-                if (i == 0)
-                {
-                    isBursting = false;
-                    StartReload();
-                }
-                break;
-            }
-
-            Fire();
-            if (i < shots - 1) yield return new WaitForSeconds(gun.fireRate);
-        }
-
-        isBursting = false;
-        burstRoutine = null;
-    }
-
-    void CancelBurst()
-    {
-        if (burstRoutine != null) StopCoroutine(burstRoutine);
-        burstRoutine = null;
-        isBursting = false;
-    }
-
-    void CancelReload()
-    {
-        if (reloadRoutine != null) StopCoroutine(reloadRoutine);
-        reloadRoutine = null;
-        isReloading = false;
-    }
-
-    IEnumerator Reload(Gun gun)
-    {
-        isReloading = true;
-        currentWeapon.SetActive(false);
-        yield return new WaitForSeconds(gun.reloadTime);
-        gun.Reload();
-        currentWeapon.SetActive(true);
-        isReloading = false;
-        reloadRoutine = null;
-    }
-
     IEnumerator HitPlayer(bool targetIsDead)
     {
-
         if (hitmark == null) yield break;
 
         hitmarkImage.color = targetIsDead ? Color.red : Color.white;
         hitmark.SetActive(true);
         yield return new WaitForSeconds(0.5f);
         hitmark.SetActive(false);
+        hitmarkRoutine = null;
     }
 
     IEnumerator ShotLine(Vector3 hitPos)
@@ -287,27 +443,37 @@ public class Weapon : MonoBehaviourPunCallbacks
         lineRend.SetPosition(0, hitPos);
         lineRend.SetPosition(1, lineRend.gameObject.transform.position);
         yield return new WaitForSeconds(0.5f);
-        lineRend.enabled = false;
+        if (lineRend != null) lineRend.enabled = false;
         }
     }
 
-    [PunRPC]
-    void Equip(int ind)
+    void OnEquippedChanged()
     {
+        ShowGun(Equipped);
+    }
+
+    // Swaps the gun model to the equipped gun
+    void ShowGun(int ind)
+    {
+        if (ind == shownIndex && currentWeapon != null) return;
+
         if (currentWeapon != null)
         {
-            CancelReload();
-            CancelBurst();
-            // Equip runs on every client, so this also stops the reload sound everyone else hears
+            // Also stops the reload sound everyone else hears
             PlayerSounds sounds = GetComponent<PlayerSounds>();
             if (sounds != null) sounds.StopReload();
+            StopAllCoroutines();
+            hitmarkRoutine = null;
+            if (hitmark != null && HasInputAuthority) hitmark.SetActive(false);
             Destroy(currentWeapon);
         }
-        currentIndex = ind;
+        shownIndex = ind;
         GameObject newWeapon = Instantiate(loadout[ind].prefab, weaponParent.position, weaponParent.rotation, weaponParent) as GameObject;
         newWeapon.transform.localPosition = Vector3.zero;
         newWeapon.transform.localEulerAngles = Vector3.zero;
-        newWeapon.GetComponent<Sway>().isMine = photonView.IsMine;
+        newWeapon.GetComponent<Sway>().isMine = HasInputAuthority;
+        // Bullets never hit guns, and a collider here would block the player's own character controller
+        foreach (Collider c in newWeapon.GetComponentsInChildren<Collider>(true)) c.enabled = false;
 
         currentWeapon = newWeapon;
         lineRend = currentWeapon.GetComponentInChildren<LineRenderer>();
@@ -320,16 +486,16 @@ public class Weapon : MonoBehaviourPunCallbacks
         for (int i = 0; i < arsenalImages.Count; i++)
         {
             Color c = arsenalImages[i].color;
-            c.a = i == currentIndex ? 0.75f : 0.30f;
+            c.a = i == ind ? 0.75f : 0.30f;
             arsenalImages[i].color = c;
         }
     }
-  
+
     // The local player's gun goes on the LocalGun layer, which only the viewmodel camera draws, so it
     // never clips into walls. Other players' guns keep the Gun layer.
     void SetGunLayers(GameObject gunObject)
     {
-        if (!photonView.IsMine) return;
+        if (!HasInputAuthority) return;
 
         foreach (Transform t in gunObject.GetComponentsInChildren<Transform>(true))
         {
@@ -367,113 +533,19 @@ public class Weapon : MonoBehaviourPunCallbacks
         return tracer;
     }
 
-    float CurrentBloom()
+    void Aim(bool aiming)
     {
-        Gun gun = loadout[currentIndex];
-        float bloom = gun.bloom;
-        if (isAiming) bloom /= Mathf.Max(1f, gun.aimBloomDivisor);
-
-        // Less accurate while moving, and much less while in the air
-        if (player != null)
-        {
-            bloom *= Mathf.Lerp(1f, gun.movingBloomMultiplier, player.MoveSpeedRatio);
-            if (!player.IsGrounded) bloom *= airborneBloomMultiplier;
-        }
-        return bloom;
-    }
-
-    // How fast the player can move with the current gun, relative to normal
-    public float MoveSpeedMultiplier()
-    {
-        if (loadout == null || loadout.Length == 0) return 1f;
-        Gun gun = loadout[currentIndex];
-        return gun.moveSpeedMultiplier * (isAiming ? gun.aimMoveSpeedMultiplier : 1f);
-    }
-
-    void Aim(bool isAiming)
-    {
-        this.isAiming = isAiming;
         if (weaponAnchor == null || stateAds == null || stateHip == null) return;
 
-        Transform target = isAiming ? stateAds : stateHip;
-        weaponAnchor.position = Vector3.Lerp(weaponAnchor.position, target.position, Time.deltaTime * loadout[currentIndex].aimSpeed);
-
-    }
-    // Runs on the shooter only. The shooter does the raycast and applies damage, then tells
-    // everyone where the shot landed so all clients draw the same tracer and bullet hole.
-    void Fire()
-    {
-        Gun gun = loadout[currentIndex];
-        Transform spawn = playerCamera;
-
-        // Shooting gives up spawn protection
-        player.EndSpawnProtection();
-
-        //bloom
-        float spread = CurrentBloom();
-        Vector3 bloom = spawn.position + spawn.forward * 1000f;
-        bloom += Random.Range(-spread, spread) * spawn.up;
-        bloom += Random.Range(-spread, spread) * spawn.right;
-        bloom -= spawn.position;
-        bloom.Normalize();
-
-        //cooldown
-        currentCooldown = gun.fireRate;
-
-        Vector3 endPoint = spawn.position + bloom * 1000f;
-        Vector3 hitNormal = Vector3.zero;
-        bool hitWorld = false;
-
-        //raycast
-        RaycastHit hit;
-        if (Physics.Raycast(spawn.position, bloom, out hit, 1000f, canBeShot))
-        {
-            endPoint = hit.point;
-            hitNormal = hit.normal;
-
-            PhotonView target = hit.collider.gameObject.layer == Layers.RemotePlayer ? hit.collider.transform.root.gameObject.GetPhotonView() : null;
-            // No friendly fire: teammates are hit like scenery, minus the bullet hole
-            bool friendly = target != null && Manager.Instance != null && !Manager.Instance.AreEnemies(photonView.OwnerActorNr, target.OwnerActorNr);
-
-            if (target != null && target.Owner != null && !friendly)
-            {
-                bool headshot = hit.collider.gameObject.CompareTag("Head");
-                int damage = gun.DamageAt(hit.distance, headshot);
-
-                Player targetPlayer = target.GetComponent<Player>();
-                // No hit feedback on spawn-protected players. The damage is still sent: the target decides.
-                if (!targetPlayer.IsProtected)
-                {
-                    StopCoroutine("HitPlayer");
-                    bool targetIsDead = targetPlayer.currentHealth - damage <= 0;
-                    StartCoroutine("HitPlayer", targetIsDead);
-                    FeedbackUI.Hit(headshot);
-                }
-
-                // Send which gun hit and whether it was a headshot, not a damage number: the victim works out the damage itself.
-                // The bullet's direction and where on the body it hit are only used to throw the ragdoll on a kill.
-                target.RPC("TakeDamage", target.Owner, currentIndex, headshot, hit.distance, bloom, hit.point - target.transform.position);
-            }
-
-            hitWorld = hit.collider.gameObject.layer != Layers.RemotePlayer;
-        }
-
-        photonView.RPC("ShotEffects", RpcTarget.All, endPoint, hitNormal, hitWorld);
-
-        // Kick the view up and slightly sideways. Look recovers it over the next moments.
-        if (look != null)
-        {
-            float kick = gun.recoil * cameraRecoilScale * (isAiming ? aimingRecoilMultiplier : 1f);
-            look.AddRecoil(kick, Random.Range(-kick, kick) * 0.35f);
-        }
+        Transform target = aiming ? stateAds : stateHip;
+        weaponAnchor.position = Vector3.Lerp(weaponAnchor.position, target.position, Time.deltaTime * loadout[EquippedIndex].aimSpeed);
     }
 
-    // Runs on every client: sound, tracer, bullet hole and gun kick for a shot.
-    [PunRPC]
-    void ShotEffects(Vector3 endPoint, Vector3 hitNormal, bool hitWorld)
+    // Sound, tracer, bullet hole and gun kick for a shot
+    void PlayShotEffects(Vector3 endPoint, Vector3 hitNormal, bool hitWorld)
     {
         PlayerSounds sounds = GetComponent<PlayerSounds>();
-        if (sounds != null) sounds.PlayShot(loadout[currentIndex]);
+        if (sounds != null) sounds.PlayShot(loadout[EquippedIndex]);
 
         StartCoroutine(ShotLine(endPoint));
         MuzzleFlash();
@@ -488,8 +560,8 @@ public class Weapon : MonoBehaviourPunCallbacks
         //gun fx
         if (currentWeapon != null)
         {
-            currentWeapon.transform.Rotate(-loadout[currentIndex].recoil, 0, 0);
-            currentWeapon.transform.position -= currentWeapon.transform.forward * loadout[currentIndex].kickback;
+            currentWeapon.transform.Rotate(-loadout[EquippedIndex].recoil, 0, 0);
+            currentWeapon.transform.position -= currentWeapon.transform.forward * loadout[EquippedIndex].kickback;
         }
     }
 
@@ -510,22 +582,5 @@ public class Weapon : MonoBehaviourPunCallbacks
 
         Destroy(flash, 0.04f);
     }
-
-    [PunRPC]
-    private void TakeDamage(int gunIndex, bool headshot, float distance, Vector3 bulletDirection, Vector3 hitOffset, PhotonMessageInfo info)
-    {
-        if (gunIndex < 0 || gunIndex >= loadout.Length || info.Sender == null) return;
-        // The victim checks teams too, so a modified client can't damage teammates
-        if (Manager.Instance != null && !Manager.Instance.AreEnemies(info.Sender.ActorNumber, photonView.OwnerActorNr)) return;
-
-        // Damage comes from this game's own gun data. A wrong distance can only lower it, never raise it above full damage.
-        int damage = loadout[gunIndex].DamageAt(Mathf.Max(0f, distance), headshot);
-        // Cosmetic only, but keep it sane: a unit direction and a point on (or near) the body
-        bulletDirection = bulletDirection.sqrMagnitude > 0.0001f ? bulletDirection.normalized : Vector3.zero;
-        hitOffset = Vector3.ClampMagnitude(hitOffset, 1.5f);
-        player.TakeDamage(damage, info.Sender.ActorNumber, loadout[gunIndex].gunName, headshot, bulletDirection, hitOffset);
-    }
     #endregion
-
-
 }

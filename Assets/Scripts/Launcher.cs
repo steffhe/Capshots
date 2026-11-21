@@ -1,8 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using Photon.Pun;
-using Photon.Realtime;
+using Fusion;
 using UnityEngine.UI;
 
     [System.Serializable]
@@ -14,7 +13,7 @@ using UnityEngine.UI;
         public bool enabled = true;
     }
 
-public class Launcher : MonoBehaviourPunCallbacks
+public class Launcher : MonoBehaviour
 {
     public InputField usernameField;
     public InputField roomnameField;
@@ -37,7 +36,9 @@ public class Launcher : MonoBehaviourPunCallbacks
 
     public GameObject buttontRooms;
 
-    private List<RoomInfo> roomList;
+    private List<SessionInfo> roomList;
+    // True while a match is being started or joined, so repeated clicks don't start a second one
+    private bool starting;
 
     public MapData[] maps;
     private int currentmap = 0;
@@ -49,7 +50,6 @@ public class Launcher : MonoBehaviourPunCallbacks
 
     public void Awake()
     {
-        PhotonNetwork.AutomaticallySyncScene = true;
         myProfile = Data.LoadProfile();
         usernameField.text = myProfile.username;
         CreateModeButton();
@@ -59,59 +59,56 @@ public class Launcher : MonoBehaviourPunCallbacks
         Connect();
     }
 
-    public override void OnConnectedToMaster()
+    private void OnEnable()
     {
-        PhotonNetwork.JoinLobby();
-        base.OnConnectedToMaster();
+        NetworkSession.SessionListUpdated += OnRoomListUpdate;
     }
 
-    public override void OnJoinedRoom()
+    private void OnDisable()
     {
-        StartGame();
-
-        base.OnJoinedRoom();
+        NetworkSession.SessionListUpdated -= OnRoomListUpdate;
     }
 
-    public override void OnJoinRandomFailed(short returnCode, string message)
-    {
-        Create();
-        base.OnJoinRandomFailed(returnCode, message);
-    }
-
+    // Joins the session lobby so the room list fills in. The app version (set from the release
+    // tag by GitHub Actions) keeps players on different builds apart.
     public void Connect ()
     {
-        // Photon only matches players with the same game version, so builds with
-        // different network code never end up in the same room.
-        // Release builds from GitHub Actions set it from the version tag (e.g. v0.2 -> 0.2).
-        PhotonNetwork.GameVersion = Application.version;
-        if (PhotonNetwork.IsConnected)
-        {
-            if (!PhotonNetwork.InLobby) PhotonNetwork.JoinLobby();
-            return;
-        }
-        PhotonNetwork.ConnectUsingSettings();
+        NetworkSession.JoinLobby();
     }
 
-    public void Join ()
+    // Quick play: join any open match, or host one with the create tab's current settings
+    public async void Join ()
     {
-        PhotonNetwork.JoinRandomRoom();
+        if (starting) return;
+        starting = true;
+        PrepareProfile();
+        // Quick play from the main tab never opened the create tab, so make sure the map is a playable one
+        if (!maps[currentmap].enabled) currentmap = NextEnabledMap(0);
+        StartGameResult result = await NetworkSession.JoinRandomOrHost((int)maxPlayersSlider.value, RoomProperties(), maps[currentmap].scene);
+        starting = false;
+        if (!result.Ok) Debug.LogWarning("Quick play failed: " + result.ShutdownReason);
     }
 
-    public void Create()
+    public async void Create()
     {
-        RoomOptions options = new RoomOptions();
-        options.MaxPlayers = (byte) maxPlayersSlider.value;
+        if (starting) return;
+        starting = true;
+        PrepareProfile();
+        StartGameResult result = await NetworkSession.Host(roomnameField.text, (int)maxPlayersSlider.value, RoomProperties(), maps[currentmap].scene);
+        starting = false;
+        if (!result.Ok) Debug.LogWarning("Couldn't create the room: " + result.ShutdownReason);
+    }
 
-        options.CustomRoomPropertiesForLobby = new string[] { "map", "mode" };
-
-        ExitGames.Client.Photon.Hashtable properties = new ExitGames.Client.Photon.Hashtable();
+    // The match settings, shared with everyone through the session (and shown in the room list)
+    private Dictionary<string, SessionProperty> RoomProperties()
+    {
+        Dictionary<string, SessionProperty> properties = new Dictionary<string, SessionProperty>();
         properties.Add("map", currentmap);
         properties.Add("killcount", (int)killsToWinSlider.value);
         properties.Add("mapname", maps[currentmap].name);
         properties.Add("mode", currentmode);
         if (matchLengthSlider != null) properties.Add("matchlength", Mathf.RoundToInt(matchLengthSlider.value) * 60);
-        options.CustomRoomProperties = properties;
-        PhotonNetwork.CreateRoom(roomnameField.text, options);
+        return properties;
     }
 
     public void ChangeMap()
@@ -232,14 +229,12 @@ public class Launcher : MonoBehaviourPunCallbacks
         if (matchLengthValue != null) matchLengthValue.text = Mathf.RoundToInt(value) + " MIN";
     }
 
-    public void StartGame ()
+    // The name typed in the menu is used for the match and saved. The host's StartGame loads the
+    // map, and Fusion takes everyone who joins to the same scene.
+    private void PrepareProfile()
     {
         VerifyUsername();
-        if (PhotonNetwork.CurrentRoom.PlayerCount == 1)
-        {
-            Data.SaveProfile(myProfile);
-            PhotonNetwork.LoadLevel(maps[currentmap].scene);
-        }
+        Data.SaveProfile(myProfile);
     }
 
     public void TabCloseAll()
@@ -296,23 +291,28 @@ public class Launcher : MonoBehaviourPunCallbacks
 
         }
     }
-    public override void OnRoomListUpdate(List<RoomInfo> list)
+    private void OnRoomListUpdate(List<SessionInfo> list)
     {
+        if (tabRooms == null) return;
+
         roomList = list;
         ClearRoomList();
 
         Transform content = tabRooms.transform.Find("Scroll View/Viewport/Content");
-        foreach (RoomInfo a in roomList)
+        foreach (SessionInfo a in roomList)
         {
+            if (!a.IsVisible) continue;
+
             GameObject newRoomButton = Instantiate(buttontRooms, content) as GameObject;
 
             newRoomButton.transform.Find("Name").GetComponent<Text>().text = a.Name;
             newRoomButton.transform.Find("Players").GetComponent<Text>().text = a.PlayerCount + " / " + a.MaxPlayers;
 
-            if (a.CustomProperties.ContainsKey("map"))
+            SessionProperty map, mode;
+            if (a.Properties != null && a.Properties.TryGetValue("map", out map) && (int)map >= 0 && (int)map < maps.Length)
             {
-                string roomMap = maps[(int)a.CustomProperties["map"]].name;
-                if (a.CustomProperties.ContainsKey("mode")) roomMap += "  ·  " + modeShortNames[(int)a.CustomProperties["mode"] % modeShortNames.Length];
+                string roomMap = maps[(int)map].name;
+                if (a.Properties.TryGetValue("mode", out mode)) roomMap += "  ·  " + modeShortNames[(int)mode % modeShortNames.Length];
                 newRoomButton.transform.Find("Map/Name").GetComponent<Text>().text = roomMap;
             }
             else
@@ -324,15 +324,17 @@ public class Launcher : MonoBehaviourPunCallbacks
             newRoomButton.GetComponent<Button>().onClick.AddListener(delegate { JoinRoom(newRoomButton.transform); });
 
         }
-
-        base.OnRoomListUpdate(roomList);
     }
 
-    public void JoinRoom(Transform button)
+    public async void JoinRoom(Transform button)
     {
-
+        if (starting) return;
+        starting = true;
+        PrepareProfile();
         string roomName = button.Find("Name").GetComponent<Text>().text;
-        PhotonNetwork.JoinRoom(roomName);
+        StartGameResult result = await NetworkSession.Join(roomName);
+        starting = false;
+        if (!result.Ok) Debug.LogWarning($"Couldn't join {roomName}: {result.ShutdownReason}");
     }
 
 }
