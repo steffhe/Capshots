@@ -13,7 +13,7 @@ using UnityEngine.UI;
         public bool enabled = true;
     }
 
-public class Launcher : MonoBehaviour
+public partial class Launcher : MonoBehaviour
 {
     public InputField usernameField;
     public InputField roomnameField;
@@ -56,6 +56,7 @@ public class Launcher : MonoBehaviour
         // The player model in the menu wears a cap too, in the logo's colour
         PlayerCap.AttachToSceneHeads(PlayerCap.LogoColor);
         ShowWordmark();
+        ApplyStyle();
         Connect();
     }
 
@@ -114,7 +115,7 @@ public class Launcher : MonoBehaviour
     public void ChangeMap()
     {
         currentmap = NextEnabledMap(currentmap + 1);
-        mapValue.text = "MAP: " + maps[currentmap].name.ToUpper();
+        mapValue.text = UITheme.Option("MAP", maps[currentmap].name.ToUpper());
     }
 
     // First enabled map at or after 'start' (wrapping around). Falls back to 0 if none are enabled.
@@ -136,7 +137,7 @@ public class Launcher : MonoBehaviour
 
     private void RefreshModeText()
     {
-        if (modeValue != null) modeValue.text = "MODE: " + modeNames[currentmode];
+        if (modeValue != null) modeValue.text = UITheme.Option("MODE", modeNames[currentmode]);
     }
 
     // Replaces the "Capshots" title text on each menu tab with the wordmark logo
@@ -146,7 +147,7 @@ public class Launcher : MonoBehaviour
         Sprite wordmark = Resources.Load<Sprite>("UI/CapshotsWordmark");
         if (wordmark == null) return; // keep the text title
 
-        foreach (Text title in FindObjectsByType<Text>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        foreach (Text title in tabMain.transform.parent.GetComponentsInChildren<Text>(true))
         {
             if (title.name != "Logo" || title.text != "Capshots") continue;
 
@@ -157,7 +158,7 @@ public class Launcher : MonoBehaviour
             rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
             rect.anchoredPosition = Vector2.zero;
             // A little wider than the old text title; the height follows the logo's shape
-            float width = 420f;
+            float width = 380f;
             rect.sizeDelta = new Vector2(width, width * wordmark.rect.height / wordmark.rect.width);
 
             Image image = logo.GetComponent<Image>();
@@ -262,7 +263,7 @@ public class Launcher : MonoBehaviour
         roomnameField.text = "";
 
         currentmap = NextEnabledMap(0);
-        mapValue.text = "MAP: " + maps[currentmap].name.ToUpper();
+        mapValue.text = UITheme.Option("MAP", maps[currentmap].name.ToUpper());
 
         currentmode = 0;
         RefreshModeText();
@@ -275,9 +276,11 @@ public class Launcher : MonoBehaviour
 
     private void ClearRoomList()
     {
-        Transform content = tabRooms.transform.Find("Scroll View/Viewport/Content");
-        foreach (Transform a in content) Destroy(a.gameObject);
+        foreach (Transform a in RoomListContent) Destroy(a.gameObject);
     }
+
+    // The room list's scroll content (found by component, since the menu layout is rearranged at runtime)
+    private Transform RoomListContent => tabRooms.GetComponentInChildren<ScrollRect>(true).content;
     private void VerifyUsername()
     {
 
@@ -298,32 +301,35 @@ public class Launcher : MonoBehaviour
         roomList = list;
         ClearRoomList();
 
-        Transform content = tabRooms.transform.Find("Scroll View/Viewport/Content");
+        int shown = 0;
         foreach (SessionInfo a in roomList)
         {
             if (!a.IsVisible) continue;
 
-            GameObject newRoomButton = Instantiate(buttontRooms, content) as GameObject;
-
-            newRoomButton.transform.Find("Name").GetComponent<Text>().text = a.Name;
-            newRoomButton.transform.Find("Players").GetComponent<Text>().text = a.PlayerCount + " / " + a.MaxPlayers;
-
+            string roomMap = "-----";
             SessionProperty map, mode;
             if (a.Properties != null && a.Properties.TryGetValue("map", out map) && (int)map >= 0 && (int)map < maps.Length)
             {
-                string roomMap = maps[(int)map].name;
+                roomMap = maps[(int)map].name;
                 if (a.Properties.TryGetValue("mode", out mode)) roomMap += "  ·  " + modeShortNames[(int)mode % modeShortNames.Length];
-                newRoomButton.transform.Find("Map/Name").GetComponent<Text>().text = roomMap;
-            }
-            else
-            {
-                newRoomButton.transform.Find("Map/Name").GetComponent<Text>().text = "-----";
-
             }
 
+            GameObject newRoomButton = CreateRoomRow(a.Name, a.PlayerCount + " / " + a.MaxPlayers, roomMap);
             newRoomButton.GetComponent<Button>().onClick.AddListener(delegate { JoinRoom(newRoomButton.transform); });
-
+            shown++;
         }
+        ShowRoomsEmptyState(shown == 0);
+    }
+
+    // One row of the room list. JoinRoom reads the room's name back from the row's "Name" text.
+    private GameObject CreateRoomRow(string roomName, string players, string map)
+    {
+        GameObject row = Instantiate(buttontRooms, RoomListContent);
+        row.transform.Find("Name").GetComponent<Text>().text = roomName;
+        row.transform.Find("Players").GetComponent<Text>().text = players;
+        row.transform.Find("Map/Name").GetComponent<Text>().text = map;
+        StyleRoomRow(row);
+        return row;
     }
 
     public async void JoinRoom(Transform button)

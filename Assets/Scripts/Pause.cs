@@ -16,6 +16,8 @@ public class Pause : MonoBehaviour
 
     private void Start()
     {
+        // Restyle before the settings panel is built, since it copies the pause menu's controls
+        UITheme.StylePause(transform);
         // Adds the Settings button and panel to this pause menu
         SettingsMenu.Create(this);
 

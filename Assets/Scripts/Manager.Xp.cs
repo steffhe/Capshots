@@ -85,6 +85,7 @@ public partial class Manager
         xpPopupGroup.interactable = false;
         xpPopupGroup.blocksRaycasts = false;
         xpPopup.supportRichText = true;
+        xpPopup.fontSize = 34;
         xpPopup.alignment = TextAnchor.MiddleCenter;
         xpPopup.horizontalOverflow = HorizontalWrapMode.Overflow;
         xpPopup.verticalOverflow = VerticalWrapMode.Overflow;
