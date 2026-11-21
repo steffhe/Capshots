@@ -228,7 +228,9 @@ public class Weapon : NetworkBehaviour
     public void RefreshAmmo(Text text)
     {
         if (text == null || Object == null || !Object.IsValid) return;
-        text.text = Clips[Equipped].ToString("d2") + " / " + Stashes[Equipped].ToString("d2");
+        // Clip count large, the spare ammo smaller and muted
+        text.supportRichText = true;
+        text.text = Clips[Equipped].ToString("d2") + $"<size={Mathf.RoundToInt(text.fontSize * 0.55f)}><color={UITheme.Hex(UITheme.MutedText)}> / " + Stashes[Equipped].ToString("d2") + "</color></size>";
     }
 
     // How fast the player can move with the current gun, relative to normal

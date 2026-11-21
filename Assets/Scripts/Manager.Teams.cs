@@ -82,7 +82,7 @@ public partial class Manager
         return result + "   " + score;
     }
 
-    // Team score shown above the match timer, built from the timer text so it matches the HUD style
+    // Team score shown under the match timer, built from the timer text so it matches the HUD style
     private void CreateTeamScore()
     {
         if (!IsTeamMode || timer == null) return;
@@ -96,7 +96,10 @@ public partial class Manager
 
         RectTransform rect = (RectTransform)scoreObject.transform;
         RectTransform timerRect = (RectTransform)timer.transform;
-        rect.anchoredPosition = timerRect.anchoredPosition + new Vector2(0f, timerRect.sizeDelta.y + 6f);
+        // The timer sits at the top of the screen, so the score goes below it
+        rect.anchoredPosition = timerRect.anchoredPosition - new Vector2(0f, timerRect.sizeDelta.y + 6f);
+        teamScore.fontSize = 20;
+        UITheme.AddShadow(teamScore);
 
         RefreshTeamScore();
     }

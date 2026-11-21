@@ -48,6 +48,7 @@ public class Player : NetworkBehaviour
     private const float LegacyStep = 0.02f;
 
     private Transform uiHealthBar;
+    private Image uiHealthBarImage;
     private Text uiAmmo;
     private Text uiUsername;
 
@@ -227,6 +228,7 @@ public class Player : NetworkBehaviour
             CreateViewmodelCamera();
 
             uiHealthBar = GameObject.Find("HUD/Health/Bar").transform;
+            uiHealthBarImage = uiHealthBar.GetComponent<Image>();
             uiAmmo = GameObject.Find("HUD/Ammo/Text").GetComponent<Text>();
             uiUsername = GameObject.Find("HUD/Username/Text").GetComponent<Text>();
             RefreshHealthBar();
@@ -599,6 +601,7 @@ public class Player : NetworkBehaviour
         if (uiHealthBar == null) return;
         float healthRatio = (float)Health / (float)maxHealth;
         uiHealthBar.localScale = new Vector3(healthRatio, 1, 1);
+        if (uiHealthBarImage != null) uiHealthBarImage.color = UITheme.HealthColor(healthRatio);
     }
 
     #endregion

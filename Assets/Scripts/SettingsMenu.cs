@@ -6,7 +6,7 @@ using UnityEngine.UI;
 
 // Settings panel inside the pause menu: look sensitivity, ADS sensitivity, field of view, volume,
 // graphics quality and key bindings. Built at runtime from copies of the pause menu's own button,
-// slider and label, so it matches their style and the Pause prefab doesn't need editing.
+// slider and label (styled by UITheme.StylePause), so the Pause prefab doesn't need editing.
 public class SettingsMenu : MonoBehaviour
 {
     private Transform anchor;
@@ -18,7 +18,7 @@ public class SettingsMenu : MonoBehaviour
     private Slider sliderTemplate;
     private Text labelTemplate;
 
-    private Text xSensLabel, ySensLabel, fovLabel, adsLabel, volumeLabel;
+    private Text xSensValue, ySensValue, fovValue, adsValue, volumeValue;
     private Slider xSensSlider, ySensSlider, fovSlider, adsSlider, volumeSlider;
     private Text qualityText;
 
@@ -27,9 +27,17 @@ public class SettingsMenu : MonoBehaviour
         public string name;
         public InputAction action;
         public int bindingIndex;
-        public Text text;
+        public Text key;
     }
     private readonly List<BindingRow> bindingRows = new List<BindingRow>();
+
+    // Panel layout, in canvas units from the panel's centre
+    private const float PanelWidth = 1040f;
+    private const float PanelHeight = 720f;
+    private const float LeftColumn = -250f;
+    private const float RightColumn = 250f;
+    private const float ColumnWidth = 400f;
+    private const float HeaderY = 270f;
 
     public static SettingsMenu Create(Pause pause)
     {
@@ -88,43 +96,44 @@ public class SettingsMenu : MonoBehaviour
         rect.SetParent(anchor, false);
         rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
         rect.anchoredPosition = Vector2.zero;
-        rect.sizeDelta = new Vector2(1000f, 660f);
-        panel.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.8f);
+        rect.sizeDelta = new Vector2(PanelWidth, PanelHeight);
+        Image background = panel.GetComponent<Image>();
+        UITheme.Round(background, 14f);
+        background.color = UITheme.Panel;
 
-        NewLabel(rect, "SETTINGS", new Vector2(0f, 300f), 600f, 34);
+        Text title = NewLabel(rect, "SETTINGS", new Vector2(0f, PanelHeight / 2f - 48f), PanelWidth, 34, TextAnchor.MiddleCenter);
+        title.color = UITheme.TextColor;
 
-        // Left column: sliders and buttons, one row every 62 px
-        const float left = -250f;
-        xSensLabel = NewLabel(rect, "", new Vector2(left, 245f), 400f, 0);
-        xSensSlider = NewSlider(rect, new Vector2(left, 217f), GameSettings.MinSensitivity, GameSettings.MaxSensitivity, true, GameSettings.XSensitivity, v =>
+        // Left column: sliders, then the graphics and reset buttons
+        NewLabel(rect, "GENERAL", new Vector2(LeftColumn, HeaderY), ColumnWidth, 16, TextAnchor.MiddleLeft).color = UITheme.AccentText;
+
+        float y = HeaderY - 44f;
+        const float rowStep = 62f;
+        xSensSlider = SliderRow(rect, "LOOK SENSITIVITY X", ref xSensValue, y, GameSettings.MinSensitivity, GameSettings.MaxSensitivity, true, GameSettings.XSensitivity, v =>
         {
             GameSettings.XSensitivity = v;
             RefreshLabels();
         });
-
-        ySensLabel = NewLabel(rect, "", new Vector2(left, 183f), 400f, 0);
-        ySensSlider = NewSlider(rect, new Vector2(left, 155f), GameSettings.MinSensitivity, GameSettings.MaxSensitivity, true, GameSettings.YSensitivity, v =>
+        y -= rowStep;
+        ySensSlider = SliderRow(rect, "LOOK SENSITIVITY Y", ref ySensValue, y, GameSettings.MinSensitivity, GameSettings.MaxSensitivity, true, GameSettings.YSensitivity, v =>
         {
             GameSettings.YSensitivity = v;
             RefreshLabels();
         });
-
-        adsLabel = NewLabel(rect, "", new Vector2(left, 121f), 400f, 0);
-        adsSlider = NewSlider(rect, new Vector2(left, 93f), 0.1f, 2f, false, GameSettings.AdsSensitivity, v =>
+        y -= rowStep;
+        adsSlider = SliderRow(rect, "AIM SENSITIVITY", ref adsValue, y, 0.1f, 2f, false, GameSettings.AdsSensitivity, v =>
         {
             GameSettings.AdsSensitivity = Mathf.Round(v * 20f) / 20f;
             RefreshLabels();
         });
-
-        fovLabel = NewLabel(rect, "", new Vector2(left, 59f), 400f, 0);
-        fovSlider = NewSlider(rect, new Vector2(left, 31f), GameSettings.MinFov, GameSettings.MaxFov, true, GameSettings.Fov, v =>
+        y -= rowStep;
+        fovSlider = SliderRow(rect, "FIELD OF VIEW", ref fovValue, y, GameSettings.MinFov, GameSettings.MaxFov, true, GameSettings.Fov, v =>
         {
             GameSettings.Fov = v;
             RefreshLabels();
         });
-
-        volumeLabel = NewLabel(rect, "", new Vector2(left, -3f), 400f, 0);
-        volumeSlider = NewSlider(rect, new Vector2(left, -31f), 0f, 1f, false, GameSettings.Volume, v =>
+        y -= rowStep;
+        volumeSlider = SliderRow(rect, "VOLUME", ref volumeValue, y, 0f, 1f, false, GameSettings.Volume, v =>
         {
             GameSettings.Volume = v;
             RefreshLabels();
@@ -135,7 +144,8 @@ public class SettingsMenu : MonoBehaviour
             if (QualitySettings.names.Length > 0) GameSettings.Quality = (GameSettings.Quality + 1) % QualitySettings.names.Length;
             RefreshLabels();
         });
-        Place(quality, new Vector2(left, -95f), new Vector2(340f, 46f));
+        UITheme.StyleSelector(quality.GetComponent<Button>());
+        Place(quality, new Vector2(LeftColumn, y - 72f), new Vector2(ColumnWidth, 48f));
         qualityText = quality.GetComponentInChildren<Text>();
 
         GameObject reset = NewButton(rect, "RESET CONTROLS", () =>
@@ -143,14 +153,15 @@ public class SettingsMenu : MonoBehaviour
             GameInput.ResetBindings();
             RefreshBindings();
         });
-        Place(reset, new Vector2(left, -155f), new Vector2(340f, 46f));
+        Place(reset, new Vector2(LeftColumn, y - 132f), new Vector2(ColumnWidth, 48f));
 
-        GameObject back = NewButton(rect, "BACK", CloseSettings);
-        Place(back, new Vector2(left, -270f), new Vector2(340f, 46f));
+        GameObject done = NewButton(rect, "DONE", CloseSettings);
+        UITheme.StyleButton(done.GetComponent<Button>(), UITheme.ButtonStyle.Primary);
+        Place(done, new Vector2(LeftColumn, -PanelHeight / 2f + 58f), new Vector2(ColumnWidth, 52f));
 
         // Right column: key bindings
-        const float right = 250f;
-        NewLabel(rect, "CONTROLS  (CLICK TO CHANGE)", new Vector2(right, 255f), 440f, 0);
+        NewLabel(rect, "CONTROLS", new Vector2(RightColumn, HeaderY), ColumnWidth, 16, TextAnchor.MiddleLeft).color = UITheme.AccentText;
+        NewLabel(rect, "CLICK TO CHANGE", new Vector2(RightColumn, HeaderY), ColumnWidth, 14, TextAnchor.MiddleRight).color = UITheme.MutedText;
 
         int[] moveParts = GameInput.MovePartIndices();
         string[] moveNames = { "MOVE FORWARD", "MOVE BACK", "MOVE LEFT", "MOVE RIGHT" };
@@ -163,15 +174,28 @@ public class SettingsMenu : MonoBehaviour
             AddBindingRow(rect, entry.Key, entry.Value, GameInput.KeyboardBindingIndex(entry.Value));
         }
 
-        float y = 220f;
+        // Rows share the column's height between them, so a longer list still fits the panel
+        float top = HeaderY - 30f;
+        float bottom = -PanelHeight / 2f + 32f;
+        float step = bindingRows.Count > 0 ? Mathf.Min(36f, (top - bottom) / bindingRows.Count) : 0f;
+        y = top - step / 2f;
         foreach (BindingRow row in bindingRows)
         {
-            Place(row.text.transform.parent.gameObject, new Vector2(right, y), new Vector2(440f, 30f));
-            y -= 33f;
+            Place(row.key.transform.parent.gameObject, new Vector2(RightColumn, y), new Vector2(ColumnWidth, step - 4f));
+            y -= step;
         }
 
         RefreshLabels();
         RefreshBindings();
+    }
+
+    // Name on the left and value on the right above a full-width slider
+    private Slider SliderRow(RectTransform parent, string name, ref Text value, float y, float min, float max, bool wholeNumbers, float current, UnityAction<float> onChange)
+    {
+        NewLabel(parent, name, new Vector2(LeftColumn, y), ColumnWidth, 16, TextAnchor.MiddleLeft);
+        value = NewLabel(parent, "", new Vector2(LeftColumn, y), ColumnWidth, 16, TextAnchor.MiddleRight);
+        value.color = UITheme.AccentText;
+        return NewSlider(parent, new Vector2(LeftColumn, y - 26f), min, max, wholeNumbers, current, onChange);
     }
 
     private void AddBindingRow(RectTransform parent, string name, InputAction action, int bindingIndex)
@@ -180,9 +204,15 @@ public class SettingsMenu : MonoBehaviour
 
         BindingRow row = new BindingRow { name = name, action = action, bindingIndex = bindingIndex };
         GameObject button = NewButton(parent, "", () => Rebind(row));
-        row.text = button.GetComponentInChildren<Text>();
-        row.text.fontSize = Mathf.Min(row.text.fontSize, 18);
-        row.text.resizeTextForBestFit = false;
+        UITheme.StyleButtonBackground(button.GetComponent<Button>(), UITheme.ButtonStyle.Secondary, 6f);
+
+        Text label = button.GetComponentInChildren<Text>();
+        UITheme.StyleText(label, 15, UITheme.TextColor, TextAnchor.MiddleLeft);
+        UITheme.Inset(label.rectTransform, 14f, 14f);
+        label.text = name;
+
+        row.key = UITheme.NewText("Key", button.transform, 15, UITheme.AccentText, TextAnchor.MiddleRight);
+        UITheme.Inset(row.key.rectTransform, 14f, 14f);
         bindingRows.Add(row);
     }
 
@@ -190,7 +220,8 @@ public class SettingsMenu : MonoBehaviour
     {
         if (GameInput.IsRebinding) return;
 
-        row.text.text = row.name + ":  PRESS A KEY  (ESC TO CANCEL)";
+        row.key.text = "PRESS A KEY  (ESC CANCELS)";
+        row.key.color = UITheme.TextColor;
         GameInput.StartRebind(row.action, row.bindingIndex, RefreshBindings);
     }
 
@@ -198,18 +229,19 @@ public class SettingsMenu : MonoBehaviour
     {
         foreach (BindingRow row in bindingRows)
         {
-            row.text.text = row.name + ":  " + GameInput.BindingText(row.action, row.bindingIndex);
+            row.key.text = GameInput.BindingText(row.action, row.bindingIndex);
+            row.key.color = UITheme.AccentText;
         }
     }
 
     private void RefreshLabels()
     {
-        xSensLabel.text = "LOOK SENSITIVITY X:  " + Mathf.RoundToInt(GameSettings.XSensitivity);
-        ySensLabel.text = "LOOK SENSITIVITY Y:  " + Mathf.RoundToInt(GameSettings.YSensitivity);
-        fovLabel.text = "FIELD OF VIEW:  " + Mathf.RoundToInt(GameSettings.Fov);
-        adsLabel.text = "AIM SENSITIVITY:  " + GameSettings.AdsSensitivity.ToString("0.00") + "x";
-        volumeLabel.text = "VOLUME:  " + Mathf.RoundToInt(GameSettings.Volume * 100f) + "%";
-        qualityText.text = "GRAPHICS:  " + GameSettings.QualityName;
+        xSensValue.text = Mathf.RoundToInt(GameSettings.XSensitivity).ToString();
+        ySensValue.text = Mathf.RoundToInt(GameSettings.YSensitivity).ToString();
+        fovValue.text = Mathf.RoundToInt(GameSettings.Fov).ToString();
+        adsValue.text = GameSettings.AdsSensitivity.ToString("0.00") + "x";
+        volumeValue.text = Mathf.RoundToInt(GameSettings.Volume * 100f) + "%";
+        qualityText.text = UITheme.Option("GRAPHICS", GameSettings.QualityName.ToUpperInvariant());
     }
 
     private void OpenSettings()
@@ -236,7 +268,7 @@ public class SettingsMenu : MonoBehaviour
 
     #region Building blocks
 
-    // Copies the pause menu's Resume button, without its Resume action
+    // Copies the pause menu's Resume button, without its Resume action, as a secondary button
     private GameObject NewButton(Transform parent, string text, UnityAction onClick)
     {
         GameObject copy = Instantiate(buttonTemplate, parent);
@@ -257,6 +289,7 @@ public class SettingsMenu : MonoBehaviour
 
         Text label = copy.GetComponentInChildren<Text>();
         if (label != null) label.text = text;
+        UITheme.StyleButton(button, UITheme.ButtonStyle.Secondary, 20);
         return copy;
     }
 
@@ -272,7 +305,8 @@ public class SettingsMenu : MonoBehaviour
         RectTransform rect = (RectTransform)slider.transform;
         rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
         rect.anchoredPosition = position;
-        rect.sizeDelta = new Vector2(320f, rect.sizeDelta.y);
+        rect.sizeDelta = new Vector2(ColumnWidth, 20f);
+        UITheme.StyleSlider(slider);
 
         slider.minValue = min;
         slider.maxValue = max;
@@ -282,7 +316,7 @@ public class SettingsMenu : MonoBehaviour
         return slider;
     }
 
-    private Text NewLabel(RectTransform parent, string text, Vector2 position, float width, int fontSize)
+    private Text NewLabel(RectTransform parent, string text, Vector2 position, float width, int fontSize, TextAnchor alignment)
     {
         Text label = Instantiate(labelTemplate, parent);
         label.name = "Label";
@@ -290,9 +324,10 @@ public class SettingsMenu : MonoBehaviour
         rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
         rect.anchoredPosition = position;
         rect.sizeDelta = new Vector2(width, 34f);
-        label.alignment = TextAnchor.MiddleCenter;
+        UITheme.StyleText(label, fontSize, UITheme.TextColor, alignment);
         label.horizontalOverflow = HorizontalWrapMode.Overflow;
-        if (fontSize > 0) label.fontSize = fontSize;
+        label.verticalOverflow = VerticalWrapMode.Overflow;
+        label.raycastTarget = false;
         label.text = text;
         return label;
     }

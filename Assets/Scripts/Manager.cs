@@ -174,6 +174,11 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
     public void InitializeUI()
     {
+        // Restyle first: the XP popup, chat, kill feed and touch controls copy the HUD's font and style
+        Transform canvas = GameObject.Find("Canvas").transform;
+        UITheme.StyleHud(Hud != null ? Hud.transform : canvas.Find("HUD"));
+        UITheme.StyleEndGame(canvas.Find("End Game"));
+
         myKills = GameObject.Find("HUD/Stats/Kills").GetComponent<Text>();
         myDeaths = GameObject.Find("HUD/Stats/Deaths").GetComponent<Text>();
         timer = GameObject.Find("HUD/Timer/Text").GetComponent<Text>();
@@ -211,13 +216,13 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
         if (myind >= 0 && playerInfo.Count > myind)
         {
-            myKills.text = $"{playerInfo[myind].kills} Kills";
-            myDeaths.text = $"{playerInfo[myind].deaths} Deaths";
+            myKills.text = $"{playerInfo[myind].kills} KILLS";
+            myDeaths.text = $"{playerInfo[myind].deaths} DEATHS";
         }
         else
         {
-            myKills.text = "0 Kills";
-            myDeaths.text = "0 Deaths";
+            myKills.text = "0 KILLS";
+            myDeaths.text = "0 DEATHS";
         }
 
         RefreshTeamScore();

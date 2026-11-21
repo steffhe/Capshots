@@ -30,7 +30,8 @@ public partial class Manager
         {
             GameObject newcard = Instantiate(playerCard, lb) as GameObject;
 
-            if (alternateColors) newcard.GetComponent<Image>().color = new Color32(0, 0,0, 100);
+            if (alternateColors) newcard.GetComponent<Image>().color = UITheme.SurfaceAlt;
+            alternateColors = !alternateColors;
             if (IsTeamMode)
             {
                 Color teamColor = TeamColors[a.team % 2];
