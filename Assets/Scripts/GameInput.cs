@@ -19,7 +19,7 @@ public static class GameInput
     public static InputActionMap Map { get; private set; }
 
     public static InputAction Move, Look, LookStick, Fire, Aim, Jump, Sprint, Crouch, Slide, Reload;
-    public static InputAction Weapon1, Weapon2, Weapon3, WeaponNext, WeaponPrev, WeaponScroll;
+    public static InputAction Weapon1, Weapon2, Weapon3, Weapon4, WeaponNext, WeaponPrev, WeaponScroll;
     public static InputAction Scoreboard, Chat, PauseMenu;
 
     // Actions shown in the settings menu for rebinding, with their display names
@@ -65,6 +65,7 @@ public static class GameInput
         Weapon1 = Button("Weapon1", "<Keyboard>/1", null);
         Weapon2 = Button("Weapon2", "<Keyboard>/2", null);
         Weapon3 = Button("Weapon3", "<Keyboard>/3", null);
+        Weapon4 = Button("Weapon4", "<Keyboard>/4", null);
         WeaponNext = Button("WeaponNext", null, "<Gamepad>/rightShoulder");
         WeaponPrev = Button("WeaponPrev", null, "<Gamepad>/leftShoulder");
         WeaponScroll = Map.AddAction("WeaponScroll", InputActionType.Value);
@@ -84,6 +85,7 @@ public static class GameInput
         Rebindable.Add(new KeyValuePair<string, InputAction>("WEAPON 1", Weapon1));
         Rebindable.Add(new KeyValuePair<string, InputAction>("WEAPON 2", Weapon2));
         Rebindable.Add(new KeyValuePair<string, InputAction>("WEAPON 3", Weapon3));
+        Rebindable.Add(new KeyValuePair<string, InputAction>("WEAPON 4", Weapon4));
         Rebindable.Add(new KeyValuePair<string, InputAction>("SCOREBOARD", Scoreboard));
         Rebindable.Add(new KeyValuePair<string, InputAction>("CHAT", Chat));
 

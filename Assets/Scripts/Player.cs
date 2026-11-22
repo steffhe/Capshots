@@ -8,7 +8,7 @@ using UnityEngine.Rendering.Universal;
 
 // A player's body. The host runs movement, health and death from the player's input
 // (FixedUpdateNetwork); the player's own game predicts the same movement so it feels instant.
-// Everything else here (camera, head bob, HUD, team colours) is local presentation.
+// Everything else here (camera, gun drift, HUD, team colours) is local presentation.
 [RequireComponent(typeof(CharacterController))]
 public class Player : NetworkBehaviour
 {
@@ -61,10 +61,10 @@ public class Player : NetworkBehaviour
 
     private Vector3 weaponParentCurrentPosition;
     private Vector3 weaponParentorigin;
-    private Vector3 targetWeaponBobPosition;
 
-    private float movementCounter;
-    private float idleCounter;
+    // The gun's hover drift: time along its slow loop, and how far it trails behind the movement
+    private float hoverCounter;
+    private Vector2 weaponTrail;
     private Manager manager;
     private Weapon weapon;
     private Look look;
@@ -73,6 +73,7 @@ public class Player : NetworkBehaviour
     private bool wasCursorLocked;
 
     private PlayerCap[] caps = new PlayerCap[0];
+    private HoverVisuals hoverVisuals;
     private bool appliedCrouch;
     private string shownName;
 
@@ -247,6 +248,15 @@ public class Player : NetworkBehaviour
             PlayerCap.Attach(standingColliderHead != null ? standingColliderHead.transform : null, capColor),
             PlayerCap.Attach(crouchingColliderHead != null ? crouchingColliderHead.transform : null, capColor),
         };
+
+        // The players float: the body hovers and leans, with a glow underneath. On the body's layer, so
+        // the glow is hidden from your own camera like the rest of your body.
+        hoverVisuals = GetComponent<HoverVisuals>();
+        if (hoverVisuals == null)
+        {
+            Transform design = standingCollider != null ? standingCollider.transform.parent : null;
+            hoverVisuals = HoverVisuals.Attach(this, design, bodyBottom, standingCollider != null ? standingCollider.layer : gameObject.layer);
+        }
     }
 
     public override void Despawned(NetworkRunner runner, bool hasState)
@@ -479,35 +489,7 @@ public class Player : NetworkBehaviour
         if (Sliding) weaponParentCurrentPosition += Vector3.down * slideAmount;
         else if (Crouched) weaponParentCurrentPosition += Vector3.down * crouchAmount;
 
-        //Headbob
-        if (Sliding) {
-            HeadBob(movementCounter, .15f, .075f);
-            weaponParent.localPosition = Vector3.Lerp(weaponParent.localPosition, targetWeaponBobPosition, Time.deltaTime * 10f);
-        }
-        else if (hmove == 0 && vmove == 0)
-        {
-            HeadBob(idleCounter, .025f, .025f);
-            idleCounter += Time.deltaTime * 2f;
-            weaponParent.localPosition = Vector3.Lerp(weaponParent.localPosition, targetWeaponBobPosition, Time.deltaTime * 2f);
-        }
-        else if (!isSprinting && !Crouched)
-        {
-            HeadBob(movementCounter, .035f, .035f);
-            movementCounter += Time.deltaTime * 3f;
-            weaponParent.localPosition = Vector3.Lerp(weaponParent.localPosition, targetWeaponBobPosition, Time.deltaTime * 6f);
-        }
-        else if (Crouched)
-        {
-            HeadBob(movementCounter, .002f, .002f);
-            movementCounter += Time.deltaTime * 3f;
-            weaponParent.localPosition = Vector3.Lerp(weaponParent.localPosition, targetWeaponBobPosition, Time.deltaTime * 6f);
-        }
-        else if (isSprinting)
-        {
-            HeadBob(movementCounter, .15f, .075f);
-            movementCounter += Time.deltaTime * 7f;
-            weaponParent.localPosition = Vector3.Lerp(weaponParent.localPosition, targetWeaponBobPosition, Time.deltaTime * 10f);
-        }
+        UpdateWeaponHover(hmove, vmove, isSprinting);
 
         UpdateCamera(isSprinting);
 
@@ -595,14 +577,24 @@ public class Player : NetworkBehaviour
         playerProfile = new ProfileData(name, manager.GetPlayerLevel(ActorId), 0, 150f, 150f);
     }
 
-    void HeadBob(float z, float xIntensity, float yIntensity)
+    // The gun floats in front of you instead of bobbing with footsteps: a slow drift in a figure of eight,
+    // trailing a little behind your movement and tilting as you strafe. Much smaller while aiming.
+    private void UpdateWeaponHover(float hmove, float vmove, bool isSprinting)
     {
-        float aimAdjust = 1f;
-        if (weapon.isAiming)
-        {
-            aimAdjust = 0.1f;
-        }
-        targetWeaponBobPosition = weaponParentCurrentPosition + new Vector3(Mathf.Cos(z * 2) * xIntensity * aimAdjust, Mathf.Sin(z) * yIntensity * aimAdjust,0);
+        float dt = Time.deltaTime;
+        float aimAdjust = weapon.isAiming ? 0.1f : 1f;
+
+        hoverCounter += dt;
+        Vector3 drift = new Vector3(Mathf.Sin(hoverCounter * 0.9f) * 0.012f, Mathf.Sin(hoverCounter * 1.8f) * 0.01f, 0f);
+
+        float trailAmount = Sliding ? 0.06f : isSprinting ? 0.045f : Crouched ? 0.015f : 0.03f;
+        weaponTrail = Vector2.Lerp(weaponTrail, new Vector2(hmove, vmove) * trailAmount, dt * 4f);
+        // Moving forward pulls the gun back and slightly down; strafing slides it the other way
+        Vector3 trail = new Vector3(-weaponTrail.x, -Mathf.Abs(weaponTrail.y) * 0.4f, -weaponTrail.y);
+
+        Vector3 target = weaponParentCurrentPosition + (drift + trail) * aimAdjust;
+        weaponParent.localPosition = Vector3.Lerp(weaponParent.localPosition, target, dt * 8f);
+        weaponParent.localRotation = Quaternion.Slerp(weaponParent.localRotation, Quaternion.Euler(0f, 0f, -hmove * 3f * aimAdjust), dt * 6f);
     }
 
     void RefreshHealthBar()
@@ -718,6 +710,7 @@ public class Player : NetworkBehaviour
             // Body meshes only: not the name tag, the gun, effects or the cap (coloured below)
             if (!(body is MeshRenderer || body is SkinnedMeshRenderer)) continue;
             if (body.GetComponentInParent<PlayerCap>() != null) continue;
+            if (hoverVisuals != null && hoverVisuals.IsGlow(body)) continue;
             if (body.GetComponent<TextMeshPro>() != null) continue;
             if (weaponParent != null && body.transform.IsChildOf(weaponParent)) continue;
 
