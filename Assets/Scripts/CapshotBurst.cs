@@ -16,7 +16,7 @@ public class CapshotBurst : MonoBehaviour
     private static readonly Color StarColor = new Color(1f, 0.82f, 0.31f);
 
     // Measured (A-weighted) against the other synthesized sounds: about 6 dB under a sniper shot, so
-    // louder than reloads and footsteps and clearly heard across the map, but still under the guns
+    // louder than reloads and the hover sound and clearly heard across the map, but still under the guns
     private const float PopVolume = 0.123f;
 
     private Transform[] pieces;

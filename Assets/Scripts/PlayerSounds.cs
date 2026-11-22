@@ -1,39 +1,43 @@
 using System.Collections;
 using UnityEngine;
 
-// Footstep, landing and reload sounds for a player. Added by Player at runtime, so no prefab changes are needed.
-// Runs on every client: footsteps for remote players are worked out from how they move on this machine,
+// Hover, landing and reload sounds for a player. Added by Player at runtime, so no prefab changes are needed.
+// The characters float rather than walk, so moving plays a continuous UFO-like hum and woosh that rises in
+// pitch and volume with speed, instead of footsteps.
+// Runs on every client: the hover sound for remote players is worked out from how they move on this machine,
 // so they need no network traffic. Reload sounds are started by Weapon through an RPC.
 // All sounds are synthesized once on first use, so no audio files need to be imported.
 public class PlayerSounds : MonoBehaviour
 {
-    // Metres walked between two footsteps. Sprinting covers ground faster, so steps come quicker on their own.
-    public float strideLength = 2.1f;
     // Mix levels, set from loudness measurements of each synthesized clip (A-weighted) rather than by ear.
     // Target, relative to a sniper shot: pistol -3 dB, machine gun -5, reload -12 to -15, landing -14,
-    // sprint step -18, walk step -22. UI sounds in FeedbackUI sit at -8 to -10.
-    public float footstepVolume = 0.075f;
+    // hover while sprinting about -18, while walking about -22. UI sounds in FeedbackUI sit at -8 to -10.
+    public float hoverVolume = 0.045f;
     public float landingVolume = 0.093f;
     public float reloadVolume = 0.1f;
     // Gunshots: this is the sniper rifle, the loudest sound in the game. The other guns are scaled from it.
     // Kept well below the old imported shot, which was about 18 dB louder and clipped.
     public float shotVolume = 0.52f;
-    // Slower than this (m/s) and steps aren't played, so small corrections don't tick
-    private const float MinStepSpeed = 1f;
+    // Slower than this (m/s) the hover sound fades out, so small corrections stay quiet
+    private const float MinHoverSpeed = 1f;
+    // Speed (m/s) where the hover sound reaches full strength
+    private const float FullHoverSpeed = 5f;
+    // Seconds for the hover sound to swell in when moving off and to die away when stopping
+    private const float HoverAttack = 0.15f;
+    private const float HoverRelease = 0.35f;
     // Falling faster than this (m/s) plays a landing sound when touching the ground
     private const float MinLandingSpeed = 3f;
 
     private Player player;
-    private AudioSource movementSource, reloadSource;
+    private AudioSource movementSource, hoverSource, reloadSource;
 
     private Vector3 lastPosition;
     private float verticalSpeed;
-    private float distanceSinceStep;
     private bool wasGrounded = true;
-    private int lastFootstep = -1;
+    private float hoverIntensity, hoverPitch = HoverPitchSlow, hoverLoudness;
     private Coroutine reloadRoutine;
 
-    private static AudioClip[] footstepClips;
+    private static AudioClip hoverClip;
     private static AudioClip landingClip, magOutClip, magInClip, boltClip;
     private static AudioClip[] pistolShots, machineGunShots, sniperShots;
     private AudioSource shotSource;
@@ -45,9 +49,16 @@ public class PlayerSounds : MonoBehaviour
 
         // Separate sources, because changing a source's pitch also bends sounds it is still playing
         movementSource = MakeSource();
+        hoverSource = MakeSource();
+        hoverSource.clip = hoverClip;
+        hoverSource.loop = true;
+        hoverSource.volume = 0f;
+        // Start each player somewhere else in the loop, so several hovering players don't play in lockstep
+        hoverSource.timeSamples = Random.Range(0, hoverClip.samples);
+        hoverSource.Play();
         reloadSource = MakeSource();
         shotSource = MakeSource();
-        // Shots keep a plain linear fade, but carry much further than footsteps
+        // Shots keep a plain linear fade, but carry much further than the hover sound
         shotSource.rolloffMode = AudioRolloffMode.Linear;
         shotSource.minDistance = 2f;
         shotSource.maxDistance = 150f;
@@ -63,8 +74,8 @@ public class PlayerSounds : MonoBehaviour
         Vector3 delta = position - lastPosition;
         lastPosition = position;
 
-        // Big jumps are respawns or network snaps, not walking
-        if (delta.sqrMagnitude > 25f) { distanceSinceStep = 0f; return; }
+        // Big jumps are respawns or network snaps, not movement
+        if (delta.sqrMagnitude > 25f) return;
 
         verticalSpeed = delta.y / Time.deltaTime;
         delta.y = 0f;
@@ -75,24 +86,37 @@ public class PlayerSounds : MonoBehaviour
         if (grounded && !wasGrounded && verticalSpeed < -MinLandingSpeed)
         {
             Play(movementSource, landingClip, landingVolume, 0.95f, 1.05f);
-            distanceSinceStep = 0f;
         }
         wasGrounded = grounded;
 
-        // Crouching (and sliding, which crouches) is silent, so sneaking up on someone works
-        if (!grounded || player.IsCrouched || horizontalSpeed < MinStepSpeed)
+        UpdateHover(horizontalSpeed);
+    }
+
+    private const float HoverPitchSlow = 0.85f, HoverPitchFast = 1.15f;
+
+    // The hover sound keeps playing in the air too, since the characters float anyway.
+    // Crouching (and sliding, which crouches) is silent, so sneaking up on someone still works.
+    private void UpdateHover(float horizontalSpeed)
+    {
+        float target = player.IsCrouched ? 0f : Mathf.InverseLerp(MinHoverSpeed, FullHoverSpeed, horizontalSpeed);
+        float fast = Mathf.InverseLerp(3f, 10f, horizontalSpeed);
+        float dt = Time.deltaTime;
+
+        // Smoothed, so jittery speeds (especially for remote players) don't make the sound flutter
+        hoverIntensity = Mathf.Lerp(hoverIntensity, target, 1f - Mathf.Exp(-dt / (target > hoverIntensity ? HoverAttack : HoverRelease)));
+        // Faster movement raises the pitch, like an engine working harder; only while moving, so it
+        // doesn't bend down as the sound fades out
+        if (target > 0f)
         {
-            // Start the next walk with a step soon after moving off
-            distanceSinceStep = Mathf.Min(distanceSinceStep, strideLength * 0.6f);
-            return;
+            float smooth = 1f - Mathf.Exp(-dt / 0.3f);
+            hoverPitch = Mathf.Lerp(hoverPitch, Mathf.Lerp(HoverPitchSlow, HoverPitchFast, fast), smooth);
+            // Sprinting is about 4 dB louder than walking
+            hoverLoudness = Mathf.Lerp(hoverLoudness, Mathf.Lerp(0.76f, 1.21f, fast), smooth);
         }
 
-        distanceSinceStep += delta.magnitude;
-        if (distanceSinceStep >= strideLength)
-        {
-            distanceSinceStep -= strideLength;
-            PlayFootstep(horizontalSpeed);
-        }
+        hoverSource.pitch = hoverPitch;
+        // Curved, so the sound fades in and out softly instead of popping up at low speeds
+        hoverSource.volume = hoverVolume * hoverLoudness * hoverIntensity * Mathf.Sqrt(hoverIntensity);
     }
 
     private AudioSource MakeSource()
@@ -101,7 +125,7 @@ public class PlayerSounds : MonoBehaviour
         s.playOnAwake = false;
         s.spatialBlend = 1f; // 3D: other players are heard from where they are
         s.dopplerLevel = 0f;
-        // Footsteps, landings and reloads: a soft fade with a long, quiet tail instead of a straight
+        // Hover, landings and reloads: a soft fade with a long, quiet tail instead of a straight
         // line that drops to silence at a fixed distance
         s.rolloffMode = AudioRolloffMode.Custom;
         s.maxDistance = FoleyMaxDistance;
@@ -109,7 +133,7 @@ public class PlayerSounds : MonoBehaviour
         return s;
     }
 
-    // Where footsteps, landings and reloads fade out completely
+    // Where the hover sound, landings and reloads fade out completely
     private const float FoleyMaxDistance = 45f;
     private static AnimationCurve foleyRolloff;
 
@@ -146,19 +170,6 @@ public class PlayerSounds : MonoBehaviour
     {
         Transform origin = player.groundDetector != null ? player.groundDetector : transform;
         return Physics.Raycast(origin.position + Vector3.up * 0.1f, Vector3.down, 0.35f, player.ground, QueryTriggerInteraction.Ignore);
-    }
-
-    private void PlayFootstep(float speed)
-    {
-        // Never the same clip twice in a row
-        int index = Random.Range(0, footstepClips.Length - 1);
-        if (index >= lastFootstep) index++;
-        index %= footstepClips.Length;
-        lastFootstep = index;
-
-        // Sprinting is about 4 dB louder than walking
-        float loudness = Mathf.Lerp(0.76f, 1.21f, Mathf.InverseLerp(3f, 10f, speed));
-        Play(movementSource, footstepClips[index], footstepVolume * loudness, 0.9f, 1.1f);
     }
 
     // Called on every client when this player starts reloading
@@ -222,25 +233,9 @@ public class PlayerSounds : MonoBehaviour
 
     private static void BuildClips()
     {
-        if (footstepClips != null) return;
+        if (hoverClip != null) return;
 
-        footstepClips = new AudioClip[4];
-        // Evens out the variations (measured, A-weighted), so no step stands out as louder than the others
-        float[] stepGain = { 1.26f, 1f, 0.85f, 0.77f };
-        for (int i = 0; i < footstepClips.Length; i++)
-        {
-            float gain = stepGain[i];
-            System.Random rng = new System.Random(100 + i);
-            float body = 70f + i * 12f;     // low thud of the heel
-            float grit = 0.35f + i * 0.08f; // how much the scuff comes through
-            float lowpass = 0f;
-            footstepClips[i] = MakeClip("Footstep " + i, 0.16f, t =>
-            {
-                float noise = (float)rng.NextDouble() * 2f - 1f;
-                lowpass += (noise - lowpass) * 0.25f; // soft, muffled scuff
-                return (Tone(t, body) * Decay(t, 35f) * 0.9f + lowpass * grit * Decay(t, 28f) * 2f) * gain;
-            });
-        }
+        hoverClip = MakeHoverLoop();
 
         {
             System.Random rng = new System.Random(7);
@@ -350,6 +345,60 @@ public class PlayerSounds : MonoBehaviour
         }
 
         AudioClip clip = AudioClip.Create(name, samples, 1, rate, false);
+        clip.SetData(data, 0);
+        return clip;
+    }
+
+    // The hover sound: a seamless 2 second loop of a low humming drone, a warbling sci-fi tone and an
+    // airy woosh that swells and dies down. Every tone fits a whole number of cycles into the loop, and
+    // the noise is crossfaded from the end into the start, so it repeats without a click.
+    private static AudioClip MakeHoverLoop()
+    {
+        const int rate = 44100;
+        const float length = 2f;
+        int samples = Mathf.RoundToInt(length * rate);
+        int fade = rate / 4;
+        float[] raw = new float[samples + fade];
+        System.Random rng = new System.Random(31);
+        float fastFilter = 0f, slowFilter = 0f;
+
+        for (int i = 0; i < raw.Length; i++)
+        {
+            float t = (float)i / rate;
+            float noise = (float)rng.NextDouble() * 2f - 1f;
+
+            // Drone: the two upper voices are half a hertz apart from the root's harmonics, so it slowly beats
+            float hum = Tone(t, 55f) * 0.55f + Tone(t, 110.5f) * 0.35f + Tone(t, 165f) * 0.12f;
+
+            // 220 Hz with a 4 Hz vibrato: the wobbly flying-saucer tone
+            float warble = Mathf.Sin(2f * Mathf.PI * 220f * t + 3f * Tone(t, 4f)) * (0.6f + 0.4f * Tone(t, 1.5f));
+
+            // Band-passed noise (the difference of two low-pass filters) for the rushing air
+            fastFilter += (noise - fastFilter) * 0.12f;
+            slowFilter += (noise - slowFilter) * 0.02f;
+            float swell = 0.65f + 0.35f * Tone(t, 1f) * Mathf.Sin(2f * Mathf.PI * 0.5f * t + 1f);
+            float woosh = (fastFilter - slowFilter) * swell * 2.2f;
+
+            raw[i] = hum * 0.45f + warble * 0.12f + woosh * 0.55f;
+        }
+
+        float[] data = new float[samples];
+        float peak = 0f;
+        for (int i = 0; i < samples; i++)
+        {
+            // The first part fades in from the extra samples past the end, which continue on from the last sample
+            data[i] = i < fade ? Mathf.Lerp(raw[samples + i], raw[i], (float)i / fade) : raw[i];
+            peak = Mathf.Max(peak, Mathf.Abs(data[i]));
+        }
+
+        // Same peak level as the other synthesized sounds, so hoverVolume alone sets how loud it is
+        if (peak > 0f)
+        {
+            float gain = 0.9f / peak;
+            for (int i = 0; i < samples; i++) data[i] *= gain;
+        }
+
+        AudioClip clip = AudioClip.Create("Hover", samples, 1, rate, false);
         clip.SetData(data, 0);
         return clip;
     }
