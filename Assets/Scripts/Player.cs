@@ -270,6 +270,14 @@ public class Player : NetworkBehaviour
         NetworkButtons pressed = hasInput ? input.Buttons.GetPressed(PreviousButtons) : default;
         if (hasInput) PreviousButtons = input.Buttons;
 
+        // The match is over: stand still (gravity still applies), but keep looking around
+        if (manager != null && manager.Ending)
+        {
+            input.Move = Vector2.zero;
+            input.Buttons = default;
+            pressed = default;
+        }
+
         transform.rotation = Quaternion.Euler(0f, input.Yaw, 0f);
         Pitch = input.Pitch;
 
@@ -283,6 +291,7 @@ public class Player : NetworkBehaviour
         {
             if (ProtectionTimer.Expired(Runner)) ProtectionTimer = TickTimer.None;
             RegenerateHealth();
+            CheckFellOut();
         }
     }
 
@@ -607,6 +616,14 @@ public class Player : NetworkBehaviour
     #endregion
 
     #region Damage
+
+    // Host only. Falling off the map (or through a gap in it) kills, even during spawn protection.
+    private void CheckFellOut()
+    {
+        if (Dead || manager == null || transform.position.y > manager.killHeight) return;
+        ProtectionTimer = TickTimer.None;
+        TakeDamage(maxHealth * 10, Object.InputAuthority, "Fell", false);
+    }
 
     // Host only. Applies a hit and reports whether it killed. bulletDirection and hitOffset (where
     // the bullet hit, relative to this player's position) throw the ragdoll on a kill. Leave them out
