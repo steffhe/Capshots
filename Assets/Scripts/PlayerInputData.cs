@@ -55,6 +55,7 @@ public class InputCollector
         if (GameInput.Pressed(GameInput.Weapon1)) weaponSlot = 1;
         if (GameInput.Pressed(GameInput.Weapon2) && last >= 1) weaponSlot = 2;
         if (GameInput.Pressed(GameInput.Weapon3) && last >= 2) weaponSlot = 3;
+        if (GameInput.Pressed(GameInput.Weapon4) && last >= 3) weaponSlot = 4;
     }
 
     public PlayerInputData Take()

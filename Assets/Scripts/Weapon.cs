@@ -7,7 +7,7 @@ using Fusion;
 // A player's guns. Firing, ammo, reloading and switching run in FixedUpdateNetwork from the
 // player's input: the host decides what is hit (with lag compensation, so shots are checked against
 // where targets were on the shooter's screen) and the shooter's own game predicts the rest, so
-// shooting feels instant. Tracers, sounds and the gun model are local presentation.
+// shooting feels instant. Laser beams, sounds and the gun model are local presentation.
 public class Weapon : NetworkBehaviour
 {
     #region Variables
@@ -24,7 +24,6 @@ public class Weapon : NetworkBehaviour
     // Camera kick per shot, as a fraction of each gun's recoil value
     public float cameraRecoilScale = 0.15f;
     public float aimingRecoilMultiplier = 0.5f;
-    public Color muzzleFlashColor = new Color(1f, 0.8f, 0.45f);
 
     [Header("Accuracy")]
     // Spread multiplier while jumping or falling, for every gun
@@ -300,6 +299,7 @@ public class Weapon : NetworkBehaviour
 
     // One shot. Runs on the host (which decides hits and damage) and is predicted on the shooter's
     // own game (ammo, cooldown, tracer and sound without waiting for the host).
+    // A shotgun fires several pellets; the ones that hit the same player add up into one hit.
     void Fire(PlayerInputData input)
     {
         Gun gun = loadout[Equipped];
@@ -311,66 +311,103 @@ public class Weapon : NetworkBehaviour
         // Shooting gives up spawn protection
         player.EndSpawnProtection();
 
-        //bloom: the same random spread on every machine, from the shot number
         Vector3 origin = player.EyePosition;
         Quaternion view = Quaternion.Euler(-input.Pitch, input.Yaw, 0f);
         float spread = CurrentBloom();
-        int seed = ShotCount * 7919 + (int)Object.Id.Raw * 104729;
-        Vector3 bloom = view * Vector3.forward * 1000f;
-        bloom += Spread(seed) * spread * (view * Vector3.up);
-        bloom += Spread(seed + 1) * spread * (view * Vector3.right);
-        bloom.Normalize();
-
-        Vector3 endPoint = origin + bloom * 1000f;
-        Vector3 hitNormal = Vector3.zero;
-        bool hitWorld = false;
+        int pellets = Mathf.Max(1, gun.pellets);
+        bool dealDamage = HasStateAuthority && Runner.IsForward;
 
         // Scenery is hit with normal physics; players with their hitboxes, rewound to where they were
         // on the shooter's screen. Player bodies' own colliders are left out.
         int mask = (canBeShot.value & ~((1 << Layers.LocalPlayer) | (1 << Layers.RemotePlayer))) | (1 << Layers.Hitbox);
         HitOptions options = HitOptions.IncludePhysX | HitOptions.IgnoreInputAuthority | HitOptions.SubtickAccuracy;
 
-        if (Runner.LagCompensation.Raycast(origin, bloom, 1000f, Object.InputAuthority, out LagCompensatedHit hit, mask, options, QueryTriggerInteraction.Ignore))
+        pelletHits.Clear();
+        for (int p = 0; p < pellets; p++)
         {
-            endPoint = hit.Point;
-            hitNormal = hit.Normal;
+            //bloom: the same random spread on every machine, from the shot and pellet number
+            int seed = ShotCount * 7919 + (int)Object.Id.Raw * 104729 + p * 2;
+            Vector3 bloom = view * Vector3.forward * 1000f;
+            bloom += Spread(seed) * spread * (view * Vector3.up);
+            bloom += Spread(seed + 1) * spread * (view * Vector3.right);
+            bloom.Normalize();
 
-            Player target = hit.Hitbox != null ? hit.Hitbox.Root.GetComponent<Player>() : null;
-            if (target != null)
+            Vector3 endPoint = origin + bloom * 1000f;
+            Vector3 hitNormal = Vector3.zero;
+            bool hitWorld = false;
+
+            if (Runner.LagCompensation.Raycast(origin, bloom, 1000f, Object.InputAuthority, out LagCompensatedHit hit, mask, options, QueryTriggerInteraction.Ignore))
             {
-                // No friendly fire: teammates are hit like scenery, minus the bullet hole
-                bool friendly = Manager.Instance != null && !Manager.Instance.AreEnemies(player.ActorId, target.ActorId);
-                if (!friendly && HasStateAuthority && Runner.IsForward)
+                endPoint = hit.Point;
+                hitNormal = hit.Normal;
+
+                Player target = hit.Hitbox != null ? hit.Hitbox.Root.GetComponent<Player>() : null;
+                if (target != null)
                 {
-                    bool headshot = IsHead(hit.Hitbox.transform);
-                    int damage = gun.DamageAt(hit.Distance, headshot);
-                    bool wasProtected = target.IsProtected;
-                    bool killed = target.TakeDamage(damage, Object.InputAuthority, gun.gunName, headshot, bloom, hit.Point - target.transform.position);
-                    // No hit feedback on spawn-protected players
-                    if (!wasProtected) RPC_HitConfirm(headshot, killed);
+                    // No friendly fire: teammates are hit like scenery, minus the bullet hole
+                    bool friendly = Manager.Instance != null && !Manager.Instance.AreEnemies(player.ActorId, target.ActorId);
+                    if (!friendly && dealDamage)
+                    {
+                        bool headshot = IsHead(hit.Hitbox.transform);
+                        AddPelletHit(target, gun.DamageAt(hit.Distance, headshot), headshot, bloom, hit.Point);
+                    }
+                }
+                else
+                {
+                    hitWorld = true;
                 }
             }
-            else
+
+            if (Runner.IsForward)
             {
-                hitWorld = true;
+                // Sound, muzzle flash and gun kick once per shot; a tracer for every pellet
+                bool first = p == 0;
+                if (HasInputAuthority) PlayShotEffects(endPoint, hitNormal, hitWorld, first);
+                if (HasStateAuthority) RPC_ShotEffects(endPoint, hitNormal, hitWorld, first);
             }
         }
 
-        if (Runner.IsForward)
+        foreach (PelletHit h in pelletHits)
         {
-            if (HasInputAuthority)
-            {
-                PlayShotEffects(endPoint, hitNormal, hitWorld);
-
-                // Kick the view up and slightly sideways. Look recovers it over the next moments.
-                if (look != null)
-                {
-                    float kick = gun.recoil * cameraRecoilScale * (Aiming ? aimingRecoilMultiplier : 1f);
-                    look.AddRecoil(kick, Random.Range(-kick, kick) * 0.35f);
-                }
-            }
-            if (HasStateAuthority) RPC_ShotEffects(endPoint, hitNormal, hitWorld);
+            if (h.target == null || h.target.IsDead) continue;
+            bool wasProtected = h.target.IsProtected;
+            bool killed = h.target.TakeDamage(h.damage, Object.InputAuthority, gun.gunName, h.headshot, h.direction, h.point - h.target.transform.position);
+            // No hit feedback on spawn-protected players
+            if (!wasProtected) RPC_HitConfirm(h.headshot, killed);
         }
+        pelletHits.Clear();
+
+        // Kick the view up and slightly sideways. Look recovers it over the next moments.
+        if (Runner.IsForward && HasInputAuthority && look != null)
+        {
+            float kick = gun.recoil * cameraRecoilScale * (Aiming ? aimingRecoilMultiplier : 1f);
+            look.AddRecoil(kick, Random.Range(-kick, kick) * 0.35f);
+        }
+    }
+
+    // Damage from this shot's pellets, per player hit
+    struct PelletHit
+    {
+        public Player target;
+        public int damage;
+        public bool headshot;
+        public Vector3 direction;
+        public Vector3 point;
+    }
+    static readonly List<PelletHit> pelletHits = new List<PelletHit>();
+
+    static void AddPelletHit(Player target, int damage, bool headshot, Vector3 direction, Vector3 point)
+    {
+        for (int i = 0; i < pelletHits.Count; i++)
+        {
+            if (pelletHits[i].target != target) continue;
+            PelletHit h = pelletHits[i];
+            h.damage += damage;
+            h.headshot |= headshot;
+            pelletHits[i] = h;
+            return;
+        }
+        pelletHits.Add(new PelletHit { target = target, damage = damage, headshot = headshot, direction = direction, point = point });
     }
 
     // A number from -1 to 1 that only depends on the seed
@@ -403,10 +440,10 @@ public class Weapon : NetworkBehaviour
 
     // The shooter's own game hears and sees its shots straight away, so skip them here
     [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
-    private void RPC_ShotEffects(Vector3 endPoint, Vector3 hitNormal, NetworkBool hitWorld)
+    private void RPC_ShotEffects(Vector3 endPoint, Vector3 hitNormal, NetworkBool hitWorld, NetworkBool first)
     {
         if (HasInputAuthority) return;
-        PlayShotEffects(endPoint, hitNormal, hitWorld);
+        PlayShotEffects(endPoint, hitNormal, hitWorld, first);
     }
 
     [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
@@ -446,15 +483,43 @@ public class Weapon : NetworkBehaviour
         hitmarkRoutine = null;
     }
 
-    IEnumerator ShotLine(Vector3 hitPos)
+    // A laser beam from the muzzle to where the shot landed, in the shooter's colour, that thins
+    // out and fades. Each shot gets its own copy of the gun's line, so quick shots don't cut each
+    // other short. Not parented to the gun, so it stays where it was fired.
+    void ShotLine(Vector3 hitPos, bool pellet)
     {
-        if (lineRend != null) {
-        lineRend.enabled = true;
-        lineRend.SetPosition(0, hitPos);
-        lineRend.SetPosition(1, lineRend.gameObject.transform.position);
-        yield return new WaitForSeconds(0.5f);
-        if (lineRend != null) lineRend.enabled = false;
-        }
+        if (lineRend == null) return;
+
+        GameObject beamObject = new GameObject("Laser");
+        // The main camera draws the Gun layer, so walls in front of the beam still hide it
+        beamObject.layer = Layers.Gun;
+        LineRenderer beam = CopyLine(lineRend, beamObject);
+        beam.useWorldSpace = true;
+        beam.positionCount = 2;
+        beam.SetPosition(0, lineRend.transform.position);
+        beam.SetPosition(1, hitPos);
+        // Pellets are thinner and gone sooner, so a shotgun blast doesn't fill the screen
+        float width = lineRend.widthMultiplier * (pellet ? 0.5f : 1f);
+        beam.widthMultiplier = width;
+        beam.enabled = true;
+
+        Color color = ShotColor();
+        MaterialPropertyBlock block = new MaterialPropertyBlock();
+        beam.GetPropertyBlock(block);
+        block.SetColor("_BaseColor", new Color(color.r, color.g, color.b, 0.85f)); // URP
+        block.SetColor("_Color", new Color(color.r, color.g, color.b, 0.85f));     // built-in shaders
+        beam.SetPropertyBlock(block);
+
+        BeamFade fade = beamObject.AddComponent<BeamFade>();
+        fade.Begin(beam, width, pellet ? 0.15f : 0.3f);
+    }
+
+    // The colour this player's shots glow in: the team colour in Team Deathmatch, otherwise the player's
+    // own colour (the same as their cap), lightened so it reads as light
+    Color ShotColor()
+    {
+        Color c = PlayerCap.ColorFor(player != null ? player.ActorId : 0);
+        return Color.Lerp(c, Color.white, 0.35f);
     }
 
     void OnEquippedChanged()
@@ -486,7 +551,9 @@ public class Weapon : NetworkBehaviour
         foreach (Collider c in newWeapon.GetComponentsInChildren<Collider>(true)) c.enabled = false;
 
         currentWeapon = newWeapon;
+        // The gun's own line is only a template for the laser beams (see ShotLine)
         lineRend = currentWeapon.GetComponentInChildren<LineRenderer>();
+        if (lineRend != null) lineRend.enabled = false;
         SetGunLayers(newWeapon);
         weaponAnchor = currentWeapon.transform.Find("Anchor");
         stateAds = currentWeapon.transform.Find("States/ADS");
@@ -511,36 +578,22 @@ public class Weapon : NetworkBehaviour
         {
             t.gameObject.layer = Layers.LocalGun;
         }
-
-        // The tracer's LineRenderer sits on a visible part of the gun model (the barrel). Move it to
-        // its own child on the Gun layer, so the main camera draws it and walls still hide it,
-        // while the barrel itself stays with the rest of the gun on the viewmodel camera.
-        if (lineRend != null) lineRend = MoveTracerToOwnObject(lineRend);
     }
 
-    LineRenderer MoveTracerToOwnObject(LineRenderer original)
+    static LineRenderer CopyLine(LineRenderer original, GameObject target)
     {
-        GameObject tracerObject = new GameObject("Tracer");
-        tracerObject.layer = Layers.Gun;
-        tracerObject.transform.SetParent(original.transform, false);
-
-        LineRenderer tracer = tracerObject.AddComponent<LineRenderer>();
-        tracer.sharedMaterials = original.sharedMaterials;
-        tracer.useWorldSpace = original.useWorldSpace;
-        tracer.positionCount = original.positionCount;
-        tracer.widthCurve = original.widthCurve;
-        tracer.widthMultiplier = original.widthMultiplier;
-        tracer.colorGradient = original.colorGradient;
-        tracer.numCapVertices = original.numCapVertices;
-        tracer.numCornerVertices = original.numCornerVertices;
-        tracer.alignment = original.alignment;
-        tracer.textureMode = original.textureMode;
-        tracer.shadowCastingMode = original.shadowCastingMode;
-        tracer.receiveShadows = original.receiveShadows;
-        tracer.enabled = false;
-
-        original.enabled = false;
-        return tracer;
+        LineRenderer line = target.AddComponent<LineRenderer>();
+        line.sharedMaterials = original.sharedMaterials;
+        line.widthCurve = original.widthCurve;
+        line.widthMultiplier = original.widthMultiplier;
+        line.colorGradient = original.colorGradient;
+        line.numCapVertices = original.numCapVertices;
+        line.numCornerVertices = original.numCornerVertices;
+        line.alignment = original.alignment;
+        line.textureMode = original.textureMode;
+        line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        line.receiveShadows = false;
+        return line;
     }
 
     void Aim(bool aiming)
@@ -551,14 +604,12 @@ public class Weapon : NetworkBehaviour
         weaponAnchor.position = Vector3.Lerp(weaponAnchor.position, target.position, Time.deltaTime * loadout[EquippedIndex].aimSpeed);
     }
 
-    // Sound, tracer, bullet hole and gun kick for a shot
-    void PlayShotEffects(Vector3 endPoint, Vector3 hitNormal, bool hitWorld)
+    // Sound, laser beam, scorch mark and gun kick for a shot. first is false for a shotgun's extra
+    // pellets, which only add a beam and a mark.
+    void PlayShotEffects(Vector3 endPoint, Vector3 hitNormal, bool hitWorld, bool first)
     {
-        PlayerSounds sounds = GetComponent<PlayerSounds>();
-        if (sounds != null) sounds.PlayShot(loadout[EquippedIndex]);
-
-        StartCoroutine(ShotLine(endPoint));
-        MuzzleFlash();
+        Gun gun = loadout[EquippedIndex];
+        ShotLine(endPoint, gun.pellets > 1);
 
         if (hitWorld)
         {
@@ -566,6 +617,12 @@ public class Weapon : NetworkBehaviour
             newHole.transform.LookAt(endPoint + hitNormal);
             Destroy(newHole, 5);
         }
+
+        if (!first) return;
+
+        PlayerSounds sounds = GetComponent<PlayerSounds>();
+        if (sounds != null) sounds.PlayShot(gun);
+        MuzzleFlash();
 
         //gun fx
         if (currentWeapon != null)
@@ -585,9 +642,9 @@ public class Weapon : NetworkBehaviour
         flash.transform.position = muzzle;
         Light light = flash.AddComponent<Light>();
         light.type = LightType.Point;
-        light.color = muzzleFlashColor;
+        light.color = ShotColor();
         light.range = 6f;
-        light.intensity = Random.Range(2.5f, 4f);
+        light.intensity = Random.Range(3f, 4.5f);
         light.shadows = LightShadows.None;
 
         Destroy(flash, 0.04f);

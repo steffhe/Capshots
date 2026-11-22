@@ -10,14 +10,14 @@ using UnityEngine;
 public class PlayerSounds : MonoBehaviour
 {
     // Mix levels, set from loudness measurements of each synthesized clip (A-weighted) rather than by ear.
-    // Target, relative to a sniper shot: pistol -3 dB, machine gun -5, reload -12 to -15, landing -14,
+    // Target, relative to a sniper shot: shotgun -1.5 dB, pistol -3.5, machine gun -6, reload -12 to -15, landing -14,
     // hover while sprinting about -18, while walking about -22. UI sounds in FeedbackUI sit at -8 to -10.
     public float hoverVolume = 0.04f;
-    public float landingVolume = 0.093f;
-    public float reloadVolume = 0.1f;
+    public float landingVolume = 0.06f;
+    public float reloadVolume = 0.027f;
     // Gunshots: this is the sniper rifle, the loudest sound in the game. The other guns are scaled from it.
-    // Kept well below the old imported shot, which was about 18 dB louder and clipped.
-    public float shotVolume = 0.52f;
+    // Low, because the sustained energy zaps sound much louder than their peak level suggests.
+    public float shotVolume = 0.16f;
     // Slower than this (m/s) the hover sound fades out, so small corrections stay quiet
     private const float MinHoverSpeed = 1f;
     // Speed (m/s) where the hover sound reaches full strength
@@ -39,7 +39,7 @@ public class PlayerSounds : MonoBehaviour
 
     private static AudioClip hoverClip;
     private static AudioClip landingClip, magOutClip, magInClip, boltClip;
-    private static AudioClip[] pistolShots, machineGunShots, sniperShots;
+    private static AudioClip[] pistolShots, machineGunShots, sniperShots, shotgunShots;
     private AudioSource shotSource;
 
     private void Awake()
@@ -93,13 +93,15 @@ public class PlayerSounds : MonoBehaviour
     }
 
     private const float HoverPitchSlow = 0.85f, HoverPitchFast = 1.15f;
+    private const float WalkSpeed = 9f, SprintSpeed = 19f;
 
     // The hover sound keeps playing in the air too, since the characters float anyway.
     // Crouching (and sliding, which crouches) is silent, so sneaking up on someone still works.
     private void UpdateHover(float horizontalSpeed)
     {
         float target = player.IsCrouched ? 0f : Mathf.InverseLerp(MinHoverSpeed, FullHoverSpeed, horizontalSpeed);
-        float fast = Mathf.InverseLerp(3f, 10f, horizontalSpeed);
+        // Walking is about 10 m/s and sprinting about 20
+        float fast = Mathf.InverseLerp(WalkSpeed, SprintSpeed, horizontalSpeed);
         float dt = Time.deltaTime;
 
         // Smoothed, so jittery speeds (especially for remote players) don't make the sound flutter
@@ -191,9 +193,9 @@ public class PlayerSounds : MonoBehaviour
     {
         Play(reloadSource, magOutClip, reloadVolume * 1f, 0.97f, 1.03f);
         yield return new WaitForSeconds(reloadTime * 0.55f);
-        Play(reloadSource, magInClip, reloadVolume * 0.74f, 0.97f, 1.03f);
+        Play(reloadSource, magInClip, reloadVolume * 1.1f, 0.97f, 1.03f);
         yield return new WaitForSeconds(Mathf.Max(0f, reloadTime * 0.95f - reloadTime * 0.55f - 0.05f));
-        Play(reloadSource, boltClip, reloadVolume * 0.86f, 0.97f, 1.03f);
+        Play(reloadSource, boltClip, reloadVolume * 1f, 0.97f, 1.03f);
         reloadRoutine = null;
     }
 
@@ -217,12 +219,14 @@ public class PlayerSounds : MonoBehaviour
             return;
         }
 
+        // Each gun's volume evens out how loud its clip sounds (measured, A-weighted) to its place in the mix
         AudioClip[] clips;
         float volume = shotVolume;
         string gunName = (gun.gunName ?? "").ToLowerInvariant();
         if (gunName.Contains("sniper")) { clips = sniperShots; }
-        else if (gunName.Contains("machine") || gun.burst == 1) { clips = machineGunShots; volume *= 0.55f; }
-        else { clips = pistolShots; volume *= 0.49f; }
+        else if (gunName.Contains("shotgun") || gun.pellets > 1) { clips = shotgunShots; volume *= 1.3f; }
+        else if (gunName.Contains("machine") || gun.burst == 1) { clips = machineGunShots; volume *= 0.77f; }
+        else { clips = pistolShots; volume *= 0.71f; }
 
         // Pitch stays at 1: changing it would bend the tails of earlier shots still ringing out
         shotSource.pitch = 1f;
@@ -237,107 +241,102 @@ public class PlayerSounds : MonoBehaviour
 
         hoverClip = MakeHoverLoop();
 
+        // Landing: the hover field cushions the drop, a soft puff of air with a low whomp
         {
             System.Random rng = new System.Random(7);
-            float lowpass = 0f;
-            landingClip = MakeClip("Landing", 0.28f, t =>
+            float lowpass = 0f, lowpass2 = 0f;
+            landingClip = MakeClip("Landing", 0.35f, t =>
             {
                 float noise = (float)rng.NextDouble() * 2f - 1f;
-                lowpass += (noise - lowpass) * 0.15f;
-                return Tone(t, Mathf.Lerp(90f, 50f, t / 0.28f)) * Decay(t, 16f) + lowpass * Decay(t, 18f) * 1.6f;
+                lowpass += (noise - lowpass) * 0.1f;
+                lowpass2 += (lowpass - lowpass2) * 0.1f;
+                float puff = lowpass2 * 6f * Mathf.Min(1f, t / 0.015f) * Decay(t, 11f);
+                float whomp = Tone(t, 55f + 40f * Decay(t, 20f)) * Mathf.Min(1f, t / 0.01f) * Decay(t, 14f) * 0.6f;
+                return puff + whomp;
             });
         }
 
-        // Magazine sliding out: a click then a short metallic scrape
+        // Reloading an energy weapon: the cell powers down, a new one charges up, then a ready chirp
+        magOutClip = MakeSweep("Power Down", 0.28f, 900f, 220f, 0.6f, 0.5f, 12f, 6f,
+            (t, x) => Mathf.Min(1f, t / 0.005f) * Mathf.Pow(1f - x, 1.5f));
+        magInClip = MakeSweep("Charge Up", 0.32f, 280f, 1500f, 1.6f, 0.35f, 8f, 30f,
+            (t, x) => (0.3f + 0.7f * x) * Mathf.Min(1f, (0.32f - t) / 0.02f));
+        boltClip = MakeClip("Ready", 0.2f, t =>
         {
-            System.Random rng = new System.Random(11);
-            magOutClip = MakeClip("Mag Out", 0.22f, t =>
-            {
-                float noise = (float)rng.NextDouble() * 2f - 1f;
-                float click = Tone(t, 2400f) * Decay(t, 160f) * 0.7f;
-                float scrape = t > 0.03f ? noise * 0.25f * Decay(t - 0.03f, 18f) * (0.6f + 0.4f * Tone(t, 31f)) : 0f;
-                return click + scrape;
-            });
-        }
+            float first = t < 0.09f ? Tone(t, 1320f) * Mathf.Min(1f, t / 0.003f) * (t < 0.05f ? 1f : Decay(t - 0.05f, 80f)) : 0f;
+            float second = t >= 0.08f ? Tone(t, 1980f) * Decay(t - 0.08f, 30f) : 0f;
+            return (first + second) * 0.8f;
+        });
 
-        // Magazine seated: a firm double clack
-        {
-            System.Random rng = new System.Random(13);
-            magInClip = MakeClip("Mag In", 0.16f, t =>
-            {
-                float noise = (float)rng.NextDouble() * 2f - 1f;
-                float first = (Tone(t, 1700f) * 0.6f + noise * 0.4f) * Decay(t, 90f);
-                float second = t > 0.045f ? (Tone(t, 1300f) * 0.7f + noise * 0.4f) * Decay(t - 0.045f, 70f) : 0f;
-                return first + second + Tone(t, 160f) * Decay(t, 40f) * 0.4f;
-            });
-        }
-
-        // Gunshots: a few variations each, so rapid fire doesn't sound like one sample on repeat
+        // Gunshots: energy weapons. A few variations each, so rapid fire doesn't sound like one sample on repeat.
         pistolShots = new AudioClip[3];
         machineGunShots = new AudioClip[4];
         sniperShots = new AudioClip[2];
+        shotgunShots = new AudioClip[2];
         for (int i = 0; i < pistolShots.Length; i++)
-            // Sharp, snappy crack with a short body
-            pistolShots[i] = MakeShot("Pistol Shot " + i, 200 + i, 0.4f, 0.55f, 32f, 170f, 75f, 22f, 0.12f, 9f, 0.35f, 1f + i * 0.04f);
+            // A bright "pew": a fast falling zap with a little punch
+            pistolShots[i] = MakeLaser("Pistol Shot " + i, 200 + i, 0.3f, 2600f, 420f, 28f, 14f, 0.3f, 140f, 22f, 120f, 0.15f, 9f, 1, 0f, 1f + i * 0.04f);
         for (int i = 0; i < machineGunShots.Length; i++)
-            // Short and punchy, lower and grittier, so it doesn't smear at a high fire rate
-            machineGunShots[i] = MakeShot("Machine Gun Shot " + i, 300 + i, 0.28f, 0.4f, 45f, 130f, 60f, 30f, 0.1f, 14f, 0.25f, 1f + i * 0.035f);
+            // Short, buzzy pulses, so they don't smear at a high fire rate
+            machineGunShots[i] = MakeLaser("Machine Gun Shot " + i, 300 + i, 0.18f, 1700f, 360f, 45f, 26f, 0.6f, 95f, 30f, 150f, 0.1f, 16f, 1, 0f, 1f + i * 0.035f);
         for (int i = 0; i < sniperShots.Length; i++)
-            // Loud crack, heavy boom and a long rolling tail
-            sniperShots[i] = MakeShot("Sniper Shot " + i, 400 + i, 1.4f, 0.7f, 55f, 95f, 38f, 7f, 0.04f, 2.8f, 0.6f, 1f + i * 0.05f);
-
-        // Charging handle / slide: pulled back then snapped forward
-        {
-            System.Random rng = new System.Random(17);
-            boltClip = MakeClip("Bolt", 0.2f, t =>
-            {
-                float noise = (float)rng.NextDouble() * 2f - 1f;
-                float back = (Tone(t, 2000f) * 0.5f + noise * 0.3f) * Decay(t, 110f);
-                float forward = t > 0.09f ? (Tone(t, 2600f) * 0.6f + noise * 0.5f) * Decay(t - 0.09f, 80f) : 0f;
-                return back + forward;
-            });
-        }
+            // Railgun: a huge sweep from a shriek down to a rumble, with a long crackling tail
+            sniperShots[i] = MakeLaser("Sniper Shot " + i, 400 + i, 1.3f, 4200f, 110f, 10f, 3.2f, 0.5f, 55f, 6f, 60f, 0.5f, 2.6f, 2, 0.012f, 1f + i * 0.05f);
+        for (int i = 0; i < shotgunShots.Length; i++)
+            // Plasma blast: several detuned, gritty zaps at once over a heavy thump and a hissing tail
+            shotgunShots[i] = MakeLaser("Shotgun Shot " + i, 500 + i, 0.6f, 2000f, 180f, 22f, 8f, 0.7f, 70f, 10f, 40f, 0.7f, 6f, 3, 0.03f, 1f + i * 0.05f);
     }
 
-    // A gunshot: a bright noise crack, a low thump falling in pitch and a muffled echo tail.
-    // pitchScale shifts the whole shot slightly so the variations differ.
-    private static AudioClip MakeShot(string name, int seed, float length,
-        float crackBrightness, float crackDecay,
-        float thumpStart, float thumpEnd, float thumpDecay,
-        float tailBrightness, float tailDecay, float tailLevel, float pitchScale)
+    // An energy weapon shot: a zap sweeping down from startFreq to endFreq (buzz adds a gritty, squarer
+    // edge, extra voices detuned from each other make it thicker), a low thump for punch, a short noise
+    // crackle at the start and a muffled, fluttering plasma tail. pitchScale shifts the zap slightly so
+    // the variations differ.
+    private static AudioClip MakeLaser(string name, int seed, float length,
+        float startFreq, float endFreq, float sweep, float decay, float buzz,
+        float thumpFreq, float thumpDecay, float crackleDecay,
+        float tailLevel, float tailDecay, int voices, float detune, float pitchScale)
     {
         const int rate = 44100;
         System.Random rng = new System.Random(seed);
         int samples = Mathf.CeilToInt(length * rate);
         float[] data = new float[samples];
-        float crackFilter = 0f, tailFilter = 0f, tailFilter2 = 0f, phase = 0f, peak = 0f;
+        float[] phases = new float[voices];
+        float thumpPhase = 0f, crackleFilter = 0f, tailFilter = 0f, tailFilter2 = 0f, peak = 0f;
 
         for (int i = 0; i < samples; i++)
         {
             float t = (float)i / rate;
             float noise = (float)rng.NextDouble() * 2f - 1f;
 
-            crackFilter += (noise - crackFilter) * crackBrightness;
-            float crack = crackFilter * Decay(t, crackDecay) * 1.4f;
+            // Phases are integrated, so the sweeps stay smooth
+            float freq = Mathf.Lerp(endFreq, startFreq, Decay(t, sweep)) * pitchScale;
+            float zap = 0f;
+            for (int v = 0; v < voices; v++)
+            {
+                phases[v] += 2f * Mathf.PI * freq * (1f + detune * v) / rate;
+                float sine = Mathf.Sin(phases[v]);
+                zap += (sine + buzz * (float)System.Math.Tanh(4f * sine)) / (1f + buzz);
+            }
+            zap = zap / voices * Decay(t, decay);
 
-            // Thump with a pitch sweep, integrated so the sweep stays smooth
-            float freq = Mathf.Lerp(thumpEnd, thumpStart, Decay(t, 25f)) * pitchScale;
-            phase += 2f * Mathf.PI * freq / rate;
-            float thump = Mathf.Sin(phase) * Decay(t, thumpDecay);
+            thumpPhase += 2f * Mathf.PI * thumpFreq * (1f + Decay(t, 30f)) / rate;
+            float thump = Mathf.Sin(thumpPhase) * Decay(t, thumpDecay);
 
-            // Two filter stages for a dull, distant-sounding reflection
-            tailFilter += (noise - tailFilter) * tailBrightness;
-            tailFilter2 += (tailFilter - tailFilter2) * tailBrightness;
-            float tail = tailFilter2 * 6f * tailLevel * Decay(t, tailDecay) * Mathf.Clamp01(t * 40f);
+            crackleFilter += (noise - crackleFilter) * 0.5f;
+            float crackle = crackleFilter * Decay(t, crackleDecay);
 
-            // Soft clip, like a real shot overloading slightly
-            float sample = (float)System.Math.Tanh(crack + thump + tail);
+            tailFilter += (noise - tailFilter) * 0.08f;
+            tailFilter2 += (tailFilter - tailFilter2) * 0.08f;
+            float tail = tailFilter2 * 8f * tailLevel * Decay(t, tailDecay) * (0.6f + 0.4f * Tone(t, 23f));
+
+            // Soft clip, so the parts blend into one sound
+            float sample = (float)System.Math.Tanh(zap * 0.9f + thump * 0.7f + crackle * 0.5f + tail);
             float edge = Mathf.Clamp01(i / 8f) * Mathf.Clamp01((samples - i) / 1024f);
             data[i] = sample * edge;
             peak = Mathf.Max(peak, Mathf.Abs(data[i]));
         }
 
-        // Same peak level for every clip, so loudness is set only by the volume settings
+        // Same peak level for every clip; the volumes in PlayShot even out how loud each one sounds
         if (peak > 0f)
         {
             float gain = 0.9f / peak;
@@ -347,6 +346,24 @@ public class PlayerSounds : MonoBehaviour
         AudioClip clip = AudioClip.Create(name, samples, 1, rate, false);
         clip.SetData(data, 0);
         return clip;
+    }
+
+    // A tone sliding from startFreq to endFreq (shape > 1 starts slowly, < 1 starts fast), with some buzz and a
+    // tremolo whose speed changes from tremoloStart to tremoloEnd. envelope(t, x) gets the time and 0..1 progress.
+    private static AudioClip MakeSweep(string name, float length, float startFreq, float endFreq, float shape,
+        float buzz, float tremoloStart, float tremoloEnd, System.Func<float, float, float> envelope)
+    {
+        float phase = 0f;
+        return MakeClip(name, length, t =>
+        {
+            float x = t / length;
+            float freq = Mathf.Lerp(startFreq, endFreq, Mathf.Pow(x, shape));
+            phase += 2f * Mathf.PI * freq / 44100f;
+            float sine = Mathf.Sin(phase);
+            float tone = (sine + buzz * (float)System.Math.Tanh(4f * sine)) / (1f + buzz);
+            float tremolo = 0.7f + 0.3f * Mathf.Sin(2f * Mathf.PI * Mathf.Lerp(tremoloStart, tremoloEnd, x) * t);
+            return tone * tremolo * envelope(t, x);
+        });
     }
 
     // The hover sound: a seamless 2 second loop of a low humming drone, a theremin-like tone that wobbles

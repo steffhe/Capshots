@@ -1,0 +1,37 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 31f45cf0e1f8d0e44a2930f54dd20583, type: 3}
+  m_Name: Shotgun
+  m_EditorClassIdentifier: 
+  gunName: Shotgun
+  fireRate: 0.8
+  bloom: 70
+  recoil: 25
+  kickback: 0.4
+  aimSpeed: 8
+  damage: 110
+  ammo: 24
+  clipSize: 6
+  reloadTime: 2
+  burst: 0
+  pellets: 8
+  prefab: {fileID: 7466018458602090438, guid: 891055c1fe744ca8be39030a9dc8fd37, type: 3}
+  image: {fileID: 2800000, guid: 02a964b8f9304b58bbd8b4c4b12db61c, type: 3}
+  shootingSound: {fileID: 0}
+  headshotMultiplier: 1.5
+  falloffStart: 6
+  falloffEnd: 18
+  minDamageMultiplier: 0.25
+  aimBloomDivisor: 1.3
+  movingBloomMultiplier: 1.1
+  moveSpeedMultiplier: 0.95
+  aimMoveSpeedMultiplier: 0.8

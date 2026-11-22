@@ -18,6 +18,9 @@ public class Gun : ScriptableObject
     public float reloadTime;
     public int burst;  // 0 semi - 1 auto - 2 burst
     public int burstCount = 3; // shots per trigger pull in burst mode
+    // Projectiles per shot. More than 1 makes a shotgun: each pellet gets its own spread (bloom) and does
+    // damage on its own; the pellets that hit one player are added up into a single hit.
+    public int pellets = 1;
     public GameObject prefab;
     public Texture2D image;
     public AudioClip shootingSound;

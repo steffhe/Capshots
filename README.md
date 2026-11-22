@@ -23,7 +23,8 @@ To play together, each player runs the game, picks a username and either creates
 - Two game modes: Free For All, and Team Deathmatch (blue vs red, automatic team balancing, no friendly fire, first team to the kill limit wins)
 - Several maps to choose from
 - Warmup until enough players have joined, then a countdown before the match starts
-- Three weapons (pistol, machine gun and sniper rifle) with aiming, reloading and weapon sway
+- Four energy weapons (pistol, machine gun, sniper rifle and an 8-pellet shotgun) with aiming, reloading and weapon sway; laser beams and muzzle flashes glow in the shooter's colour (the team colour in Team Deathmatch)
+- Hovering players: bodies float, bob and lean into their movement over a glowing disc, and the gun drifts instead of bobbing with footsteps
 - Weapon balance: damage falls off over distance, per-weapon headshot multipliers, heavier guns and aiming slow you down, and shots spread more while moving or jumping
 - Sprinting, jumping, crouching and sliding
 - Smarter spawns (away from enemies and out of their sight) and 3 seconds of spawn protection, which ends early if you shoot
@@ -36,7 +37,7 @@ To play together, each player runs the game, picks a username and either creates
 - Settings menu: field of view, aim sensitivity, volume, graphics quality and key rebinding
 - Gamepad support (Unity Input System)
 - Graphics: colour grading, bloom, vignette, soft shadows, anti-aliasing (SMAA) and light fog on every map
-- Sound: a distinct shot for each gun, a hovering hum and woosh while moving (silent while crouching), landing and reload sounds, all heard in 3D from where they happen
+- Sound: a distinct sci-fi shot for each gun, a hovering hum and woosh while moving (silent while crouching), a soft landing puff and energy-cell reload sounds, all heard in 3D from where they happen
 - Combat feedback: camera recoil, muzzle flash, hit and kill sounds, a damage flash with a direction indicator, a kill feed and a "killed by" screen
 - Levels and XP: earn XP for kills, finishing matches and winning, saved to your profile between sessions
 
