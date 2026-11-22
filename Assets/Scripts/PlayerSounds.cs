@@ -12,7 +12,7 @@ public class PlayerSounds : MonoBehaviour
     // Mix levels, set from loudness measurements of each synthesized clip (A-weighted) rather than by ear.
     // Target, relative to a sniper shot: pistol -3 dB, machine gun -5, reload -12 to -15, landing -14,
     // hover while sprinting about -18, while walking about -22. UI sounds in FeedbackUI sit at -8 to -10.
-    public float hoverVolume = 0.045f;
+    public float hoverVolume = 0.04f;
     public float landingVolume = 0.093f;
     public float reloadVolume = 0.1f;
     // Gunshots: this is the sniper rifle, the loudest sound in the game. The other guns are scaled from it.
@@ -349,8 +349,8 @@ public class PlayerSounds : MonoBehaviour
         return clip;
     }
 
-    // The hover sound: a seamless 2 second loop of a low humming drone, a warbling sci-fi tone and an
-    // airy woosh that swells and dies down. Every tone fits a whole number of cycles into the loop, and
+    // The hover sound: a seamless 2 second loop of a low humming drone, a theremin-like tone that wobbles
+    // and glides, a pulsing ring-modulated shimmer, a faint high sparkle and a soft airy woosh. Every tone fits a whole number of cycles into the loop, and
     // the noise is crossfaded from the end into the start, so it repeats without a click.
     private static AudioClip MakeHoverLoop()
     {
@@ -370,8 +370,14 @@ public class PlayerSounds : MonoBehaviour
             // Drone: the two upper voices are half a hertz apart from the root's harmonics, so it slowly beats
             float hum = Tone(t, 55f) * 0.55f + Tone(t, 110.5f) * 0.35f + Tone(t, 165f) * 0.12f;
 
-            // 220 Hz with a 4 Hz vibrato: the wobbly flying-saucer tone
-            float warble = Mathf.Sin(2f * Mathf.PI * 220f * t + 3f * Tone(t, 4f)) * (0.6f + 0.4f * Tone(t, 1.5f));
+            // 330 Hz with a 6 Hz vibrato, gliding about 30 Hz up and down over the loop: the flying-saucer theremin
+            float warble = Mathf.Sin(2f * Mathf.PI * 330f * t + 4f * Tone(t, 6f) + 60f * Tone(t, 0.5f)) * (0.7f + 0.3f * Tone(t, 1.5f));
+
+            // Ring modulation gives a metallic, electronic shimmer, pulsing 8 times a second
+            float ring = Tone(t, 880f) * Tone(t, 73f) * (0.55f + 0.45f * Tone(t, 8f));
+
+            // Two high tones 1.5 Hz apart, a faint twinkling sparkle on top
+            float sparkle = (Tone(t, 1760f) + Tone(t, 1761.5f)) * 0.5f;
 
             // Band-passed noise (the difference of two low-pass filters) for the rushing air
             fastFilter += (noise - fastFilter) * 0.12f;
@@ -379,7 +385,7 @@ public class PlayerSounds : MonoBehaviour
             float swell = 0.65f + 0.35f * Tone(t, 1f) * Mathf.Sin(2f * Mathf.PI * 0.5f * t + 1f);
             float woosh = (fastFilter - slowFilter) * swell * 2.2f;
 
-            raw[i] = hum * 0.45f + warble * 0.12f + woosh * 0.55f;
+            raw[i] = hum * 0.4f + warble * 0.3f + ring * 0.12f + sparkle * 0.04f + woosh * 0.3f;
         }
 
         float[] data = new float[samples];
