@@ -137,14 +137,25 @@ public class NetworkSession : MonoBehaviour, INetworkRunnerCallbacks
     public static void Leave()
     {
         NetworkSession session = instance;
+        // Fade to the loading screen first, so the match doesn't just cut to the menu
+        bool covered = LoadingScreen.Visible;
+        LoadingScreen.Show("RETURNING TO MENU");
+
         if (session == null || session.runner == null)
         {
             SceneManager.LoadScene(MenuScene);
             return;
         }
+        if (session.leaving) return;
 
         session.leaving = true;
-        session.runner.Shutdown();
+        session.StartCoroutine(session.ShutdownAfter(covered ? 0f : 0.3f));
+    }
+
+    private System.Collections.IEnumerator ShutdownAfter(float seconds)
+    {
+        if (seconds > 0f) yield return new WaitForSecondsRealtime(seconds);
+        if (runner != null) runner.Shutdown();
     }
 
     private void Update()
@@ -178,12 +189,21 @@ public class NetworkSession : MonoBehaviour, INetworkRunnerCallbacks
             return;
         }
 
+        // Fade out first, unless leaving already covered the screen
+        if (!LoadingScreen.Visible)
+        {
+            StartCoroutine(LoadMenuAfter(0f));
+            return;
+        }
+
         SceneManager.LoadScene(MenuScene);
     }
 
     private System.Collections.IEnumerator LoadMenuAfter(float seconds)
     {
         yield return new WaitForSecondsRealtime(seconds);
+        LoadingScreen.Show("RETURNING TO MENU");
+        yield return new WaitForSecondsRealtime(0.3f);
         if (runner == null) SceneManager.LoadScene(MenuScene);
     }
 
@@ -208,7 +228,13 @@ public class NetworkSession : MonoBehaviour, INetworkRunnerCallbacks
     public void OnReliableDataReceived(NetworkRunner runner, PlayerRef player, ReliableKey key, ReadOnlySpan<byte> data) { }
     public void OnReliableDataProgress(NetworkRunner runner, PlayerRef player, ReliableKey key, float progress) { }
     public void OnSceneLoadDone(NetworkRunner runner) { }
-    public void OnSceneLoadStart(NetworkRunner runner) { }
+    // Once a match is joined, the loading screen can say which map is loading
+    public void OnSceneLoadStart(NetworkRunner runner)
+    {
+        if (SceneManager.GetActiveScene().buildIndex != MenuScene || !LoadingScreen.Visible) return;
+        LoadingScreen.SetMatch(runner);
+        LoadingScreen.SetStatus("LOADING MAP");
+    }
     public void OnObjectExitAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player) { }
     public void OnObjectEnterAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player) { }
 

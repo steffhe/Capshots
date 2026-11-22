@@ -26,6 +26,9 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
     public GameObject mapcam;
 
+    // A player who falls below this height (off the map, or through a gap) dies
+    public float killHeight = -25f;
+
     public string playerPrefabString;
     public string playerPrefab;
     public Transform[] spawnPoints;
@@ -73,6 +76,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
     private void OnDestroy()
     {
         if (Instance == this) Instance = null;
+        DestroyEndVolume();
     }
 
     private void Start()
@@ -84,6 +88,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
     public override void Spawned()
     {
         ReadMatchSettings();
+        RememberStartingXp();
 
         InitializeUI();
         changes = GetChangeDetector(ChangeDetector.Source.SimulationState);
@@ -104,6 +109,9 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         OnStatsChanged();
         RefreshTimerUI();
         ready = true;
+
+        // The map is in: lift the loading screen and introduce the map
+        PlayIntro();
     }
 
     public override void Despawned(NetworkRunner runner, bool hasState)
@@ -129,7 +137,9 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         // The map camera shows while the local player is dead or the match is over
         bool alive = Player.Local != null;
         if (mapcam.activeSelf == alive && !matchEnded) mapcam.SetActive(!alive);
-        if (Hud.activeSelf != alive) Hud.SetActive(alive);
+        // The HUD goes away for the end of match banner and results
+        bool showHud = alive && !matchEnded;
+        if (Hud.activeSelf != showHud) Hud.SetActive(showHud);
 
         if (state == GameState.Ending) return;
 
@@ -350,7 +360,17 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
         SpawnWaitingPlayers();
         CheckPickups();
+
+        // The match is over and everyone has cut away to the results: remove the bodies
+        if (despawnTimer.Expired(Runner))
+        {
+            despawnTimer = TickTimer.None;
+            DespawnPlayers();
+        }
     }
+
+    // Host only: when to remove the frozen players at the end of the match
+    private TickTimer despawnTimer;
 
     // Runs once a second on the host. Drives Waiting -> Starting -> Playing -> Ending.
     private void TimerStep()
@@ -466,7 +486,9 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         return kills;
     }
 
-    // Host only: closes the session to new players and removes everyone's body
+    // Host only: closes the session to new players. Everyone freezes where they stand (Player and
+    // Weapon stop using input once the state is Ending); the bodies are removed a few seconds
+    // later, after everyone has cut away to the results.
     private void EndMatch()
     {
         if (State == GameState.Ending) return;
@@ -476,10 +498,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         Runner.SessionInfo.IsOpen = false;
         Runner.SessionInfo.IsVisible = false;
 
-        foreach (Player p in FindObjectsByType<Player>(FindObjectsSortMode.None))
-        {
-            if (p.Object != null && p.Object.IsValid) Runner.Despawn(p.Object);
-        }
+        despawnTimer = TickTimer.CreateFromSeconds(Runner, DespawnDelay);
     }
 
     // A copy of the keys, so Stats can be changed while going through them
@@ -501,24 +520,17 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         if (matchEnded) return;
         matchEnded = true;
 
+        // The host only stops the clock at zero when time runs out; a kill limit ends it early
+        bool timeUp = MatchTime <= 0;
+
         AwardMatchXp();
 
         currentMatchTime = 0;
         RefreshTimerUI();
 
-        mapcam.SetActive(true);
-
-        endgame.gameObject.SetActive(true);
-        Leaderboard(endgame.Find("Leaderboard"));
-
-        // The host waits a moment longer, so everyone else leaves on their own instead of seeing "host left"
-        StartCoroutine(End(HasStateAuthority ? 7f : 6f));
-    }
-
-    private IEnumerator End(float wait)
-    {
-        yield return new WaitForSeconds(wait);
-        NetworkSession.Leave();
+        // Banner, results, then back to the menu (Manager.Presentation.cs). The host stays on the
+        // results a moment longer, so everyone else leaves on their own instead of seeing "host left".
+        StartCoroutine(EndSequence(timeUp));
     }
 
     private void OnStateChanged(GameState previousState)

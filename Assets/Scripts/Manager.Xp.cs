@@ -47,6 +47,9 @@ public partial class Manager
     private void AwardXp(int amount, string reason)
     {
         ProfileData profile = Launcher.myProfile;
+        // Added up for the results screen, which fills the level bar with the whole match's XP
+        xpGained += amount;
+        xpReason = reason;
         int levelsGained = profile.AddXp(amount);
         Data.SaveProfile(profile);
 
@@ -59,7 +62,8 @@ public partial class Manager
         }
 
         if (uiUsername != null) uiUsername.text = UsernameWithLevel(profile);
-        ShowMessage(message);
+        // At the end of the match the results screen shows the XP instead
+        if (!matchEnded) ShowMessage(message);
     }
 
     // Lets the host update this player's level on everyone's scoreboard

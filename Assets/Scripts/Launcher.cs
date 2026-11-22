@@ -57,7 +57,10 @@ public partial class Launcher : MonoBehaviour
         PlayerCap.AttachToSceneHeads(PlayerCap.LogoColor);
         ShowWordmark();
         ApplyStyle();
+        MenuScenery.Create();
         Connect();
+        // Back from a match (or a join that failed): reveal the menu under the loading screen
+        LoadingScreen.Hide(0.15f);
     }
 
     private void OnEnable()
@@ -85,9 +88,14 @@ public partial class Launcher : MonoBehaviour
         PrepareProfile();
         // Quick play from the main tab never opened the create tab, so make sure the map is a playable one
         if (!maps[currentmap].enabled) currentmap = NextEnabledMap(0);
+        LoadingScreen.Show("FINDING A MATCH");
         StartGameResult result = await NetworkSession.JoinRandomOrHost((int)maxPlayersSlider.value, RoomProperties(), maps[currentmap].scene);
         starting = false;
-        if (!result.Ok) Debug.LogWarning("Quick play failed: " + result.ShutdownReason);
+        if (!result.Ok)
+        {
+            Debug.LogWarning("Quick play failed: " + result.ShutdownReason);
+            LoadingScreen.Fail("COULDN'T FIND A MATCH");
+        }
     }
 
     public async void Create()
@@ -95,9 +103,14 @@ public partial class Launcher : MonoBehaviour
         if (starting) return;
         starting = true;
         PrepareProfile();
+        LoadingScreen.Show("CREATING MATCH", maps[currentmap].name, LoadingScreen.ModeName(currentmode));
         StartGameResult result = await NetworkSession.Host(roomnameField.text, (int)maxPlayersSlider.value, RoomProperties(), maps[currentmap].scene);
         starting = false;
-        if (!result.Ok) Debug.LogWarning("Couldn't create the room: " + result.ShutdownReason);
+        if (!result.Ok)
+        {
+            Debug.LogWarning("Couldn't create the room: " + result.ShutdownReason);
+            LoadingScreen.Fail("COULDN'T CREATE THE MATCH");
+        }
     }
 
     // The match settings, shared with everyone through the session (and shown in the room list)
@@ -338,9 +351,14 @@ public partial class Launcher : MonoBehaviour
         starting = true;
         PrepareProfile();
         string roomName = button.Find("Name").GetComponent<Text>().text;
+        LoadingScreen.Show("JOINING " + roomName.ToUpperInvariant());
         StartGameResult result = await NetworkSession.Join(roomName);
         starting = false;
-        if (!result.Ok) Debug.LogWarning($"Couldn't join {roomName}: {result.ShutdownReason}");
+        if (!result.Ok)
+        {
+            Debug.LogWarning($"Couldn't join {roomName}: {result.ShutdownReason}");
+            LoadingScreen.Fail(result.ShutdownReason == ShutdownReason.GameIsFull ? "THAT MATCH IS FULL" : "COULDN'T JOIN THE MATCH");
+        }
     }
 
 }

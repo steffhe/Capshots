@@ -127,6 +127,14 @@ public class Weapon : NetworkBehaviour
         if (player.IsDead) return;
         if (!GetInput(out PlayerInputData input)) return;
 
+        // The match is over: guns go quiet
+        if (Manager.Instance != null && Manager.Instance.Ending)
+        {
+            Aiming = false;
+            BurstLeft = 0;
+            return;
+        }
+
         NetworkButtons pressed = input.Buttons.GetPressed(PreviousButtons);
         PreviousButtons = input.Buttons;
 
