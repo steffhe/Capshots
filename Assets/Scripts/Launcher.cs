@@ -53,8 +53,10 @@ public partial class Launcher : MonoBehaviour
         myProfile = Data.LoadProfile();
         usernameField.text = myProfile.username;
         CreateModeButton();
-        // The player model in the menu wears a cap too, in the logo's colour
+        // The player model in the menu wears a cap too, in the logo's colour...
         PlayerCap.AttachToSceneHeads(PlayerCap.LogoColor);
+        // ...and is the same little drone as in a match
+        DroneBody.DressSceneModels(PlayerCap.LogoColor);
         ShowWordmark();
         ApplyStyle();
         MenuScenery.Create();

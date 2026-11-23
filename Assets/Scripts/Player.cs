@@ -73,6 +73,7 @@ public class Player : NetworkBehaviour
     private bool wasCursorLocked;
 
     private PlayerCap[] caps = new PlayerCap[0];
+    private DroneBody[] drones = new DroneBody[0];
     private HoverVisuals hoverVisuals;
     private bool appliedCrouch;
     private string shownName;
@@ -256,6 +257,13 @@ public class Player : NetworkBehaviour
         // A cap on both heads (standing and crouching), after the layers above are set so it's drawn
         // like the head: hidden from your own camera, visible to everyone else
         Color capColor = PlayerCap.ColorFor(ActorId);
+        // The body is a little round drone (standing and crouching), on the same layers as the capsule and head
+        bool teamMode = manager != null && manager.IsTeamMode;
+        drones = new DroneBody[]
+        {
+            DroneBody.Dress(standingCollider != null ? standingCollider.transform : null, standingColliderHead != null ? standingColliderHead.transform : null, capColor, teamMode),
+            DroneBody.Dress(crouchingCollider != null ? crouchingCollider.transform : null, crouchingColliderHead != null ? crouchingColliderHead.transform : null, capColor, teamMode),
+        };
         caps = new PlayerCap[]
         {
             PlayerCap.Attach(standingColliderHead != null ? standingColliderHead.transform : null, capColor),
@@ -723,6 +731,7 @@ public class Player : NetworkBehaviour
             // Body meshes only: not the name tag, the gun, effects or the cap (coloured below)
             if (!(body is MeshRenderer || body is SkinnedMeshRenderer)) continue;
             if (body.GetComponentInParent<PlayerCap>() != null) continue;
+            if (body.GetComponentInParent<DroneBody>() != null) continue; // coloured below
             if (hoverVisuals != null && hoverVisuals.IsGlow(body)) continue;
             if (body.GetComponent<TextMeshPro>() != null) continue;
             if (weaponParent != null && body.transform.IsChildOf(weaponParent)) continue;
@@ -734,6 +743,7 @@ public class Player : NetworkBehaviour
         }
 
         foreach (PlayerCap cap in caps) if (cap != null) cap.SetColor(teamColor);
+        foreach (DroneBody drone in drones) if (drone != null) drone.SetColor(teamColor, true);
     }
 
     private void OnDestroy()

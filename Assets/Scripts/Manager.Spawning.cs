@@ -123,6 +123,10 @@ public partial class Manager
 
         GameObject ragdoll = Instantiate(prefab, position, rotation);
         DeadPlayer dead = ragdoll.GetComponent<DeadPlayer>();
-        if (dead != null) dead.Launch(velocity, hitDirection, hitOffset, knockback, headshot, PlayerCap.ColorFor(actor));
+        if (dead != null)
+        {
+            dead.Dress(PlayerCap.ColorFor(actor), IsTeamMode);
+            dead.Launch(velocity, hitDirection, hitOffset, knockback, headshot, PlayerCap.ColorFor(actor));
+        }
     }
 }

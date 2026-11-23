@@ -17,6 +17,23 @@ public class DeadPlayer : MonoBehaviour
     private Vector3 bodyScale, headScale, capScale;
     private float age;
 
+    // Makes the body and head look like the player's drone, switched off (eyes shut, lights out).
+    // Call before Launch, which takes the head off.
+    public void Dress(Color accent, bool teamMode)
+    {
+        SphereCollider headCollider = GetComponentInChildren<SphereCollider>();
+        CapsuleCollider bodyCollider = GetComponentInChildren<CapsuleCollider>();
+        MeshFilter bodyMesh = bodyCollider != null ? bodyCollider.GetComponent<MeshFilter>() : null;
+        if (bodyMesh == null)
+        {
+            // The body mesh is whichever one isn't the head
+            foreach (MeshFilter filter in GetComponentsInChildren<MeshFilter>())
+                if (headCollider == null || filter.transform != headCollider.transform) { bodyMesh = filter; break; }
+        }
+        if (bodyMesh == null) return;
+        DroneBody.Dress(bodyMesh.transform, headCollider != null ? headCollider.transform : null, accent, teamMode, true);
+    }
+
     // Sets the ragdoll going.
     // velocity: the player's movement at death. hitDirection: the killing bullet's direction.
     // hitOffset: where the bullet hit, relative to the player's position. knockback: how hard (m/s) the hit throws the body.

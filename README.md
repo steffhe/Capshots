@@ -24,7 +24,7 @@ To play together, each player runs the game, picks a username and either creates
 - Several maps to choose from
 - Warmup until enough players have joined, then a countdown before the match starts
 - Four energy weapons (pistol, machine gun, sniper rifle and an 8-pellet shotgun) with aiming, reloading and weapon sway; laser beams and muzzle flashes glow in the shooter's colour (the team colour in Team Deathmatch)
-- Hovering players: bodies float, bob and lean into their movement over a glowing disc, and the gun drifts instead of bobbing with footsteps
+- Hovering players: every player is a round little drone with a glowing face screen, blinking eyes and a thruster, in their own (or their team's) colour; it floats, bobs and leans into its movement over a glowing disc, and the gun drifts instead of bobbing with footsteps
 - Weapon balance: damage falls off over distance, per-weapon headshot multipliers, heavier guns and aiming slow you down, and shots spread more while moving or jumping
 - Sprinting, jumping, crouching and sliding
 - Smarter spawns (away from enemies and out of their sight) and 3 seconds of spawn protection, which ends early if you shoot
