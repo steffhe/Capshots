@@ -17542,6 +17542,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 700000028}
+  - component: {fileID: 700000100}
   m_Layer: 0
   m_Name: Bounds
   m_TagString: Untagged
@@ -18605,6 +18606,20 @@ RectTransform:
   m_CorrespondingSourceObject: {fileID: 5835671581212879860, guid: f1172bd387e25624b9e819dd8cc26b7f, type: 3}
   m_PrefabInstance: {fileID: 75587399619547106}
   m_PrefabAsset: {fileID: 0}
+--- !u!114 &700000100
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 700000027}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1166cf78b5b049dea44daa310637f55e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  material: {fileID: 2100000, guid: e2268fdf81224ef98ddf73cc03172717, type: 2}
+  groundHeight: 0
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
