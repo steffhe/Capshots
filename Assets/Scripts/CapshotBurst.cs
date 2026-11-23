@@ -11,6 +11,7 @@ public class CapshotBurst : MonoBehaviour
     private const int StarCount = 12;
     private const float Gravity = 9.81f;
     private const float FlashTime = 0.12f;
+    private const float FlashIntensity = 6f;
 
     // The yellow of the sparkle in the logo
     private static readonly Color StarColor = new Color(1f, 0.82f, 0.31f);
@@ -49,7 +50,7 @@ public class CapshotBurst : MonoBehaviour
         flash.type = LightType.Point;
         flash.color = Color.Lerp(capColor, Color.white, 0.4f);
         flash.range = 7f;
-        flash.intensity = 6f;
+        flash.intensity = FlashIntensity;
         flash.shadows = LightShadows.None;
 
         PlayPop();
@@ -150,7 +151,7 @@ public class CapshotBurst : MonoBehaviour
 
         if (flash != null)
         {
-            flash.intensity = Mathf.Lerp(4f, 0f, age / FlashTime);
+            flash.intensity = Mathf.Lerp(FlashIntensity, 0f, age / FlashTime);
             if (age >= FlashTime) { Destroy(flash); flash = null; }
         }
 

@@ -33,6 +33,13 @@ public class Look : MonoBehaviour
     private Vector2 recoilTarget;   // x = pitch up, y = yaw right, in degrees
     private Vector2 recoilCurrent;
 
+    [Header("Kill punch")]
+    // A short shake of the view on a kill. Only the camera moves: where you aim (Yaw, Pitch) doesn't.
+    public float punchTime = 0.35f;
+    private float punchStrength;
+    private float punchAge = 1f;
+    private float punchSeed;
+
     // Where the player looks, in degrees. Yaw turns the body; pitch (positive = up) tilts the camera.
     public float Yaw { get; private set; }
     public float Pitch { get; private set; }
@@ -109,8 +116,29 @@ public class Look : MonoBehaviour
     void ApplyView()
     {
         player.rotation = Quaternion.Euler(0f, Yaw, 0f);
-        cam.localRotation = camCenter * Quaternion.AngleAxis(Pitch, -Vector3.right);
+        cam.localRotation = camCenter * Quaternion.AngleAxis(Pitch, -Vector3.right) * KillPunch();
         weapon.rotation = cam.rotation;
+    }
+
+    // Shakes the view for a moment: strength is the first swing, in degrees
+    public void Punch(float strength)
+    {
+        punchStrength = strength;
+        punchAge = 0f;
+        punchSeed = Random.Range(0f, 100f);
+    }
+
+    // This frame's shake: a quick wobble up and sideways that dies away over punchTime
+    Quaternion KillPunch()
+    {
+        if (punchAge >= punchTime) return Quaternion.identity;
+        punchAge += Time.deltaTime;
+        float t = punchAge;
+        float fade = Mathf.Exp(-t * 9f) * Mathf.Clamp01(1f - t / punchTime);
+        float up = Mathf.Sin(t * 55f + punchSeed) * punchStrength * fade;
+        float side = Mathf.Sin(t * 41f + punchSeed * 1.7f) * punchStrength * 0.6f * fade;
+        float roll = Mathf.Sin(t * 33f + punchSeed * 0.5f) * punchStrength * 0.8f * fade;
+        return Quaternion.Euler(-up, side, roll);
     }
 
     void UpdateCursorLock()

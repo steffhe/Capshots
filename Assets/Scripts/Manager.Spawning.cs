@@ -136,5 +136,8 @@ public partial class Manager
             // Your own body: the death camera watches it fly
             if (actor == LocalActor) DeathCam.Follow(dead.FocusPoint);
         }
+
+        // An ordinary kill shorts the drone out where the bullet hit; a cap shot has its own, bigger burst
+        if (!headshot) KillSpark.Spawn(position + hitOffset, hitDirection, PlayerCap.ColorFor(actor));
     }
 }
