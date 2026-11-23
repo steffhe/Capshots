@@ -100,6 +100,7 @@ public class Player : NetworkBehaviour
     // How strongly other players' bodies are tinted with their team colour in team mode
     [Range(0f, 1f)] public float teamTintStrength = 0.6f;
     private int teamVisualsVersion = -1;
+    private int ownHandsVersion = -1;
 
     [Header("Viewmodel")]
     // Field of view the player's own gun is drawn with. It stays the same when the
@@ -480,6 +481,8 @@ public class Player : NetworkBehaviour
             return;
         }
 
+        RefreshOwnHandsColor();
+
         float protectionLeft = ProtectionTimer.RemainingTime(Runner) ?? 0f;
         FeedbackUI.SpawnProtection(protectionLeft);
 
@@ -744,6 +747,18 @@ public class Player : NetworkBehaviour
         foreach (PlayerCap cap in caps) if (cap != null) cap.SetColor(teamColor);
         foreach (DroneBody drone in drones) if (drone != null) drone.SetColor(teamColor, true);
         if (hands != null) hands.SetColor(teamColor);
+    }
+
+    // Your own hands (the only part of your body you see) take your team's colour in team mode, like
+    // everyone else sees them. The rest of the team colouring is for other players only (above).
+    private void RefreshOwnHandsColor()
+    {
+        if (hands == null || ownHandsVersion == Manager.TeamsVersion) return;
+        ownHandsVersion = Manager.TeamsVersion;
+
+        Manager m = Manager.Instance;
+        int team = m != null ? m.GetTeam(ActorId) : -1;
+        hands.SetColor(team >= 0 ? Manager.TeamColors[team % 2] : PlayerCap.ColorFor(ActorId));
     }
 
     private void OnDestroy()
