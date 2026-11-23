@@ -625,7 +625,8 @@ public class Weapon : NetworkBehaviour
         Gun gun = loadout[EquippedIndex];
         ShotLine(endPoint, gun.pellets > 1);
 
-        if (hitWorld)
+        // A force field ripples where it's hit instead of getting a scorch mark
+        if (hitWorld && !BoundaryField.Ripple(endPoint))
         {
             GameObject newHole = Instantiate(bulletholePrefab, endPoint + hitNormal * 0.001f, Quaternion.identity) as GameObject;
             newHole.transform.LookAt(endPoint + hitNormal);

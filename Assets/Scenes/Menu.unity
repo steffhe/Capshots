@@ -8612,7 +8612,7 @@ MonoBehaviour:
   - name: Arena
     scene: 2
     enabled: 0
-  - name: Test
+  - name: Proving Ground
     scene: 3
     enabled: 1
   - name: Nuketown
