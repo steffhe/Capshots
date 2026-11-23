@@ -6732,6 +6732,14 @@ namespace Fusion.Editor {
         return false;
       }
 
+      // Capshots patch: on a fresh Library (every CI build), the batch-mode InitializeOnLoad checks
+      // run before the asset database has imported the committed asset, so it isn't found above and
+      // CreateDefaultAsset threw "Asset file already exists". The file is there; it just isn't
+      // imported yet, so there's nothing to create. Re-apply this if a Fusion SDK update removes it.
+      if (File.Exists(GetAttributeOrThrow(type).DefaultPath)) {
+        return false;
+      }
+
       // need to create a new asset
       CreateDefaultAsset(type);
       return true;
