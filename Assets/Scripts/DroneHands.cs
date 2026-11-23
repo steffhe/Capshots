@@ -13,6 +13,9 @@ public class DroneHands : MonoBehaviour
     private const float Size = 0.13f;
     private const float RingGlow = 2.4f;
     private const float CellGlow = 3f;
+    private const float SightGlow = 2f;
+    // The glowing dots of a gun's iron sights use this material; they're tinted per player
+    private const string SightMaterialName = "Sight Glow";
     private static readonly Vector3 CellSize = new Vector3(0.07f, 0.06f, 0.07f); // a capsule, 0.12 long
 
     private Player player;
@@ -30,6 +33,9 @@ public class DroneHands : MonoBehaviour
     private float phase;
     private Color color = Color.white;
     private MaterialPropertyBlock block;
+    // The gun whose sights were last tinted, and the teams version they were tinted for
+    private GameObject tintedGun;
+    private int tintedTeamsVersion = -1;
 
     // The spent cell, flicked away: where it was let go and how it flies, in the player's space
     private Vector3 tossStart, tossVelocity;
@@ -58,6 +64,27 @@ public class DroneHands : MonoBehaviour
             Paint(rings[i], accent, accent * RingGlow);
         }
         Paint(cellRenderer, accent, accent * CellGlow);
+    }
+
+    // The sight dots glow in the team's colour in team modes, and in the player's own colour otherwise
+    private void TintSights(GameObject gun)
+    {
+        tintedGun = gun;
+        tintedTeamsVersion = Manager.TeamsVersion;
+
+        Color c = PlayerCap.ColorFor(player.ActorId);
+        Manager m = Manager.Instance;
+        if (m != null && m.IsTeamMode)
+        {
+            int team = m.GetTeam(player.ActorId);
+            if (team >= 0) c = Manager.TeamColors[team % 2];
+        }
+
+        foreach (Renderer r in gun.GetComponentsInChildren<Renderer>(true))
+        {
+            Material material = r.sharedMaterial;
+            if (material != null && material.name == SightMaterialName) Paint(r, c, c * SightGlow);
+        }
     }
 
     private void Paint(Renderer r, Color c, Color emission)
@@ -186,6 +213,7 @@ public class DroneHands : MonoBehaviour
         if (player == null || weapon == null) return;
         GameObject gun = weapon.GunModel;
         if (gun != shownGun) FitTo(gun);
+        if (gun != null && (gun != tintedGun || tintedTeamsVersion != Manager.TeamsVersion)) TintSights(gun);
 
         bool show = gunDesign != null && !player.IsDead;
         for (int i = 0; i < 2; i++) if (hands[i].gameObject.activeSelf != show) hands[i].gameObject.SetActive(show);
