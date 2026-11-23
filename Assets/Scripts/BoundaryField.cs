@@ -5,7 +5,7 @@ using UnityEngine;
 // horizontal direction), it adds a glowing panel on the side facing the middle of the map, from
 // the ground up to the top of the collider. The colliders themselves are left as they are.
 //  - Downtown: on "Bounds", the parent of its invisible wall colliders (the list is left empty).
-//  - Test: on "Design", with its four see-through outer wall cubes listed; their own renderers
+//  - Proving Ground (Map 2.unity): on "Design", with its four see-through outer wall cubes listed; their own renderers
 //    are switched off so only the field shows.
 // Shots that hit the field send a ripple across it instead of leaving a scorch mark (see Ripple),
 // and the field hums when you're close to it. Where the panels go is worked out by BoundaryLayout.

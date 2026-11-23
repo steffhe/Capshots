@@ -14,7 +14,7 @@ public class BoundaryLayoutTests
     private static readonly Bounds DowntownWest = new Bounds(new Vector3(-34.5f, 19f, 25f), new Vector3(1f, 40f, 96f));
     private static readonly Bounds DowntownFloor = new Bounds(new Vector3(-1f, -1.05f, 25f), new Vector3(66f, 2f, 94f));
 
-    // Test's outer wall cubes, which overlap at the corners
+    // Proving Ground's (Map 2.unity) outer wall cubes, which overlap at the corners
     private static readonly Bounds TestSouth = new Bounds(new Vector3(-19.6f, -29.1f, -36.7f), new Vector3(80.75722f, 32.48928f, 1f));
     private static readonly Bounds TestNorth = new Bounds(new Vector3(-19.2f, -29.1f, 39.7f), new Vector3(80.34826f, 32.48928f, 1f));
     private static readonly Bounds TestEast = new Bounds(new Vector3(21.1f, -29.1f, 1.2f), new Vector3(1f, 32.48928f, 76.10599f));
