@@ -152,6 +152,19 @@ public class Player : NetworkBehaviour
         }
     }
 
+    // Horizontal speed in m/s, from the simulated velocity (steadier than measuring how far the
+    // body moved since the last frame, which jumps around with frame and network timing)
+    public float HorizontalSpeed
+    {
+        get
+        {
+            if (Object == null || !Object.IsValid) return 0f;
+            Vector3 v = Velocity;
+            v.y = 0f;
+            return v.magnitude;
+        }
+    }
+
     // Where shots come from: the camera position this tick, following crouching and sliding
     public Vector3 EyePosition
     {
