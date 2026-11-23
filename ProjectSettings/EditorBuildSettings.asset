@@ -26,4 +26,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Prototype.unity
     guid: 259dd2a0ca8f453fb0a30689c270b6e3
+  - enabled: 1
+    path: Assets/Scenes/Office.unity
+    guid: 966ca312259f460ea94b7349687c0c7e
   m_configObjects: {}
