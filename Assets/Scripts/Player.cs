@@ -58,6 +58,8 @@ public class Player : NetworkBehaviour
     private Hitbox[] crouchingHitboxes = new Hitbox[0];
     private float baseFOV;
     private float sprintFOVModifier = 1.25f;
+    // Field of view while aiming a gun without a scope, as a share of the normal one
+    private const float AimFovMultiplier = 0.6f;
 
     private Vector3 weaponParentCurrentPosition;
     private Vector3 weaponParentorigin;
@@ -529,33 +531,27 @@ public class Player : NetworkBehaviour
         baseFOV = GameSettings.Fov;
         float t = Time.deltaTime;
 
-        if (Sliding)
+        // One target field of view per frame. (Easing towards the normal one and then towards the
+        // aiming one every frame made the two fight: the zoom stopped partway, at a point that
+        // depended on the frame rate.)
+        float targetFov = baseFOV;
+        float fovSpeed = 8f;
+        Gun aimedGun = weapon.isAiming ? weapon.CurrentGun : null;
+        if (weapon.isAiming && aimedGun != null && aimedGun.scopeFov > 0f)
         {
-            normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, baseFOV * sprintFOVModifier * 1.25f, t * 8);
-            normalCam.transform.localPosition = Vector3.Lerp(normalCam.transform.localPosition, origin + Vector3.down * slideAmount, t * 6f);
+            // Scoped guns zoom to their own field of view
+            targetFov = aimedGun.scopeFov;
+            fovSpeed = 15f;
         }
-        else
-        {
-            if (isSprinting) { normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, baseFOV * sprintFOVModifier, t * 8); }
-            else { normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, baseFOV, t * 8); }
+        else if (weapon.isAiming) targetFov = baseFOV * AimFovMultiplier;
+        else if (Sliding) targetFov = baseFOV * sprintFOVModifier * 1.25f;
+        else if (isSprinting) targetFov = baseFOV * sprintFOVModifier;
+        normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, targetFov, t * fovSpeed);
 
-            if (Crouched) { normalCam.transform.localPosition = Vector3.Lerp(normalCam.transform.localPosition, origin + Vector3.down * crouchAmount, t * 6f); }
-            else { normalCam.transform.localPosition = Vector3.Lerp(normalCam.transform.localPosition, origin, t * 6f); }
-        }
-
-        if (weapon.isAiming)
-        {
-            Gun gun = weapon.CurrentGun;
-            if (gun != null && gun.scopeFov > 0f)
-            {
-                // Scoped guns zoom to their own field of view
-                normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, gun.scopeFov, t * 15f);
-            }
-            else
-            {
-                normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, baseFOV / 4f, t * 8);
-            }
-        }
+        Vector3 camTarget = origin;
+        if (Sliding) camTarget += Vector3.down * slideAmount;
+        else if (Crouched) camTarget += Vector3.down * crouchAmount;
+        normalCam.transform.localPosition = Vector3.Lerp(normalCam.transform.localPosition, camTarget, t * 6f);
 
         // Scoped guns also zoom the gun model, so the scope comes up to the eye while aiming
         if (viewmodelCam != null)
