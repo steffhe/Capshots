@@ -139,9 +139,11 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
     {
         if (!ready) return;
 
-        // The map camera shows while the local player is dead or the match is over
+        // The map camera shows while the local player is dead or the match is over, once the death
+        // camera has finished lingering on the body
         bool alive = Player.Local != null;
-        if (mapcam.activeSelf == alive && !matchEnded) mapcam.SetActive(!alive);
+        bool showMap = !alive && !DeathCam.Active;
+        if (mapcam.activeSelf != showMap && !matchEnded) mapcam.SetActive(showMap);
         // The HUD goes away for the end of match banner and results
         bool showHud = alive && !matchEnded;
         if (Hud.activeSelf != showHud) Hud.SetActive(showHud);

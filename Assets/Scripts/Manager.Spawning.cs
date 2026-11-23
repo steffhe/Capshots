@@ -129,6 +129,8 @@ public partial class Manager
         {
             dead.Dress(PlayerCap.ColorFor(actor), IsTeamMode);
             dead.Launch(velocity, hitDirection, hitOffset, knockback, headshot, PlayerCap.ColorFor(actor));
+            // Your own body: the death camera watches it fly
+            if (actor == LocalActor) DeathCam.Follow(dead.FocusPoint);
         }
     }
 }

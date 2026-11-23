@@ -17,6 +17,9 @@ public class DeadPlayer : MonoBehaviour
     private Vector3 bodyScale, headScale, capScale;
     private float age;
 
+    // What the death camera watches: the cap if a headshot knocked it off, else the head
+    public Transform FocusPoint => cap != null ? cap : head != null ? head : transform;
+
     // Makes the body and head look like the player's drone, switched off (eyes shut, lights out).
     // Call before Launch, which takes the head off.
     public void Dress(Color accent, bool teamMode)

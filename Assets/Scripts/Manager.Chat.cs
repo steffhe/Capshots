@@ -31,6 +31,7 @@ public partial class Manager
 
         if (victim == me)
         {
+            FeedbackUI.Died();
             FeedbackUI.ShowDeath(GetPlayerName(killer), weapon, headshot, respawnTime);
         }
     }

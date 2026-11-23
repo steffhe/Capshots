@@ -45,7 +45,7 @@ public class FeedbackUI : MonoBehaviour
     private readonly List<GameObject> killFeedEntries = new List<GameObject>();
 
     private AudioSource audioSource;
-    private AudioClip hitClip, headshotClip, killClip, hurtClip, pickupClip;
+    private AudioClip hitClip, headshotClip, killClip, hurtClip, pickupClip, deathClip;
 
     #region Setup
 
@@ -119,6 +119,7 @@ public class FeedbackUI : MonoBehaviour
         headshotClip = MakeClip("Headshot", 0.18f, t => (Tone(t, 1500f) * Decay(t, 40f) + Tone(t, 2250f) * Decay(Mathf.Max(0f, t - 0.05f), 25f) * (t > 0.05f ? 1f : 0f)) * 0.6f);
         killClip = MakeClip("Kill", 0.35f, t => (Tone(t, 880f) + Tone(t, t > 0.09f ? 1320f : 0f)) * 0.5f * Decay(t, 9f));
         pickupClip = MakeClip("Pickup", 0.2f, t => (Tone(t, t < 0.07f ? 660f : 990f) * 0.5f + Tone(t, t < 0.07f ? 1320f : 1980f) * 0.15f) * Decay(t, 12f));
+        deathClip = MakeDeathClip();
         hurtClip = MakeClip("Hurt", 0.18f, t => (Tone(t, Mathf.Lerp(140f, 55f, t / 0.18f)) * 0.8f + Random.Range(-0.25f, 0.25f)) * Decay(t, 18f));
     }
 
@@ -163,6 +164,13 @@ public class FeedbackUI : MonoBehaviour
     {
         if (Instance == null) return;
         Instance.Play(Instance.killClip, 0.162f);
+    }
+
+    // The local player died: the drone powering down
+    public static void Died()
+    {
+        if (Instance == null) return;
+        Instance.Play(Instance.deathClip, 0.3f);
     }
 
     public static void ShowDeath(string killerName, string weaponName, bool headshot, float duration)
@@ -354,6 +362,34 @@ public class FeedbackUI : MonoBehaviour
         AudioClip clip = AudioClip.Create(name, samples, 1, rate, false);
         clip.SetData(data, 0);
         return clip;
+    }
+
+    // A heavy hit, then the drone powering down: a buzzy tone sliding from 520 Hz to 45 Hz and fading
+    // out, with a crackle of static as the lights go. About as loud as the kill sound.
+    private static AudioClip MakeDeathClip()
+    {
+        const float length = 1.1f;
+        float phase = 0f;
+        float lastT = 0f;
+        return MakeClip("Death", length, t =>
+        {
+            float dt = t - lastT;
+            lastT = t;
+            float k = t / length;
+            // The pitch falls fast at first, then slowly: like a motor spinning down
+            float frequency = Mathf.Lerp(45f, 520f, Mathf.Pow(1f - k, 2.2f));
+            phase += 2f * Mathf.PI * frequency * dt;
+            float buzz = Mathf.Sin(phase) * 0.6f + Mathf.Sin(phase * 2f) * 0.25f + Mathf.Sign(Mathf.Sin(phase * 3f)) * 0.08f;
+            float downEnvelope = Mathf.Clamp01(t / 0.02f) * Mathf.Pow(1f - k, 1.4f);
+
+            // The hit: a low thump with a little noise, over in a tenth of a second
+            float thump = (Mathf.Sin(2f * Mathf.PI * Mathf.Lerp(110f, 50f, Mathf.Clamp01(t / 0.12f)) * t) + Random.Range(-0.4f, 0.4f)) * Decay(t, 30f);
+
+            // Static as the power goes, strongest in the middle
+            float crackle = Random.value < 0.02f ? Random.Range(-0.5f, 0.5f) * Mathf.Sin(Mathf.PI * k) : 0f;
+
+            return buzz * downEnvelope * 0.55f + thump * 0.9f + crackle;
+        });
     }
 
     private static float Tone(float t, float frequency) => frequency <= 0f ? 0f : Mathf.Sin(2f * Mathf.PI * frequency * t);
