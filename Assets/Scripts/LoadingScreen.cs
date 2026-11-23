@@ -17,7 +17,9 @@ public class LoadingScreen : MonoBehaviour
     {
         "HEADSHOTS KNOCK THE CAP RIGHT OFF",
         "SHOOTING ENDS YOUR SPAWN PROTECTION EARLY",
-        "WALK OVER AMMO BOXES TO REFILL YOUR RESERVE",
+        "AMMO BOXES REFILL YOUR GUN'S ENERGY",
+        "EVERY FORM OF YOUR GUN SHARES ONE ENERGY CELL",
+        "STOP FIRING FOR A MOMENT AND YOUR ENERGY COMES BACK",
         "SPRINT, THEN CROUCH TO SLIDE",
         "DAMAGE FALLS OFF OVER DISTANCE",
         "YOUR HEALTH COMES BACK AFTER 5 SECONDS OUT OF FIRE",
@@ -179,14 +181,21 @@ public class LoadingScreen : MonoBehaviour
         // Near-black, with a soft blue glow behind the middle. The glow is baked over the background
         // colour into one opaque, dithered texture: a faint glow drawn see-through over near-black
         // only has a few dozen shades to work with and shows rings (banding) across the screen.
-        Image background = UITheme.NewImage("Background", t, BackgroundColor, 0f);
-        UITheme.Stretch(background.rectTransform);
-        background.raycastTarget = true;
-        Image glow = UITheme.NewImage("Glow", t, Color.white, 0f);
+        // It's the only background layer and covers the whole screen at any aspect ratio. A solid
+        // background under a smaller glow showed as a darker box while fading, because the canvas
+        // group fades each image on its own and the two overlapping layers add up.
+        // The area is stretched 80 units past the top, so the glow's centre sits 40 above the middle.
+        RectTransform glowArea = new GameObject("Glow Area", typeof(RectTransform)).GetComponent<RectTransform>();
+        glowArea.SetParent(t, false);
+        UITheme.Stretch(glowArea);
+        glowArea.offsetMax = new Vector2(0f, 80f);
+        Image glow = UITheme.NewImage("Glow", glowArea, Color.white, 0f);
         glow.sprite = Backdrop;
         glow.type = Image.Type.Simple;
-        glow.raycastTarget = false;
-        UITheme.Place(glow.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 40f), new Vector2(1600f, 900f));
+        glow.raycastTarget = true; // Blocks clicks to the menu underneath
+        AspectRatioFitter fitter = glow.gameObject.AddComponent<AspectRatioFitter>();
+        fitter.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
+        fitter.aspectRatio = 1600f / 900f;
 
         Sprite wordmark = Resources.Load<Sprite>("UI/CapshotsWordmark");
         if (wordmark != null)
@@ -270,10 +279,10 @@ public class LoadingScreen : MonoBehaviour
         }
     }
 
-    // The background colour with the accent glow blended over it, opaque and dithered. The same
-    // size it's drawn at on a 1080p canvas (1600 x 900): at half size the upscale smeared the
-    // dither into a blurry, low-res look. Its edge is exactly the background colour, so it blends
-    // into the solid background behind it.
+    // The background colour with the accent glow blended over it, opaque and dithered. 1600 x 900,
+    // about the size it's drawn at on a 1080p canvas: at half size the upscale smeared the dither
+    // into a blurry, low-res look. It's stretched to cover the screen; its edge is exactly the
+    // background colour, so the glow fades out evenly whatever the screen's shape.
     private static Sprite Backdrop
     {
         get

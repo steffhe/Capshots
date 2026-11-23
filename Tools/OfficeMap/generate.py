@@ -30,6 +30,7 @@ CY = (55 + 1090) / 2.0
 H = 3.2            # ceiling height
 WALL = 0.12        # partition wall thickness
 GLASS_T = 0.1      # glass wall (frame) thickness
+FRAME_INSET = 0.003  # keeps glass wall frames off the faces of the walls they meet
 EXT_T = 0.3        # outside wall thickness
 DOOR_W = 1.5
 DOOR_H = 2.5
@@ -276,6 +277,14 @@ def glass_wall(axis, edge, outsign, t0, t1, doors, frosted=True):
     mullions is a separate pane that can be shot to pieces."""
     line = edge - outsign * GLASS_T / 2
     cuts = sorted((d - DOOR_W / 2, d + DOOR_W / 2) for d in doors)
+
+    def frame(a, b, y0, y1, flags="-"):
+        # The frame is a hair thinner than the wall line and stops a hair short of the run's ends.
+        # Otherwise its faces land exactly on the faces of the partition walls it butts into, and
+        # the two flicker through each other (z-fighting) as the camera moves.
+        wbox("frame", axis, line, max(a, t0 + FRAME_INSET), min(b, t1 - FRAME_INSET),
+             GLASS_T - 2 * FRAME_INSET, y0, y1, flags)
+
     pieces = []
     cur = t0
     for c0, c1 in cuts:
@@ -285,9 +294,9 @@ def glass_wall(axis, edge, outsign, t0, t1, doors, frosted=True):
     for p0, p1 in pieces:
         if p1 - p0 < 0.3:
             if p1 - p0 > 0.001:
-                wbox("frame", axis, line, p0, p1, GLASS_T, 0.0, 3.0)
+                frame(p0, p1, 0.0, 3.0)
             continue
-        wbox("frame", axis, line, p0, p1, GLASS_T, 0.0, 0.08)
+        frame(p0, p1, 0.0, 0.08)
         # Mullions, at most 1.5 m apart, and posts at both ends, with a pane between each pair
         n = max(1, int(math.ceil((p1 - p0) / 1.5)))
         posts = []
@@ -295,14 +304,14 @@ def glass_wall(axis, edge, outsign, t0, t1, doors, frosted=True):
             t = p0 + (p1 - p0) * i / n
             t = min(max(t, p0 + 0.03), p1 - 0.03)
             posts.append(t)
-            wbox("frame", axis, line, t - 0.03, t + 0.03, GLASS_T, 0.0, 3.0, "n")
+            frame(t - 0.03, t + 0.03, 0.0, 3.0, "n")
         for a, b in zip(posts, posts[1:]):
             pane(axis, line, a + 0.03, b - 0.03, 0.08, 3.0, frosted)
     # Head rail along the whole run, transoms above the doors
-    wbox("frame", axis, line, t0, t1, GLASS_T, 3.0, H)
+    frame(t0, t1, 3.0, H)
     for c0, c1 in cuts:
         pane(axis, line, c0, c1, DOOR_H, 3.0, False)
-        wbox("frame", axis, line, c0, c1, GLASS_T, DOOR_H - 0.06, DOOR_H)
+        frame(c0, c1, DOOR_H - 0.06, DOOR_H)
 
 
 def partition(axis, edge, outsign, t0, t1):

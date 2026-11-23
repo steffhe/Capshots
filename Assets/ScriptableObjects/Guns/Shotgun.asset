@@ -19,9 +19,7 @@ MonoBehaviour:
   kickback: 0.4
   aimSpeed: 8
   damage: 110
-  ammo: 24
-  clipSize: 6
-  reloadTime: 2
+  energyPerShot: 16
   burst: 0
   pellets: 8
   prefab: {fileID: 7466018458602090438, guid: 891055c1fe744ca8be39030a9dc8fd37, type: 3}

@@ -58,6 +58,8 @@ public class Player : NetworkBehaviour
     private Hitbox[] crouchingHitboxes = new Hitbox[0];
     private float baseFOV;
     private float sprintFOVModifier = 1.25f;
+    // Field of view while aiming a gun without a scope, as a share of the normal one
+    private const float AimFovMultiplier = 0.6f;
 
     private Vector3 weaponParentCurrentPosition;
     private Vector3 weaponParentorigin;
@@ -98,6 +100,7 @@ public class Player : NetworkBehaviour
     // How strongly other players' bodies are tinted with their team colour in team mode
     [Range(0f, 1f)] public float teamTintStrength = 0.6f;
     private int teamVisualsVersion = -1;
+    private int ownHandsVersion = -1;
 
     [Header("Viewmodel")]
     // Field of view the player's own gun is drawn with. It stays the same when the
@@ -478,6 +481,8 @@ public class Player : NetworkBehaviour
             return;
         }
 
+        RefreshOwnHandsColor();
+
         float protectionLeft = ProtectionTimer.RemainingTime(Runner) ?? 0f;
         FeedbackUI.SpawnProtection(protectionLeft);
 
@@ -529,41 +534,35 @@ public class Player : NetworkBehaviour
         baseFOV = GameSettings.Fov;
         float t = Time.deltaTime;
 
-        if (Sliding)
+        // One target field of view per frame. (Easing towards the normal one and then towards the
+        // aiming one every frame made the two fight: the zoom stopped partway, at a point that
+        // depended on the frame rate.)
+        float targetFov = baseFOV;
+        float fovSpeed = 8f;
+        Gun aimedGun = weapon.isAiming ? weapon.CurrentGun : null;
+        if (weapon.isAiming && aimedGun != null && aimedGun.scopeFov > 0f)
         {
-            normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, baseFOV * sprintFOVModifier * 1.25f, t * 8);
-            normalCam.transform.localPosition = Vector3.Lerp(normalCam.transform.localPosition, origin + Vector3.down * slideAmount, t * 6f);
+            // Scoped guns zoom to their own field of view
+            targetFov = aimedGun.scopeFov;
+            fovSpeed = 15f;
         }
-        else
-        {
-            if (isSprinting) { normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, baseFOV * sprintFOVModifier, t * 8); }
-            else { normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, baseFOV, t * 8); }
+        else if (weapon.isAiming) targetFov = baseFOV * AimFovMultiplier;
+        else if (Sliding) targetFov = baseFOV * sprintFOVModifier * 1.25f;
+        else if (isSprinting) targetFov = baseFOV * sprintFOVModifier;
+        normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, targetFov, t * fovSpeed);
 
-            if (Crouched) { normalCam.transform.localPosition = Vector3.Lerp(normalCam.transform.localPosition, origin + Vector3.down * crouchAmount, t * 6f); }
-            else { normalCam.transform.localPosition = Vector3.Lerp(normalCam.transform.localPosition, origin, t * 6f); }
-        }
-
-        if (weapon.isAiming)
-        {
-            Gun gun = weapon.CurrentGun;
-            if (gun != null && gun.scopeFov > 0f)
-            {
-                // Scoped guns zoom to their own field of view
-                normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, gun.scopeFov, t * 15f);
-            }
-            else
-            {
-                normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, baseFOV / 4f, t * 8);
-            }
-        }
+        Vector3 camTarget = origin;
+        if (Sliding) camTarget += Vector3.down * slideAmount;
+        else if (Crouched) camTarget += Vector3.down * crouchAmount;
+        normalCam.transform.localPosition = Vector3.Lerp(normalCam.transform.localPosition, camTarget, t * 6f);
 
         // Scoped guns also zoom the gun model, so the scope comes up to the eye while aiming
         if (viewmodelCam != null)
         {
             Gun currentGun = weapon.CurrentGun;
             bool scoped = weapon.isAiming && currentGun != null && currentGun.scopeViewmodelFov > 0f;
-            float targetFov = scoped ? currentGun.scopeViewmodelFov : viewmodelFov;
-            viewmodelCam.fieldOfView = Mathf.Lerp(viewmodelCam.fieldOfView, targetFov, t * 15f);
+            float targetViewmodelFov = scoped ? currentGun.scopeViewmodelFov : viewmodelFov;
+            viewmodelCam.fieldOfView = Mathf.Lerp(viewmodelCam.fieldOfView, targetViewmodelFov, t * 15f);
         }
     }
 
@@ -748,6 +747,18 @@ public class Player : NetworkBehaviour
         foreach (PlayerCap cap in caps) if (cap != null) cap.SetColor(teamColor);
         foreach (DroneBody drone in drones) if (drone != null) drone.SetColor(teamColor, true);
         if (hands != null) hands.SetColor(teamColor);
+    }
+
+    // Your own hands (the only part of your body you see) take your team's colour in team mode, like
+    // everyone else sees them. The rest of the team colouring is for other players only (above).
+    private void RefreshOwnHandsColor()
+    {
+        if (hands == null || ownHandsVersion == Manager.TeamsVersion) return;
+        ownHandsVersion = Manager.TeamsVersion;
+
+        Manager m = Manager.Instance;
+        int team = m != null ? m.GetTeam(ActorId) : -1;
+        hands.SetColor(team >= 0 ? Manager.TeamColors[team % 2] : PlayerCap.ColorFor(ActorId));
     }
 
     private void OnDestroy()

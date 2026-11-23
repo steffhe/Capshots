@@ -13,6 +13,9 @@ public class DroneHands : MonoBehaviour
     private const float Size = 0.13f;
     private const float RingGlow = 2.4f;
     private const float CellGlow = 3f;
+    private const float SightGlow = 2f;
+    // The glowing dots of a gun's iron sights use this material; they're tinted per player
+    private const string SightMaterialName = "Sight Glow";
     private static readonly Vector3 CellSize = new Vector3(0.07f, 0.06f, 0.07f); // a capsule, 0.12 long
 
     private Player player;
@@ -30,6 +33,9 @@ public class DroneHands : MonoBehaviour
     private float phase;
     private Color color = Color.white;
     private MaterialPropertyBlock block;
+    // The gun whose sights were last tinted, and the teams version they were tinted for
+    private GameObject tintedGun;
+    private int tintedTeamsVersion = -1;
 
     // The spent cell, flicked away: where it was let go and how it flies, in the player's space
     private Vector3 tossStart, tossVelocity;
@@ -58,6 +64,27 @@ public class DroneHands : MonoBehaviour
             Paint(rings[i], accent, accent * RingGlow);
         }
         Paint(cellRenderer, accent, accent * CellGlow);
+    }
+
+    // The sight dots glow in the team's colour in team modes, and in the player's own colour otherwise
+    private void TintSights(GameObject gun)
+    {
+        tintedGun = gun;
+        tintedTeamsVersion = Manager.TeamsVersion;
+
+        Color c = PlayerCap.ColorFor(player.ActorId);
+        Manager m = Manager.Instance;
+        if (m != null && m.IsTeamMode)
+        {
+            int team = m.GetTeam(player.ActorId);
+            if (team >= 0) c = Manager.TeamColors[team % 2];
+        }
+
+        foreach (Renderer r in gun.GetComponentsInChildren<Renderer>(true))
+        {
+            Material material = r.sharedMaterial;
+            if (material != null && material.name == SightMaterialName) Paint(r, c, c * SightGlow);
+        }
     }
 
     private void Paint(Renderer r, Color c, Color emission)
@@ -118,18 +145,37 @@ public class DroneHands : MonoBehaviour
         if (gunDesign == null && gun != null) gunDesign = gun.transform;
         if (gunDesign == null) return;
 
-        // The biggest part is the gun's body; "Cube (1)" is the handle on every gun in the game
+        // Measured on the finished shape, even while the gun is still transforming into it
+        GunMorph morph = gun.GetComponent<GunMorph>();
+        if (morph != null) morph.ShowFinalShape(true);
+
+        // The part named Body (else the biggest part) is the gun's body, and Grip its handle
         Bounds body = new Bounds();
         float biggest = -1f;
-        Transform handle = gunDesign.Find("Cube (1)");
-        foreach (MeshFilter filter in gunDesign.GetComponentsInChildren<MeshFilter>(true))
+        Transform handle = gunDesign.Find("Grip");
+        Transform bodyPart = gunDesign.Find("Body");
+        MeshFilter bodyMesh = bodyPart != null ? bodyPart.GetComponent<MeshFilter>() : null;
+        if (bodyMesh != null && bodyMesh.sharedMesh != null)
         {
-            if (filter.sharedMesh == null) continue;
-            Bounds b = LocalBounds(filter);
-            float volume = b.size.x * b.size.y * b.size.z;
-            if (volume > biggest) { biggest = volume; body = b; }
+            body = LocalBounds(bodyMesh);
+            biggest = 1f;
         }
-        if (biggest < 0f) { gunDesign = null; return; }
+        else
+        {
+            foreach (MeshFilter filter in gunDesign.GetComponentsInChildren<MeshFilter>(true))
+            {
+                if (filter.sharedMesh == null) continue;
+                Bounds b = LocalBounds(filter);
+                float volume = b.size.x * b.size.y * b.size.z;
+                if (volume > biggest) { biggest = volume; body = b; }
+            }
+        }
+        if (biggest < 0f)
+        {
+            if (morph != null) morph.ShowFinalShape(false);
+            gunDesign = null;
+            return;
+        }
 
         Vector3 grip;
         float handleBottom;
@@ -161,6 +207,7 @@ public class DroneHands : MonoBehaviour
         }
         slot = new Vector3(grip.x, handleBottom, grip.z);
         top = new Vector3(body.center.x, body.max.y + Size * 0.5f, grip.z + 0.1f);
+        if (morph != null) morph.ShowFinalShape(false);
 
         // The gun's layer: other players' guns are drawn by the main camera, your own by the viewmodel camera
         int layer = gunDesign.gameObject.layer;
@@ -186,6 +233,7 @@ public class DroneHands : MonoBehaviour
         if (player == null || weapon == null) return;
         GameObject gun = weapon.GunModel;
         if (gun != shownGun) FitTo(gun);
+        if (gun != null && (gun != tintedGun || tintedTeamsVersion != Manager.TeamsVersion)) TintSights(gun);
 
         bool show = gunDesign != null && !player.IsDead;
         for (int i = 0; i < 2; i++) if (hands[i].gameObject.activeSelf != show) hands[i].gameObject.SetActive(show);
@@ -294,7 +342,7 @@ public class DroneHands : MonoBehaviour
         else if (spent)
         {
             // Flicked away, tumbling and shrinking to nothing
-            float t = (p - Flick) * (weapon.CurrentGun != null ? weapon.CurrentGun.reloadTime : 1f);
+            float t = (p - Flick) * weapon.CellSwapTime;
             Vector3 local = tossStart + tossVelocity * t + Vector3.down * (4.9f * t * t);
             cell.position = root.TransformPoint(local);
             cell.rotation = hand.rotation * Quaternion.Euler(t * 900f, 0f, t * 400f);

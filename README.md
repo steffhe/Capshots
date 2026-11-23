@@ -23,7 +23,7 @@ To play together, each player runs the game, picks a username and either creates
 - Two game modes: Free For All, and Team Deathmatch (blue vs red, automatic team balancing, no friendly fire, first team to the kill limit wins)
 - Several maps to choose from, including Office: a real office floor with glass-walled offices and meeting rooms around a courtyard garden. Its glass walls crack when shot and shatter on the second hit, leaving a gap to walk and shoot through
 - Warmup until enough players have joined, then a countdown before the match starts
-- Four energy weapons (pistol, machine gun, sniper rifle and an 8-pellet shotgun) with aiming, reloading and weapon sway; laser beams and muzzle flashes glow in the shooter's colour (the team colour in Team Deathmatch)
+- One transforming energy gun with four forms (pistol, machine gun, sniper rifle and an 8-pellet shotgun): changing form reshapes the gun in half a second, during which it can't fire. All forms share one energy cell that refills by itself shortly after you stop firing; `R` (or firing on empty) swaps in a fresh cell. Iron sights, a scope on the sniper form, and weapon sway; laser beams and muzzle flashes glow in the shooter's colour (the team colour in Team Deathmatch)
 - Hovering players: every player is a little drone with a capsule body, a round head with a glowing face screen and blinking eyes, a thruster and two floating hand-orbs that hold the gun, in their own (or their team's) colour; it floats, bobs and leans into its movement over a glowing disc, and the gun drifts instead of bobbing with footsteps
 - Weapon balance: damage falls off over distance, per-weapon headshot multipliers, heavier guns and aiming slow you down, and shots spread more while moving or jumping
 - Sprinting, jumping, crouching and sliding
@@ -31,7 +31,7 @@ To play together, each player runs the game, picks a username and either creates
 - Health regeneration after 5 seconds without taking damage
 - Every player wears a cap: the team colour in Team Deathmatch, otherwise a colour of their own
 - Physics ragdolls: the body is thrown along the killing bullet's path, and the head (cap and all) comes off and flies separately, harder on a headshot
-- Players drop an ammo box when they die; walk over it to refill your reserve ammo
+- Players drop an ammo box when they die; walk over it to refill your gun's energy
 - Scoreboard with kills, deaths and ping
 - Text chat
 - Settings menu: field of view, aim sensitivity, volume, graphics quality and key rebinding
@@ -51,8 +51,8 @@ Keyboard and mouse controls can be changed in **Pause → Settings**. A gamepad 
 | Look | Mouse | Right stick |
 | Shoot | Left mouse button | Right trigger |
 | Aim | Right mouse button | Left trigger |
-| Reload | `R` | X / Square |
-| Switch weapon | `1` `2` `3` / mouse wheel | Bumpers |
+| Swap energy cell | `R` | X / Square |
+| Change gun form | `1` `2` `3` `4` / mouse wheel | Bumpers |
 | Sprint | `Shift` | Left stick press |
 | Jump | `Space` | A / Cross |
 | Crouch | `Left Ctrl` (`Z` in the browser) | B / Circle |
@@ -94,7 +94,7 @@ Photon Fusion is configured in `Assets/Photon/Fusion/Resources/PhotonAppSettings
 
 ## Tests
 
-The tests in `Assets/Tests/EditMode` check gun ammo, damage falloff and XP. Run them in Unity from **Window → General → Test Runner → EditMode → Run All**. The build workflow also runs them alongside every build, and only publishes a release when they pass.
+The tests in `Assets/Tests/EditMode` check gun energy, damage falloff and XP. Run them in Unity from **Window → General → Test Runner → EditMode → Run All**. The build workflow also runs them alongside every build, and only publishes a release when they pass.
 
 ## Releasing
 
