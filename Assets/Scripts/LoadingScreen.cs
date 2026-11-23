@@ -53,6 +53,13 @@ public class LoadingScreen : MonoBehaviour
         screen.FadeTo(1f, FadeInTime);
     }
 
+    // Builds the overlay and its textures ahead of time, hidden, so the first Show doesn't stall
+    // (the glow texture takes a moment to bake, which is noticeable in the browser)
+    public static void Prepare()
+    {
+        _ = Instance;
+    }
+
     public static void SetStatus(string status)
     {
         if (instance != null) instance.statusText = status ?? "";

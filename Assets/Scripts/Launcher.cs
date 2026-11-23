@@ -63,6 +63,8 @@ public partial class Launcher : MonoBehaviour
         Connect();
         // Back from a match (or a join that failed): reveal the menu under the loading screen
         LoadingScreen.Hide(0.15f);
+        // Build it now (after the font is set up by ApplyStyle) rather than on the first Play click
+        LoadingScreen.Prepare();
     }
 
     private void OnEnable()

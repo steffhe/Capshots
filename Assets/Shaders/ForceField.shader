@@ -1,5 +1,6 @@
 // An energy barrier for the edges of a map: a faint glowing grid that's brightest at the ground,
-// fades out with height, shimmers upward, and lights up around the player as they get close.
+// fades out with height, shimmers upward, lights up around the player as they get close, and
+// ripples where it's shot.
 // Drawn additively (it only adds light), from both sides. Used by BoundaryField, which builds
 // the wall meshes: UV x is metres along the wall and UV y is metres above the ground.
 Shader "Capshots/Force Field"
@@ -14,6 +15,9 @@ Shader "Capshots/Force Field"
         _GroundGlow ("Ground Glow Height (m)", Float) = 0.8
         _RevealRadius ("Reveal Radius (m)", Float) = 7
         _ShimmerSpeed ("Shimmer Speed", Float) = 0.35
+        _RippleSpeed ("Ripple Speed (m/s)", Float) = 6
+        _RippleLife ("Ripple Life (s)", Float) = 0.7
+        _RippleStrength ("Ripple Strength", Range(0, 2)) = 1
     }
 
     SubShader
@@ -42,10 +46,16 @@ Shader "Capshots/Force Field"
                 float _GroundGlow;
                 float _RevealRadius;
                 float _ShimmerSpeed;
+                float _RippleSpeed;
+                float _RippleLife;
+                half _RippleStrength;
             CBUFFER_END
 
             // Set every frame by BoundaryField: the local camera's position
             float4 _CapshotsPlayerPos;
+            // Set by BoundaryField.Ripple: where shots hit the field (xyz) and when (w, scene time)
+            #define MAX_RIPPLES 8
+            float4 _CapshotsRipples[MAX_RIPPLES];
 
             struct Attributes
             {
@@ -92,9 +102,27 @@ Shader "Capshots/Force Field"
                 float dist = distance(input.positionWS, _CapshotsPlayerPos.xyz);
                 float reveal = 1.0 - smoothstep(_RevealRadius * 0.25, _RevealRadius, dist);
 
+                // Rings spreading out from where shots hit, lighting up the grid as they pass, with a
+                // quick flash at the impact
+                float ripple = 0.0;
+                [unroll]
+                for (int i = 0; i < MAX_RIPPLES; i++)
+                {
+                    float4 hit = _CapshotsRipples[i];
+                    float age = _Time.y - hit.w;
+                    if (age < 0.0 || age > _RippleLife) continue;
+                    float d = distance(input.positionWS, hit.xyz);
+                    float ringOffset = (d - age * _RippleSpeed) / 0.35;
+                    float ring = exp(-ringOffset * ringOffset);
+                    float flash = exp(-d * d * 4.0) * saturate(1.0 - age * 6.0);
+                    float life = 1.0 - age / _RippleLife;
+                    ripple += (ring * (0.25 + 0.75 * grid) + flash) * life * life;
+                }
+
                 float opacity = _BaseOpacity * (0.4 + 2.5 * grid + shimmer) * (0.2 + 0.8 * heightFade)
                               + ground * 0.25
-                              + reveal * (0.06 + 0.7 * grid);
+                              + reveal * (0.06 + 0.7 * grid)
+                              + ripple * _RippleStrength;
                 return half4(_Color.rgb, saturate(opacity) * _Color.a);
             }
             ENDHLSL
