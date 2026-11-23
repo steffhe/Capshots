@@ -73,6 +73,8 @@ public class Player : NetworkBehaviour
     private bool wasCursorLocked;
 
     private PlayerCap[] caps = new PlayerCap[0];
+    private DroneBody[] drones = new DroneBody[0];
+    private DroneHands hands;
     private HoverVisuals hoverVisuals;
     private bool appliedCrouch;
     private string shownName;
@@ -149,6 +151,19 @@ public class Player : NetworkBehaviour
             horizontal.y = 0f;
             float walkSpeed = speed * LegacyStep;
             return walkSpeed > 0f ? Mathf.Clamp01(horizontal.magnitude / walkSpeed) : 0f;
+        }
+    }
+
+    // Horizontal speed in m/s, from the simulated velocity (steadier than measuring how far the
+    // body moved since the last frame, which jumps around with frame and network timing)
+    public float HorizontalSpeed
+    {
+        get
+        {
+            if (Object == null || !Object.IsValid) return 0f;
+            Vector3 v = Velocity;
+            v.y = 0f;
+            return v.magnitude;
         }
     }
 
@@ -243,6 +258,15 @@ public class Player : NetworkBehaviour
         // A cap on both heads (standing and crouching), after the layers above are set so it's drawn
         // like the head: hidden from your own camera, visible to everyone else
         Color capColor = PlayerCap.ColorFor(ActorId);
+        // The body is a little round drone (standing and crouching), on the same layers as the capsule and head
+        bool teamMode = manager != null && manager.IsTeamMode;
+        drones = new DroneBody[]
+        {
+            DroneBody.Dress(standingCollider != null ? standingCollider.transform : null, standingColliderHead != null ? standingColliderHead.transform : null, capColor, teamMode),
+            DroneBody.Dress(crouchingCollider != null ? crouchingCollider.transform : null, crouchingColliderHead != null ? crouchingColliderHead.transform : null, capColor, teamMode),
+        };
+        // Floating hand-orbs that hold the gun
+        if (hands == null) hands = DroneHands.Attach(this, capColor);
         caps = new PlayerCap[]
         {
             PlayerCap.Attach(standingColliderHead != null ? standingColliderHead.transform : null, capColor),
@@ -710,6 +734,7 @@ public class Player : NetworkBehaviour
             // Body meshes only: not the name tag, the gun, effects or the cap (coloured below)
             if (!(body is MeshRenderer || body is SkinnedMeshRenderer)) continue;
             if (body.GetComponentInParent<PlayerCap>() != null) continue;
+            if (body.GetComponentInParent<DroneBody>() != null || body.GetComponentInParent<DroneHands>() != null) continue; // coloured below
             if (hoverVisuals != null && hoverVisuals.IsGlow(body)) continue;
             if (body.GetComponent<TextMeshPro>() != null) continue;
             if (weaponParent != null && body.transform.IsChildOf(weaponParent)) continue;
@@ -721,6 +746,8 @@ public class Player : NetworkBehaviour
         }
 
         foreach (PlayerCap cap in caps) if (cap != null) cap.SetColor(teamColor);
+        foreach (DroneBody drone in drones) if (drone != null) drone.SetColor(teamColor, true);
+        if (hands != null) hands.SetColor(teamColor);
     }
 
     private void OnDestroy()

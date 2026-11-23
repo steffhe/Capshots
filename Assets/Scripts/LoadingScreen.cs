@@ -169,13 +169,16 @@ public class LoadingScreen : MonoBehaviour
 
         Transform t = root.transform;
 
-        // Near-black, with a soft blue glow behind the middle
-        Image background = UITheme.NewImage("Background", t, new Color(0.015f, 0.02f, 0.035f, 1f), 0f);
+        // Near-black, with a soft blue glow behind the middle. The glow is baked over the background
+        // colour into one opaque, dithered texture: a faint glow drawn see-through over near-black
+        // only has a few dozen shades to work with and shows rings (banding) across the screen.
+        Image background = UITheme.NewImage("Background", t, BackgroundColor, 0f);
         UITheme.Stretch(background.rectTransform);
         background.raycastTarget = true;
-        Image glow = UITheme.NewImage("Glow", t, new Color(UITheme.Accent.r, UITheme.Accent.g, UITheme.Accent.b, 0.22f), 0f);
-        glow.sprite = Glow;
+        Image glow = UITheme.NewImage("Glow", t, Color.white, 0f);
+        glow.sprite = Backdrop;
         glow.type = Image.Type.Simple;
+        glow.raycastTarget = false;
         UITheme.Place(glow.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 40f), new Vector2(1600f, 900f));
 
         Sprite wordmark = Resources.Load<Sprite>("UI/CapshotsWordmark");
@@ -225,8 +228,11 @@ public class LoadingScreen : MonoBehaviour
         return screen;
     }
 
+    private static readonly Color BackgroundColor = new Color(0.015f, 0.02f, 0.035f, 1f);
+    private const float GlowStrength = 0.22f;
+
     private static Sprite ring;
-    private static Sprite glow;
+    private static Sprite backdrop;
 
     // A three-quarter ring that fades out along its length, for the spinner
     private static Sprite Ring
@@ -257,34 +263,60 @@ public class LoadingScreen : MonoBehaviour
         }
     }
 
-    // A soft round blob, for glows and vignettes
-    public static Sprite Glow
+    // The background colour with the accent glow blended over it, opaque and dithered. Half the
+    // size it's drawn at (1600 x 900 on a 1080p canvas), which is plenty for something this soft
+    // as long as it's dithered; its edge is exactly the background colour, so it blends in seamlessly.
+    private static Sprite Backdrop
     {
         get
         {
-            if (glow != null) return glow;
-            const int size = 128;
-            Texture2D tex = Texture("LoadingScreen Glow", size);
-            Color32[] pixels = new Color32[size * size];
-            for (int y = 0; y < size; y++)
+            if (backdrop != null) return backdrop;
+            const int width = 800, height = 450;
+            Texture2D tex = Texture("LoadingScreen Backdrop", width, height);
+            Color32[] pixels = new Color32[width * height];
+
+            // Blend in linear space, like the UI does in this project, then dither the sRGB result
+            Color bg = BackgroundColor.linear;
+            Color accent = UITheme.Accent.linear;
+            for (int y = 0; y < height; y++)
             {
-                for (int x = 0; x < size; x++)
+                for (int x = 0; x < width; x++)
                 {
-                    Vector2 p = new Vector2((x + 0.5f) / size - 0.5f, (y + 0.5f) / size - 0.5f) * 2f;
+                    Vector2 p = new Vector2((x + 0.5f) / width - 0.5f, (y + 0.5f) / height - 0.5f) * 2f;
                     float a = 1f - Mathf.SmoothStep(0f, 1f, p.magnitude);
-                    pixels[y * size + x] = new Color32(255, 255, 255, (byte)(a * a * 255f));
+                    float alpha = a * a * GlowStrength;
+                    Color c = Color.Lerp(bg, accent, alpha).gamma;
+                    // Triangular noise of up to one shade either way breaks up the steps between shades
+                    float noise = Hash(x, y) + Hash(x + 7919, y + 104729) - 1f;
+                    pixels[y * width + x] = new Color32(Dither(c.r, noise), Dither(c.g, noise), Dither(c.b, noise), 255);
                 }
             }
             tex.SetPixels32(pixels);
             tex.Apply();
-            glow = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
-            return glow;
+            backdrop = Sprite.Create(tex, new Rect(0, 0, width, height), new Vector2(0.5f, 0.5f), 100f);
+            return backdrop;
         }
     }
 
-    private static Texture2D Texture(string name, int size)
+    private static byte Dither(float value, float noise)
     {
-        return new Texture2D(size, size, TextureFormat.RGBA32, false)
+        return (byte)Mathf.Clamp(Mathf.FloorToInt(value * 255f + 0.5f + noise), 0, 255);
+    }
+
+    // A cheap repeatable 0..1 value per pixel
+    private static float Hash(int x, int y)
+    {
+        uint h = (uint)x * 374761393u + (uint)y * 668265263u;
+        h = (h ^ (h >> 13)) * 1274126177u;
+        h ^= h >> 16;
+        return (h & 0xFFFFFF) / 16777215f;
+    }
+
+    private static Texture2D Texture(string name, int size) => Texture(name, size, size);
+
+    private static Texture2D Texture(string name, int width, int height)
+    {
+        return new Texture2D(width, height, TextureFormat.RGBA32, false)
         {
             name = name,
             filterMode = FilterMode.Bilinear,

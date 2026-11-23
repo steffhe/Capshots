@@ -23,8 +23,10 @@ public class PlayerSounds : MonoBehaviour
     // Speed (m/s) where the hover sound reaches full strength
     private const float FullHoverSpeed = 5f;
     // Seconds for the hover sound to swell in when moving off and to die away when stopping
-    private const float HoverAttack = 0.15f;
-    private const float HoverRelease = 0.35f;
+    private const float HoverAttack = 0.25f;
+    private const float HoverRelease = 0.5f;
+    // Seconds over which the measured speed is evened out before it drives the sound
+    private const float SpeedSmoothing = 0.12f;
     // Falling faster than this (m/s) plays a landing sound when touching the ground
     private const float MinLandingSpeed = 3f;
 
@@ -34,7 +36,7 @@ public class PlayerSounds : MonoBehaviour
     private Vector3 lastPosition;
     private float verticalSpeed;
     private bool wasGrounded = true;
-    private float hoverIntensity, hoverPitch = HoverPitchSlow, hoverLoudness;
+    private float hoverIntensity, hoverPitch = HoverPitchSlow, hoverLoudness, smoothedSpeed;
     private Coroutine reloadRoutine;
 
     private static AudioClip hoverClip;
@@ -78,8 +80,6 @@ public class PlayerSounds : MonoBehaviour
         if (delta.sqrMagnitude > 25f) return;
 
         verticalSpeed = delta.y / Time.deltaTime;
-        delta.y = 0f;
-        float horizontalSpeed = delta.magnitude / Time.deltaTime;
 
         bool grounded = IsGrounded();
 
@@ -89,7 +89,7 @@ public class PlayerSounds : MonoBehaviour
         }
         wasGrounded = grounded;
 
-        UpdateHover(horizontalSpeed);
+        UpdateHover(player.HorizontalSpeed);
     }
 
     private const float HoverPitchSlow = 0.85f, HoverPitchFast = 1.15f;
@@ -99,10 +99,13 @@ public class PlayerSounds : MonoBehaviour
     // Crouching (and sliding, which crouches) is silent, so sneaking up on someone still works.
     private void UpdateHover(float horizontalSpeed)
     {
-        float target = player.IsCrouched ? 0f : Mathf.InverseLerp(MinHoverSpeed, FullHoverSpeed, horizontalSpeed);
-        // Walking is about 10 m/s and sprinting about 20
-        float fast = Mathf.InverseLerp(WalkSpeed, SprintSpeed, horizontalSpeed);
         float dt = Time.deltaTime;
+        // Even out the speed first, so changing direction or the odd uneven tick doesn't dip the sound
+        smoothedSpeed = Mathf.Lerp(smoothedSpeed, horizontalSpeed, 1f - Mathf.Exp(-dt / SpeedSmoothing));
+
+        float target = player.IsCrouched ? 0f : Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(MinHoverSpeed, FullHoverSpeed, smoothedSpeed));
+        // Walking is about 10 m/s and sprinting about 20
+        float fast = Mathf.InverseLerp(WalkSpeed, SprintSpeed, smoothedSpeed);
 
         // Smoothed, so jittery speeds (especially for remote players) don't make the sound flutter
         hoverIntensity = Mathf.Lerp(hoverIntensity, target, 1f - Mathf.Exp(-dt / (target > hoverIntensity ? HoverAttack : HoverRelease)));
@@ -110,7 +113,7 @@ public class PlayerSounds : MonoBehaviour
         // doesn't bend down as the sound fades out
         if (target > 0f)
         {
-            float smooth = 1f - Mathf.Exp(-dt / 0.3f);
+            float smooth = 1f - Mathf.Exp(-dt / 0.5f);
             hoverPitch = Mathf.Lerp(hoverPitch, Mathf.Lerp(HoverPitchSlow, HoverPitchFast, fast), smooth);
             // Sprinting is about 4 dB louder than walking
             hoverLoudness = Mathf.Lerp(hoverLoudness, Mathf.Lerp(0.76f, 1.21f, fast), smooth);
@@ -367,7 +370,7 @@ public class PlayerSounds : MonoBehaviour
     }
 
     // The hover sound: a seamless 2 second loop of a low humming drone, a theremin-like tone that wobbles
-    // and glides, a pulsing ring-modulated shimmer, a faint high sparkle and a soft airy woosh. Every tone fits a whole number of cycles into the loop, and
+    // and glides, a softly breathing ring-modulated shimmer, a faint high sparkle and a soft airy woosh. Every tone fits a whole number of cycles into the loop, and
     // the noise is crossfaded from the end into the start, so it repeats without a click.
     private static AudioClip MakeHoverLoop()
     {
@@ -387,11 +390,11 @@ public class PlayerSounds : MonoBehaviour
             // Drone: the two upper voices are half a hertz apart from the root's harmonics, so it slowly beats
             float hum = Tone(t, 55f) * 0.55f + Tone(t, 110.5f) * 0.35f + Tone(t, 165f) * 0.12f;
 
-            // 330 Hz with a 6 Hz vibrato, gliding about 30 Hz up and down over the loop: the flying-saucer theremin
-            float warble = Mathf.Sin(2f * Mathf.PI * 330f * t + 4f * Tone(t, 6f) + 60f * Tone(t, 0.5f)) * (0.7f + 0.3f * Tone(t, 1.5f));
+            // 330 Hz with a gentle 5 Hz vibrato, gliding about 30 Hz up and down over the loop: the flying-saucer theremin
+            float warble = Mathf.Sin(2f * Mathf.PI * 330f * t + 1.5f * Tone(t, 5f) + 60f * Tone(t, 0.5f)) * (0.88f + 0.12f * Tone(t, 1f));
 
-            // Ring modulation gives a metallic, electronic shimmer, pulsing 8 times a second
-            float ring = Tone(t, 880f) * Tone(t, 73f) * (0.55f + 0.45f * Tone(t, 8f));
+            // Ring modulation gives a metallic, electronic shimmer, breathing slowly rather than pulsing
+            float ring = Tone(t, 880f) * Tone(t, 73f) * (0.8f + 0.2f * Tone(t, 1.5f));
 
             // Two high tones 1.5 Hz apart, a faint twinkling sparkle on top
             float sparkle = (Tone(t, 1760f) + Tone(t, 1761.5f)) * 0.5f;
@@ -399,10 +402,10 @@ public class PlayerSounds : MonoBehaviour
             // Band-passed noise (the difference of two low-pass filters) for the rushing air
             fastFilter += (noise - fastFilter) * 0.12f;
             slowFilter += (noise - slowFilter) * 0.02f;
-            float swell = 0.65f + 0.35f * Tone(t, 1f) * Mathf.Sin(2f * Mathf.PI * 0.5f * t + 1f);
+            float swell = 0.85f + 0.15f * Tone(t, 1f) * Mathf.Sin(2f * Mathf.PI * 0.5f * t + 1f);
             float woosh = (fastFilter - slowFilter) * swell * 2.2f;
 
-            raw[i] = hum * 0.4f + warble * 0.3f + ring * 0.12f + sparkle * 0.04f + woosh * 0.3f;
+            raw[i] = hum * 0.4f + warble * 0.26f + ring * 0.08f + sparkle * 0.03f + woosh * 0.3f;
         }
 
         float[] data = new float[samples];
