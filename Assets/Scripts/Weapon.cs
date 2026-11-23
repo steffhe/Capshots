@@ -529,6 +529,8 @@ public class Weapon : NetworkBehaviour
         if (hitmarkRoutine != null) StopCoroutine(hitmarkRoutine);
         hitmarkRoutine = StartCoroutine(HitPlayer(killed));
         FeedbackUI.Hit(headshot);
+        // A kill shakes the view a little, a cap shot more
+        if (killed && look != null) look.Punch(headshot ? 2.2f : 1.3f);
     }
 
     #endregion
@@ -545,9 +547,31 @@ public class Weapon : NetworkBehaviour
     {
         if (hitmark == null) yield break;
 
-        hitmarkImage.color = targetIsDead ? Color.red : Color.white;
+        Transform marker = hitmark.transform;
+        Color color = targetIsDead ? Color.red : Color.white;
+        hitmarkImage.color = color;
+        marker.localScale = Vector3.one;
         hitmark.SetActive(true);
-        yield return new WaitForSeconds(0.5f);
+
+        if (!targetIsDead)
+        {
+            yield return new WaitForSeconds(0.5f);
+        }
+        else
+        {
+            // A kill: the red marker pops out big, settles back, stays a moment and fades away
+            const float pop = 0.15f, hold = 0.3f, fadeOut = 0.25f;
+            for (float t = 0f; t < pop + hold + fadeOut; t += Time.deltaTime)
+            {
+                float scale = t < pop ? Mathf.Lerp(2f, 1f, 1f - Mathf.Pow(1f - t / pop, 3f)) : 1f;
+                marker.localScale = Vector3.one * scale;
+                color.a = t < pop + hold ? 1f : 1f - (t - pop - hold) / fadeOut;
+                hitmarkImage.color = color;
+                yield return null;
+            }
+        }
+
+        marker.localScale = Vector3.one;
         hitmark.SetActive(false);
         hitmarkRoutine = null;
     }
@@ -610,7 +634,11 @@ public class Weapon : NetworkBehaviour
             if (sounds != null) sounds.StopReload();
             StopAllCoroutines();
             hitmarkRoutine = null;
-            if (hitmark != null && HasInputAuthority) hitmark.SetActive(false);
+            if (hitmark != null && HasInputAuthority)
+            {
+                hitmark.SetActive(false);
+                hitmark.transform.localScale = Vector3.one;
+            }
         }
         shownIndex = ind;
         GameObject newWeapon = Instantiate(loadout[ind].prefab, weaponParent.position, weaponParent.rotation, weaponParent) as GameObject;

@@ -176,7 +176,9 @@ public class BotBrain : MonoBehaviour
         // Shooting
         bool trigger = false;
         bool aim = false;
-        if (fighting && gun != null && now >= fireAllowedAt)
+        // Never from inside a wall: the shot would start inside it and go straight through
+        bool eyeInWall = Physics.CheckSphere(eye, EyeClearance, sightMask, QueryTriggerInteraction.Ignore);
+        if (fighting && gun != null && now >= fireAllowedAt && !eyeInWall)
         {
             Vector2 exact = BotLogic.LookAngles(eye, AimPoint(target));
             float yawError = Mathf.DeltaAngle(yaw, exact.x);
@@ -287,10 +289,23 @@ public class BotBrain : MonoBehaviour
             if (Vector3.Angle(facing, flat) > BotLogic.SightHalfAngle) return false;
         }
 
-        // Clear to the body, or failing that to the head
-        if (!Physics.Linecast(eye, point, sightMask, QueryTriggerInteraction.Ignore)) return true;
-        return !Physics.Linecast(eye, p.EyePosition, sightMask, QueryTriggerInteraction.Ignore);
+        // A ray that starts inside a collider doesn't hit it. So with its eye inside or touching a
+        // wall (pressed up against it, gun poking through), the bot would see, and shoot, straight
+        // through the wall. It sees nothing from there.
+        if (Physics.CheckSphere(eye, EyeClearance, sightMask, QueryTriggerInteraction.Ignore)) return false;
+
+        // Clear to the body, or failing that to the head...
+        bool clear = !Physics.Linecast(eye, point, sightMask, QueryTriggerInteraction.Ignore) ||
+                     !Physics.Linecast(eye, p.EyePosition, sightMask, QueryTriggerInteraction.Ignore);
+        if (!clear) return false;
+
+        // ...and the same line the other way, from the target's eye. This also catches walls the
+        // first check started inside of: the bot can only see someone who could see it back.
+        return !Physics.Linecast(p.EyePosition, eye, sightMask, QueryTriggerInteraction.Ignore);
     }
+
+    // How close to the eye solid scenery may be before the bot counts as looking from inside it
+    private const float EyeClearance = 0.12f;
 
     #endregion
 

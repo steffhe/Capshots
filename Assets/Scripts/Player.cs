@@ -308,7 +308,13 @@ public class Player : NetworkBehaviour
 
     public override void Despawned(NetworkRunner runner, bool hasState)
     {
-        if (Local == this) Local = null;
+        if (Local == this)
+        {
+            Local = null;
+            // Died: linger on the body a moment before the map view (not when the match is over,
+            // which removes everyone's body)
+            if (manager != null && !manager.Ending && !manager.MatchOver) DeathCam.Begin(normalCam);
+        }
         All.Remove(this);
     }
 

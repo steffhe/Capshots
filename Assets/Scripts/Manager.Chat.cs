@@ -24,13 +24,14 @@ public partial class Manager
 
         if (killer == me && victim != me)
         {
-            FeedbackUI.Kill();
+            FeedbackUI.Kill(headshot);
             // Kills during warmup and the countdown don't count
             if (state == GameState.Playing && !matchEnded) AwardXp(xpPerKill, "KILL");
         }
 
         if (victim == me)
         {
+            FeedbackUI.Died();
             FeedbackUI.ShowDeath(GetPlayerName(killer), weapon, headshot, respawnTime);
         }
     }

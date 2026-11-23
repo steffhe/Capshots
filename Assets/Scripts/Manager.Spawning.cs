@@ -8,7 +8,10 @@ using Fusion;
 public partial class Manager
 {
     [Header("Respawn")]
-    public float respawnTime = 3f;
+    // Seconds from dying to coming back (the death camera, then the map view)
+    public float respawnTime = 5f;
+    // Seconds from joining the match to the first spawn
+    public float joinSpawnTime = 3f;
     // Spawn points an enemy can see count as this many metres closer to the enemy
     public float spawnSightPenalty = 30f;
     // Random metres added to each spawn point's score, so the choice isn't always the same
@@ -18,10 +21,11 @@ public partial class Manager
     private readonly Dictionary<PlayerRef, TickTimer> pendingSpawns = new Dictionary<PlayerRef, TickTimer>();
     private NetworkObject playerPrefabObject;
 
-    private void ScheduleSpawn(PlayerRef player)
+    // afterDeath: the longer wait after dying, rather than the one after joining
+    private void ScheduleSpawn(PlayerRef player, bool afterDeath = false)
     {
         if (!HasStateAuthority || State == GameState.Ending) return;
-        pendingSpawns[player] = TickTimer.CreateFromSeconds(Runner, respawnTime);
+        pendingSpawns[player] = TickTimer.CreateFromSeconds(Runner, afterDeath ? respawnTime : joinSpawnTime);
     }
 
     private void SpawnWaitingPlayers()
@@ -129,6 +133,11 @@ public partial class Manager
         {
             dead.Dress(PlayerCap.ColorFor(actor), IsTeamMode);
             dead.Launch(velocity, hitDirection, hitOffset, knockback, headshot, PlayerCap.ColorFor(actor));
+            // Your own body: the death camera watches it fly
+            if (actor == LocalActor) DeathCam.Follow(dead.FocusPoint);
         }
+
+        // An ordinary kill shorts the drone out where the bullet hit; a cap shot has its own, bigger burst
+        if (!headshot) KillSpark.Spawn(position + hitOffset, hitDirection, PlayerCap.ColorFor(actor));
     }
 }
