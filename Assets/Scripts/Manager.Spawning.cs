@@ -78,8 +78,8 @@ public partial class Manager
             return spawnPoints[Random.Range(0, spawnPoints.Length)];
         }
 
-        // Players' own bodies shouldn't block line of sight
-        int sightMask = ~((1 << Layers.RemotePlayer) | (1 << Layers.LocalPlayer) | (1 << Layers.Hitbox));
+        // Players' own bodies and glass walls shouldn't block line of sight
+        int sightMask = ~((1 << Layers.RemotePlayer) | (1 << Layers.LocalPlayer) | (1 << Layers.Hitbox) | (1 << Layers.Glass));
 
         Transform best = spawnPoints[0];
         float bestScore = float.MinValue;

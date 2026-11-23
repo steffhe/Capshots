@@ -108,6 +108,8 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         currentMatchTime = MatchTime;
         OnStatsChanged();
         RefreshTimerUI();
+        // Glass already broken when joining a match in progress
+        SyncGlass(false);
         ready = true;
 
         // The map is in: lift the loading screen and introduce the map
@@ -154,7 +156,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
     public override void Render()
     {
-        bool statsChanged = false, stateChanged = false, timeChanged = false;
+        bool statsChanged = false, stateChanged = false, timeChanged = false, glassChanged = false;
         foreach (string change in changes.DetectChanges(this))
         {
             switch (change)
@@ -162,8 +164,11 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
                 case nameof(Stats): statsChanged = true; break;
                 case nameof(State): stateChanged = true; break;
                 case nameof(MatchTime): timeChanged = true; break;
+                case nameof(GlassPanes): glassChanged = true; break;
             }
         }
+
+        if (glassChanged) SyncGlass(true);
 
         if (timeChanged)
         {

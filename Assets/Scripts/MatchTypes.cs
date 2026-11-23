@@ -64,4 +64,7 @@ public static class Layers
     // Fusion hitboxes (body and head) that shots are checked against with lag compensation.
     // Nothing else lives on this layer, so a shot's raycast can include it without hitting colliders.
     public const int Hitbox = 10;
+    // Glass walls (the Office map): they block players but shots go through (Weapon.canBeShot
+    // leaves this layer out), and they don't hide a spawn point from enemies.
+    public const int Glass = 11;
 }
