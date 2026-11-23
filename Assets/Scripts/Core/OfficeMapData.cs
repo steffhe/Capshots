@@ -10,6 +10,9 @@ public class OfficeMapData
 {
     public enum MaterialKind { Opaque, Glass, Glow }
 
+    // The most glass panes a map can have: the Manager keeps 2 bits of state for each
+    public const int MaxPanes = 1024;
+
     public class MaterialDef
     {
         public string name;
@@ -34,6 +37,15 @@ public class OfficeMapData
         public Bounds Bounds => new Bounds(center, size);
     }
 
+    // A glass pane that cracks when shot and shatters on the second hit
+    public struct Pane
+    {
+        public Vector3 center, size;
+        // The frosted band across the pane (height 0 for none)
+        public float frostY, frostHeight;
+        public Bounds Bounds => new Bounds(center, size);
+    }
+
     public struct Sign
     {
         public Vector3 position;
@@ -50,6 +62,7 @@ public class OfficeMapData
 
     public readonly List<MaterialDef> materials = new List<MaterialDef>();
     public readonly List<Box> boxes = new List<Box>();
+    public readonly List<Pane> panes = new List<Pane>();
     public readonly List<Sign> signs = new List<Sign>();
     public readonly List<Spawn> spawns = new List<Spawn>();
     public bool hasCamera;
@@ -96,6 +109,15 @@ public class OfficeMapData
                             collider = colliderOnly || !flags.Contains("n"),
                             glass = flags.Contains("g"),
                             castShadows = !flags.Contains("s"),
+                        });
+                        break;
+                    case "p":
+                        data.panes.Add(new Pane
+                        {
+                            center = new Vector3(F(p[1]), F(p[2]), F(p[3])),
+                            size = new Vector3(F(p[4]), F(p[5]), F(p[6])),
+                            frostY = F(p[7]),
+                            frostHeight = F(p[8]),
                         });
                         break;
                     case "s":

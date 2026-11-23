@@ -349,11 +349,13 @@ public class Weapon : NetworkBehaviour
             Vector3 endPoint = origin + bloom * 1000f;
             Vector3 hitNormal = Vector3.zero;
             bool hitWorld = false;
+            float hitDistance = 1000f;
 
             if (Runner.LagCompensation.Raycast(origin, bloom, 1000f, Object.InputAuthority, out LagCompensatedHit hit, mask, options, QueryTriggerInteraction.Ignore))
             {
                 endPoint = hit.Point;
                 hitNormal = hit.Normal;
+                hitDistance = hit.Distance;
 
                 Player target = hit.Hitbox != null ? hit.Hitbox.Root.GetComponent<Player>() : null;
                 if (target != null)
@@ -371,6 +373,9 @@ public class Weapon : NetworkBehaviour
                     hitWorld = true;
                 }
             }
+
+            // Shots go through glass (it isn't in canBeShot), but crack or shatter the panes on the way
+            if (dealDamage) OfficeGlass.Shoot(origin, bloom, hitDistance);
 
             if (Runner.IsForward)
             {

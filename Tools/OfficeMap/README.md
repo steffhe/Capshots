@@ -26,4 +26,9 @@ What the generator works out by itself:
   in meeting rooms, and so on. Corridor furniture is listed in `layout.py`.
 
 Glass is on the `Glass` layer: players can't walk through it, but shots go through, and it
-doesn't hide a spawn point from enemies.
+doesn't hide a spawn point from enemies. The glass walls inside the floor are written as separate
+panes (`p` lines, one between each pair of mullions and one above each door). A pane cracks the
+first time it's shot and shatters the second time (`OfficeGlass`, with the state kept on the
+Manager in `Manager.Glass.cs`). The outside windows and the courtyard glass don't break, so
+nobody can fall out of the building. A map can have at most 1024 panes
+(`OfficeMapData.MaxPanes`).

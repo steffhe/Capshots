@@ -27,6 +27,7 @@ public class OfficeMapTests
             "b glass 0 1.5 0 2 3 0.03 gs\n" +
             "b - 0 0.4 0 1 0.8 1 o\n" +
             "b wood 0 1 0 1 1 1 n\n" +
+            "p 2 1.54 5 1.4 2.92 0.03 1.35 0.8\n" +
             "s 1.5 1.2 -2 90\n" +
             "l 0 2.75 1 180 0.3 0.1 0.1 0.1 H  Bakrommet\n" +
             "c 1 2 3 10 45\n";
@@ -41,6 +42,10 @@ public class OfficeMapTests
         Assert.AreEqual(-1, d.boxes[2].material, "collider-only boxes aren't drawn");
         Assert.IsTrue(d.boxes[2].collider);
         Assert.IsFalse(d.boxes[3].collider);
+        Assert.AreEqual(1, d.panes.Count);
+        Assert.AreEqual(new Vector3(1.4f, 2.92f, 0.03f), d.panes[0].size);
+        Assert.AreEqual(1.35f, d.panes[0].frostY, 1e-5f);
+        Assert.AreEqual(0.8f, d.panes[0].frostHeight, 1e-5f);
         Assert.AreEqual(90f, d.spawns[0].yaw);
         Assert.AreEqual("H Bakrommet", d.signs[0].text);
         Assert.IsTrue(d.hasCamera);
@@ -61,7 +66,27 @@ public class OfficeMapTests
         Assert.GreaterOrEqual(Data.spawns.Count, 8);
         Assert.IsTrue(Data.hasCamera);
         Assert.IsTrue(Data.boxes.All(b => b.size.x > 0f && b.size.y > 0f && b.size.z > 0f));
-        Assert.IsTrue(Data.boxes.Any(b => b.glass), "glass walls have glass colliders");
+        Assert.IsTrue(Data.boxes.Any(b => b.glass), "outside windows have glass colliders");
+    }
+
+    [Test]
+    public void GeneratedMap_GlassPanesFitTheNetworkedState()
+    {
+        Assert.Greater(Data.panes.Count, 100);
+        Assert.LessOrEqual(Data.panes.Count, OfficeMapData.MaxPanes, "the Manager keeps the state of at most MaxPanes panes");
+        foreach (OfficeMapData.Pane pane in Data.panes)
+        {
+            // Thin, upright, and standing on the floor or above a door
+            Assert.Less(Mathf.Min(pane.size.x, pane.size.z), 0.1f);
+            Assert.Greater(Mathf.Max(pane.size.x, pane.size.z), 0.05f);
+            Assert.GreaterOrEqual(pane.Bounds.min.y, 0f);
+            Assert.LessOrEqual(pane.Bounds.max.y, 3.2f);
+            if (pane.frostHeight > 0f)
+            {
+                Assert.GreaterOrEqual(pane.frostY - pane.frostHeight / 2f, pane.Bounds.min.y);
+                Assert.LessOrEqual(pane.frostY + pane.frostHeight / 2f, pane.Bounds.max.y);
+            }
+        }
     }
 
     [Test]
@@ -78,6 +103,7 @@ public class OfficeMapTests
             var body = new Bounds(new Vector3(spawn.position.x, 1.1f, spawn.position.z), new Vector3(1.1f, 1.9f, 1.1f));
             OfficeMapData.Box[] blocking = Data.boxes.Where(b => b.collider && b.Bounds.Intersects(body)).ToArray();
             Assert.IsEmpty(blocking, "the spawn at " + spawn.position + " is blocked");
+            Assert.IsFalse(Data.panes.Any(p => p.Bounds.Intersects(body)), "the spawn at " + spawn.position + " is in a glass pane");
         }
     }
 

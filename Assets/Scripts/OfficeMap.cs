@@ -46,6 +46,7 @@ public class OfficeMap : MonoBehaviour
 
         BuildMeshes(data, materials);
         BuildColliders(data);
+        BuildGlass(data, materials);
         BuildSigns(data);
         BuildSpawns(data);
 
@@ -178,12 +179,29 @@ public class OfficeMap : MonoBehaviour
 
     #region Meshes
 
-    private class MeshBuilder
+    internal class MeshBuilder
     {
         public readonly List<Vector3> vertices = new List<Vector3>();
         public readonly List<Vector3> normals = new List<Vector3>();
         public readonly List<Vector2> uvs = new List<Vector2>();
         public readonly List<int> triangles = new List<int>();
+
+        public void Clear()
+        {
+            vertices.Clear(); normals.Clear(); uvs.Clear(); triangles.Clear();
+        }
+
+        // Puts the geometry into a mesh, replacing what it had
+        public void Fill(Mesh mesh)
+        {
+            mesh.Clear();
+            if (vertices.Count > 65000) mesh.indexFormat = IndexFormat.UInt32;
+            mesh.SetVertices(vertices);
+            mesh.SetNormals(normals);
+            mesh.SetUVs(0, uvs);
+            mesh.SetTriangles(triangles, 0);
+            mesh.RecalculateBounds();
+        }
     }
 
     private void BuildMeshes(OfficeMapData data, Material[] materials)
@@ -225,8 +243,9 @@ public class OfficeMap : MonoBehaviour
         }
     }
 
-    // Six faces, each with UVs taken from world position along the face (divided by the tile size)
-    private static void AddBox(MeshBuilder b, Vector3 c, Vector3 s, float tile)
+    // Six faces, each with UVs taken from world position along the face (divided by the tile size),
+    // or running 0 to 1 across each face when tile is 0
+    internal static void AddBox(MeshBuilder b, Vector3 c, Vector3 s, float tile)
     {
         Vector3 h = s * 0.5f;
         Vector3 min = c - h, max = c + h;
@@ -247,7 +266,15 @@ public class OfficeMap : MonoBehaviour
         {
             b.vertices.Add(p);
             b.normals.Add(normal);
-            b.uvs.Add(WorldUv(p, normal) / tile);
+        }
+        if (tile > 0f)
+        {
+            foreach (Vector3 p in corners) b.uvs.Add(WorldUv(p, normal) / tile);
+        }
+        else
+        {
+            b.uvs.Add(new Vector2(0f, 0f)); b.uvs.Add(new Vector2(1f, 0f));
+            b.uvs.Add(new Vector2(1f, 1f)); b.uvs.Add(new Vector2(0f, 1f));
         }
         // u and v are the face's right and up as seen from outside, so these are clockwise from there
         b.triangles.Add(start); b.triangles.Add(start + 2); b.triangles.Add(start + 1);
@@ -299,6 +326,22 @@ public class OfficeMap : MonoBehaviour
         var go = new GameObject(name) { layer = layer, isStatic = true };
         go.transform.SetParent(parent, false);
         return go;
+    }
+
+    // The breakable glass panes: OfficeGlass draws them and breaks them as the Manager says
+    private void BuildGlass(OfficeMapData data, Material[] materials)
+    {
+        if (data.panes.Count == 0) return;
+        int glass = data.materials.FindIndex(m => m.name == "glass");
+        int frost = data.materials.FindIndex(m => m.name == "frost");
+        if (glass < 0 || frost < 0)
+        {
+            Debug.LogError("OfficeMap: the layout has glass panes but no glass or frost material");
+            return;
+        }
+        int glassLayer = LayerMask.NameToLayer("Glass");
+        if (glassLayer < 0) glassLayer = Layers.Glass;
+        gameObject.AddComponent<OfficeGlass>().Build(data.panes, materials[glass], materials[frost], glassLayer);
     }
 
     private void BuildSigns(OfficeMapData data)

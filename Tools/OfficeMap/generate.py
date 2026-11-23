@@ -12,6 +12,7 @@ Output format, one item per line (world units are metres, y up, the office floor
     s <x> <y> <z> <yaw>                                             a spawn point
     l <x> <y> <z> <yaw> <height> <r> <g> <b> <text...>              a sign
     c <x> <y> <z> <pitch> <yaw>                                     the map camera
+    p <cx> <cy> <cz> <sx> <sy> <sz> <frost cy> <frost sy>          a glass pane that shatters
 Box flags: '-' for none, else any of n (no collider), g (collider on the Glass layer),
 s (casts no shadow), o (collider only, not drawn). A material kind is opaque, glass or glow.
 """
@@ -83,6 +84,7 @@ MATERIALS = [
 ]
 
 out = []
+panes = []  # (x0, x1, y0, y1, z0, z1, frost y0, frost y1): breakable glass
 boxes = []  # (mat, x0, x1, y0, y1, z0, z1, flags), kept for checks and the preview
 
 
@@ -258,8 +260,20 @@ def world_run(axis, fixed, a, b, outv):
     return axis, line, t0, t1, outsign
 
 
+def pane(axis, line, t0, t1, y0, y1, frosted):
+    """A breakable glass pane, with a frosted band across it if frosted."""
+    if t1 - t0 < 0.05:
+        return
+    if axis == "x":
+        b = (t0, t1, y0, y1, line - 0.015, line + 0.015)
+    else:
+        b = (line - 0.015, line + 0.015, y0, y1, t0, t1)
+    panes.append(b + ((0.95, 1.75) if frosted else (0.0, 0.0)))
+
+
 def glass_wall(axis, edge, outsign, t0, t1, doors, frosted=True):
-    """A glass front wall on the inside of a room edge, with door openings."""
+    """A glass front wall on the inside of a room edge, with door openings. Each pane between two
+    mullions is a separate pane that can be shot to pieces."""
     line = edge - outsign * GLASS_T / 2
     cuts = sorted((d - DOOR_W / 2, d + DOOR_W / 2) for d in doors)
     pieces = []
@@ -269,22 +283,25 @@ def glass_wall(axis, edge, outsign, t0, t1, doors, frosted=True):
         cur = c1
     pieces.append((cur, t1))
     for p0, p1 in pieces:
-        if p1 - p0 < 0.02:
+        if p1 - p0 < 0.3:
+            if p1 - p0 > 0.001:
+                wbox("frame", axis, line, p0, p1, GLASS_T, 0.0, 3.0)
             continue
-        wbox("glass", axis, line, p0, p1, 0.03, 0.08, 3.0, "gs")
-        if frosted:
-            wbox("frost", axis, line, p0, p1, 0.04, 0.95, 1.75, "ns")
         wbox("frame", axis, line, p0, p1, GLASS_T, 0.0, 0.08)
-        # Mullions, at most 1.5 m apart, and posts at both ends
+        # Mullions, at most 1.5 m apart, and posts at both ends, with a pane between each pair
         n = max(1, int(math.ceil((p1 - p0) / 1.5)))
+        posts = []
         for i in range(n + 1):
             t = p0 + (p1 - p0) * i / n
             t = min(max(t, p0 + 0.03), p1 - 0.03)
+            posts.append(t)
             wbox("frame", axis, line, t - 0.03, t + 0.03, GLASS_T, 0.0, 3.0, "n")
+        for a, b in zip(posts, posts[1:]):
+            pane(axis, line, a + 0.03, b - 0.03, 0.08, 3.0, frosted)
     # Head rail along the whole run, transoms above the doors
     wbox("frame", axis, line, t0, t1, GLASS_T, 3.0, H)
     for c0, c1 in cuts:
-        wbox("glass", axis, line, c0, c1, 0.03, DOOR_H, 3.0, "gs")
+        pane(axis, line, c0, c1, DOOR_H, 3.0, False)
         wbox("frame", axis, line, c0, c1, GLASS_T, DOOR_H - 0.06, DOOR_H)
 
 
@@ -836,7 +853,7 @@ def check():
         px, py = x / S + CX, -z / S + CY
         if not in_slab(px, py):
             print("spawn %d is off the floor" % i, file=sys.stderr); ok = False
-        for b in boxes:
+        for b in boxes + [("glass",) + p[:6] + ("g",) for p in panes]:
             mat, x0, x1, y0, y1, z0, z1, flags = b
             if "n" in flags and "o" not in flags:
                 continue
@@ -860,6 +877,9 @@ def write(path):
     for mat, x0, x1, y0, y1, z0, z1, flags in boxes:
         lines.append("b %s %s %s %s %s %s %s %s" % (
             mat, fmt((x0 + x1) / 2), fmt((y0 + y1) / 2), fmt((z0 + z1) / 2), fmt(x1 - x0), fmt(y1 - y0), fmt(z1 - z0), flags))
+    for x0, x1, y0, y1, z0, z1, f0, f1 in panes:
+        lines.append("p %s %s %s %s %s %s %s %s" % (
+            fmt((x0 + x1) / 2), fmt((y0 + y1) / 2), fmt((z0 + z1) / 2), fmt(x1 - x0), fmt(y1 - y0), fmt(z1 - z0), fmt((f0 + f1) / 2), fmt(f1 - f0)))
     for x, y, z, yaw in spawns:
         lines.append("s %s %s %s %s" % (fmt(x), fmt(y), fmt(z), fmt(yaw)))
     for x, y, z, yaw, height, color, text in labels:
@@ -876,7 +896,7 @@ def preview(path):
     x0, x1, z0, z1 = wx(96) - 3, wx(1347) + 3, wz(1090) - 3, wz(55) + 3
     img = Image.new("RGB", (int((x1 - x0) * k), int((z1 - z0) * k)), (40, 60, 40))
     d = ImageDraw.Draw(img)
-    for b in sorted(boxes, key=lambda b: b[4]):
+    for b in sorted(boxes + [("glass",) + p[:6] + ("g",) for p in panes], key=lambda b: b[4]):
         mat, bx0, bx1, by0, by1, bz0, bz1, flags = b
         if by0 >= H - 0.1 or mat in ("-", "ground", "asphalt", "light") or by1 < -0.5 and mat not in ("grass", "path", "leaves", "leaves2", "trunk"):
             continue
@@ -900,6 +920,7 @@ if __name__ == "__main__":
     os.makedirs(os.path.dirname(target), exist_ok=True)
     good = check()
     write(target)
+    print("%d glass panes" % len(panes))
     print("%d boxes, %d desks, %d signs, %d spawns -> %s" % (len(boxes), desk_count, len(labels), len(spawns), target))
     if "--preview" in sys.argv:
         i = sys.argv.index("--preview")

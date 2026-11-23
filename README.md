@@ -21,7 +21,7 @@ To play together, each player runs the game, picks a username and either creates
 - Online multiplayer through Photon Fusion: host rooms, browse and join open rooms, or quick-join a random one
 - Room options: game mode, map, max players and kills to win
 - Two game modes: Free For All, and Team Deathmatch (blue vs red, automatic team balancing, no friendly fire, first team to the kill limit wins)
-- Several maps to choose from, including Office: a real office floor with glass-walled offices and meeting rooms around a courtyard garden. Its glass walls stop players but not bullets
+- Several maps to choose from, including Office: a real office floor with glass-walled offices and meeting rooms around a courtyard garden. Its glass walls crack when shot and shatter on the second hit, leaving a gap to walk and shoot through
 - Warmup until enough players have joined, then a countdown before the match starts
 - Four energy weapons (pistol, machine gun, sniper rifle and an 8-pellet shotgun) with aiming, reloading and weapon sway; laser beams and muzzle flashes glow in the shooter's colour (the team colour in Team Deathmatch)
 - Hovering players: every player is a little drone with a capsule body, a round head with a glowing face screen and blinking eyes, a thruster and two floating hand-orbs that hold the gun, in their own (or their team's) colour; it floats, bobs and leans into its movement over a glowing disc, and the gun drifts instead of bobbing with footsteps
