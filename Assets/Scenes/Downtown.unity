@@ -18619,7 +18619,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   material: {fileID: 2100000, guid: e2268fdf81224ef98ddf73cc03172717, type: 2}
+  walls: []
+  findGround: 1
   groundHeight: 0
+  hideWallRenderers: 1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
