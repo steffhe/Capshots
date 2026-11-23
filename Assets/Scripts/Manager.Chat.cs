@@ -62,6 +62,8 @@ public partial class Manager
     {
         foreach (PlayerRef player in StatsKeys())
         {
+            // Bots run on the host: no connection to measure
+            if (IsBot(player)) continue;
             int ping = player == Runner.LocalPlayer ? 0 : Mathf.RoundToInt((float)Runner.GetPlayerRtt(player) * 1000f);
             PlayerStats stats = Stats[player];
             // Only send real changes, so the scoreboard isn't resent every second
@@ -75,6 +77,8 @@ public partial class Manager
     {
         int index = FindPlayerIndex(actor);
         if (index < 0) return "";
+        // Bots' names already say BOT, and they have no connection to measure
+        if (IsBotActor(actor)) return "";
 
         int ping = playerInfo[index].ping;
         // Our own round trip to the host is known here first hand

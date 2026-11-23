@@ -161,7 +161,7 @@ public class Weapon : NetworkBehaviour
     public override void FixedUpdateNetwork()
     {
         if (player.IsDead) return;
-        if (!GetInput(out PlayerInputData input)) return;
+        if (!player.ReadInput(out PlayerInputData input)) return;
 
         // The match is over: guns go quiet
         if (Manager.Instance != null && Manager.Instance.Ending)
@@ -254,6 +254,9 @@ public class Weapon : NetworkBehaviour
     #endregion
 
     #region Public Methods
+
+    // How full the energy is, 0 to 1 (bots use it to decide when to swap the cell)
+    public float EnergyFraction => Object != null && Object.IsValid && maxEnergy > 0f ? Energy / maxEnergy : 1f;
 
     // Whether an ammo box would do anything: the energy isn't full
     public bool NeedsAmmo()
@@ -370,7 +373,11 @@ public class Weapon : NetworkBehaviour
             bool hitWorld = false;
             float hitDistance = 1000f;
 
-            if (Runner.LagCompensation.Raycast(origin, bloom, 1000f, Object.InputAuthority, out LagCompensatedHit hit, mask, options, QueryTriggerInteraction.Ignore))
+            LagCompensatedHit hit;
+            bool hitSomething = player.IsBot
+                ? BotRaycast(origin, bloom, mask, out hit)
+                : Runner.LagCompensation.Raycast(origin, bloom, 1000f, Object.InputAuthority, out hit, mask, options, QueryTriggerInteraction.Ignore);
+            if (hitSomething)
             {
                 endPoint = hit.Point;
                 hitNormal = hit.Normal;
@@ -409,9 +416,9 @@ public class Weapon : NetworkBehaviour
         {
             if (h.target == null || h.target.IsDead) continue;
             bool wasProtected = h.target.IsProtected;
-            bool killed = h.target.TakeDamage(h.damage, Object.InputAuthority, gun.gunName, h.headshot, h.direction, h.point - h.target.transform.position);
-            // No hit feedback on spawn-protected players
-            if (!wasProtected) RPC_HitConfirm(h.headshot, killed);
+            bool killed = h.target.TakeDamage(h.damage, player.Owner, gun.gunName, h.headshot, h.direction, h.point - h.target.transform.position);
+            // No hit feedback on spawn-protected players, or for bots (they have no screen)
+            if (!wasProtected && !player.IsBot) RPC_HitConfirm(h.headshot, killed);
         }
         pelletHits.Clear();
 
@@ -422,6 +429,30 @@ public class Weapon : NetworkBehaviour
             look.AddRecoil(kick, Random.Range(-kick, kick) * 0.35f);
         }
     }
+
+    // A bot's shot, on the host. Bots have no input authority, so the usual "skip the shooter's own
+    // hitboxes" option can't tell their body apart from other bots'. Instead this takes every hit
+    // along the ray and keeps the nearest one that isn't the bot itself. No rewinding is needed:
+    // bots run on the host, and see everyone where the host has them.
+    bool BotRaycast(Vector3 origin, Vector3 direction, int mask, out LagCompensatedHit nearest)
+    {
+        nearest = default;
+        botHits.Clear();
+        Runner.LagCompensation.RaycastAll(origin, direction, 1000f, PlayerRef.None, botHits, mask, true, HitOptions.IncludePhysX, QueryTriggerInteraction.Ignore);
+
+        HitboxRoot own = GetComponent<HitboxRoot>();
+        bool found = false;
+        foreach (LagCompensatedHit h in botHits)
+        {
+            if (h.Hitbox != null && h.Hitbox.Root == own) continue;
+            if (found && h.Distance >= nearest.Distance) continue;
+            nearest = h;
+            found = true;
+        }
+        botHits.Clear();
+        return found;
+    }
+    static readonly List<LagCompensatedHit> botHits = new List<LagCompensatedHit>();
 
     // Damage from this shot's pellets, per player hit
     struct PelletHit

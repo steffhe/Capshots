@@ -77,6 +77,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
     {
         if (Instance == this) Instance = null;
         DestroyEndVolume();
+        BotNavigation.Clear();
     }
 
     private void Start()
@@ -99,6 +100,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
             MatchTime = matchlength;
             Heartbeat = TickTimer.CreateFromSeconds(Runner, 1f);
             foreach (PlayerRef player in Runner.ActivePlayers) AddPlayer(player);
+            UpdateBots();
         }
 
         // Tell the host our name and level for the scoreboard
@@ -130,6 +132,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         if (properties.TryGetValue("killcount", out value)) killcount = (int)value;
         if (properties.TryGetValue("mode", out value)) mode = (MatchMode)(int)value;
         if (properties.TryGetValue("matchlength", out value)) matchlength = (int)value;
+        if (properties.TryGetValue("bots", out value)) botSetting = (int)value;
     }
 
     private void Update()
@@ -306,7 +309,11 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
     public void PlayerJoined(PlayerRef player)
     {
-        if (HasStateAuthority) AddPlayer(player);
+        if (!HasStateAuthority) return;
+        // A bot makes way for them first, so the player list never holds more than it has room for
+        UpdateBots(1);
+        AddPlayer(player);
+        UpdateBots();
     }
 
     public void PlayerLeft(PlayerRef player)
@@ -317,6 +324,8 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         pendingSpawns.Remove(player);
         NetworkObject body;
         if (Runner.TryGetPlayerObject(player, out body) && body != null) Runner.Despawn(body);
+        // A bot takes their place
+        UpdateBots();
     }
 
     private void AddPlayer(PlayerRef player)
