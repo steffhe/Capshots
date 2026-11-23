@@ -37,7 +37,7 @@ public class Weapon : NetworkBehaviour
 
     private GameObject currentWeapon;
     // The gun model being shown, for the drone's hand-orbs
-    public GameObject CurrentGun => currentWeapon;
+    public GameObject GunModel => currentWeapon;
     private int shownIndex = -1;
 
     // Looked up once instead of every shot or frame
@@ -50,7 +50,21 @@ public class Weapon : NetworkBehaviour
 
     public int EquippedIndex => Object != null && Object.IsValid ? Equipped : 0;
     public Gun CurrentGun => loadout != null && EquippedIndex >= 0 && EquippedIndex < loadout.Length ? loadout[EquippedIndex] : null;
-    public bool isAiming => Object != null && Object.IsValid && Aiming;
+    // Not while reloading: the gun is tipped over to change its energy cell
+    public bool isAiming => Object != null && Object.IsValid && Aiming && !ReloadTimer.IsRunning;
+
+    // How far through a reload this player is (0 to 1), or -1 when not reloading. For the reload animation.
+    public float ReloadProgress
+    {
+        get
+        {
+            if (Object == null || !Object.IsValid || !ReloadTimer.IsRunning) return -1f;
+            Gun gun = CurrentGun;
+            float? remaining = ReloadTimer.RemainingTime(Runner);
+            if (gun == null || gun.reloadTime <= 0f || remaining == null) return -1f;
+            return Mathf.Clamp01(1f - remaining.Value / gun.reloadTime);
+        }
+    }
     #endregion
 
     #region Networked state
@@ -195,14 +209,12 @@ public class Weapon : NetworkBehaviour
         }
     }
 
-    // Presentation only: gun model position, aiming and the reload pose
+    // Presentation only: gun model position and aiming
     void Update()
     {
         if (Object == null || !Object.IsValid || currentWeapon == null) return;
 
-        // The gun is put away while reloading
-        bool reloading = ReloadTimer.IsRunning;
-        if (currentWeapon.activeSelf == reloading) currentWeapon.SetActive(!reloading);
+        // Reloading is animated by DroneHands: the gun stays out and its energy cell is swapped
 
         if (HasInputAuthority && !Pause.paused) Aim(isAiming);
 
