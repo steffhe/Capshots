@@ -46,9 +46,10 @@ public partial class Manager
 
     private void SpawnPlayer(PlayerRef player)
     {
-        // Never two bodies for one player
+        // Never two bodies for one player (bots aren't Fusion players, so they're looked up by body)
         NetworkObject existing;
-        if (Runner.TryGetPlayerObject(player, out existing) && existing != null && existing.IsValid) return;
+        if (IsBot(player)) { if (Player.FindPlayer(player) != null) return; }
+        else if (Runner.TryGetPlayerObject(player, out existing) && existing != null && existing.IsValid) return;
 
         if (playerPrefabObject == null) playerPrefabObject = Resources.Load<NetworkObject>(playerPrefab);
         if (playerPrefabObject == null)
@@ -58,7 +59,8 @@ public partial class Manager
         }
 
         Transform spawn = ChooseSpawnPoint(player);
-        Runner.Spawn(playerPrefabObject, spawn.position, spawn.rotation, player);
+        if (IsBot(player)) SpawnBot(player, spawn);
+        else Runner.Spawn(playerPrefabObject, spawn.position, spawn.rotation, player);
     }
 
     // Picks the spawn point farthest from living enemies, avoiding points an enemy can see

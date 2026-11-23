@@ -48,11 +48,17 @@ public partial class Launcher : MonoBehaviour
     private int currentmode = 0;
     private Text modeValue;
 
+    // Bots to fill the room with (they make way as people join). 0 = none.
+    private const int MaxBots = 7;
+    private int currentbots = 0;
+    private Text botsValue;
+
     public void Awake()
     {
         myProfile = Data.LoadProfile();
         usernameField.text = myProfile.username;
         CreateModeButton();
+        CreateBotsButton();
         // The player model in the menu wears a cap too, in the logo's colour...
         PlayerCap.AttachToSceneHeads(PlayerCap.LogoColor);
         // ...and is the same little drone as in a match
@@ -126,6 +132,7 @@ public partial class Launcher : MonoBehaviour
         properties.Add("mapname", maps[currentmap].name);
         properties.Add("mode", currentmode);
         if (matchLengthSlider != null) properties.Add("matchlength", Mathf.RoundToInt(matchLengthSlider.value) * 60);
+        properties.Add("bots", currentbots);
         return properties;
     }
 
@@ -155,6 +162,17 @@ public partial class Launcher : MonoBehaviour
     private void RefreshModeText()
     {
         if (modeValue != null) modeValue.text = UITheme.Option("MODE", modeNames[currentmode]);
+    }
+
+    public void ChangeBots()
+    {
+        currentbots = (currentbots + 1) % (MaxBots + 1);
+        RefreshBotsText();
+    }
+
+    private void RefreshBotsText()
+    {
+        if (botsValue != null) botsValue.text = UITheme.Option("BOTS", currentbots == 0 ? "OFF" : currentbots.ToString());
     }
 
     // Replaces the "Capshots" title text on each menu tab with the wordmark logo
@@ -191,31 +209,45 @@ public partial class Launcher : MonoBehaviour
     // and moves the rows below it down, so the menu scene doesn't need editing
     private void CreateModeButton()
     {
-        if (mapValue == null) return;
+        modeValue = CopyMapRow(mapValue, "Mode", ChangeMode);
+        RefreshModeText();
+    }
+
+    // And a "Bots" button under that
+    private void CreateBotsButton()
+    {
+        botsValue = CopyMapRow(modeValue != null ? modeValue : mapValue, "Bots", ChangeBots);
+        RefreshBotsText();
+    }
+
+    // A copy of the "Map" button placed under the row holding 'above', calling onClick instead of
+    // ChangeMap. Returns its label.
+    private Text CopyMapRow(Text above, string rowName, UnityEngine.Events.UnityAction onClick)
+    {
+        if (mapValue == null || above == null) return null;
 
         RectTransform mapRow = mapValue.transform.parent as RectTransform;
-        if (mapRow == null || mapRow.parent == null) return;
+        RectTransform aboveRow = above.transform.parent as RectTransform;
+        if (mapRow == null || aboveRow == null || aboveRow.parent == null) return null;
 
         const float rowSpacing = 60f;
-        float mapY = mapRow.anchoredPosition.y;
+        float aboveY = aboveRow.anchoredPosition.y;
 
-        foreach (Transform sibling in mapRow.parent)
+        foreach (Transform sibling in aboveRow.parent)
         {
             RectTransform row = sibling as RectTransform;
-            if (row != null && row != mapRow && row.anchoredPosition.y < mapY - 1f)
+            if (row != null && row != aboveRow && row.anchoredPosition.y < aboveY - 1f)
             {
                 row.anchoredPosition -= new Vector2(0f, rowSpacing);
             }
         }
 
-        GameObject modeRow = Instantiate(mapRow.gameObject, mapRow.parent);
-        modeRow.name = "Mode";
-        modeRow.transform.SetSiblingIndex(mapRow.GetSiblingIndex() + 1);
-        ((RectTransform)modeRow.transform).anchoredPosition = mapRow.anchoredPosition - new Vector2(0f, rowSpacing);
+        GameObject newRow = Instantiate(mapRow.gameObject, aboveRow.parent);
+        newRow.name = rowName;
+        newRow.transform.SetSiblingIndex(aboveRow.GetSiblingIndex() + 1);
+        ((RectTransform)newRow.transform).anchoredPosition = aboveRow.anchoredPosition - new Vector2(0f, rowSpacing);
 
-        modeValue = modeRow.GetComponentInChildren<Text>();
-
-        Button button = modeRow.GetComponent<Button>();
+        Button button = newRow.GetComponent<Button>();
         if (button != null)
         {
             // The copy still calls ChangeMap from the Inspector: switch that off, keep anything else (like a click sound)
@@ -226,10 +258,10 @@ public partial class Launcher : MonoBehaviour
                     button.onClick.SetPersistentListenerState(i, UnityEngine.Events.UnityEventCallState.Off);
                 }
             }
-            button.onClick.AddListener(ChangeMode);
+            button.onClick.AddListener(onClick);
         }
 
-        RefreshModeText();
+        return newRow.GetComponentInChildren<Text>();
     }
 
     public void ChangeMaxPlayersSlider (float value)

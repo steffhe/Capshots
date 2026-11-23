@@ -19,7 +19,8 @@ To play together, each player runs the game, picks a username and either creates
 ## Features
 
 - Online multiplayer through Photon Fusion: host rooms, browse and join open rooms, or quick-join a random one
-- Room options: game mode, map, max players and kills to win
+- Room options: game mode, map, bots, max players and kills to win
+- Bots: the host can fill a room with up to 7 computer players. They find their way around every map, hunt down enemies, aim with a short reaction time and some inaccuracy, change gun form for the distance and swap energy cells like anyone else. They play by the same rules as people (same movement, gun, damage and spawn protection), show on the scoreboard and kill feed with BOT in their name, and make way when people join: a bot leaves when someone joins a full room, and comes back when they leave. In Team Deathmatch they fill both teams evenly
 - Two game modes: Free For All, and Team Deathmatch (blue vs red, automatic team balancing, no friendly fire, first team to the kill limit wins)
 - Several maps to choose from, including Office: a real office floor with glass-walled offices and meeting rooms around a courtyard garden. Its glass walls crack when shot and shatter on the second hit, leaving a gap to walk and shoot through
 - Warmup until enough players have joined, then a countdown before the match starts
@@ -94,7 +95,7 @@ Photon Fusion is configured in `Assets/Photon/Fusion/Resources/PhotonAppSettings
 
 ## Tests
 
-The tests in `Assets/Tests/EditMode` check gun energy, damage falloff and XP. Run them in Unity from **Window → General → Test Runner → EditMode → Run All**. The build workflow also runs them alongside every build, and only publishes a release when they pass.
+The tests in `Assets/Tests/EditMode` check gun energy, damage falloff, XP and the bots' decisions (room filling, gun choice, aiming and steering). Run them in Unity from **Window → General → Test Runner → EditMode → Run All**. The build workflow also runs them alongside every build, and only publishes a release when they pass.
 
 ## Releasing
 
@@ -124,8 +125,9 @@ Publishing the browser version needs GitHub Pages set up once:
 | Path | Contents |
 | --- | --- |
 | `Assets/Scripts` | Game code: launcher/lobby, player movement, weapons, input, settings, chat, pause menu |
-| `Assets/Scripts/Manager*.cs` | The match manager, split by topic: match flow (`Manager.cs`), teams, scoreboard, spawning, pickups, chat and XP |
-| `Assets/Scripts/Core` | Game logic with no scene dependencies (`Gun`, `ProfileData`), in its own assembly so it can be tested |
+| `Assets/Scripts/Manager*.cs` | The match manager, split by topic: match flow (`Manager.cs`), teams, scoreboard, spawning, bots, pickups, chat and XP |
+| `Assets/Scripts/Bot*.cs` | Bots: `BotBrain` turns what a bot sees into player input on the host, `BotNavigation` builds the map's walkable area when a match with bots starts |
+| `Assets/Scripts/Core` | Game logic with no scene dependencies (`Gun`, `ProfileData`, `BotLogic`), in its own assembly so it can be tested |
 | `Assets/Tests/EditMode` | Automated tests for the `Core` code |
 | `Assets/Scenes` | `Menu` plus the playable maps |
 | `Assets/Resources` | Prefabs loaded at runtime: the networked player, weapons, ragdoll and bullet holes |

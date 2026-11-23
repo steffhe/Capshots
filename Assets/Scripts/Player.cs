@@ -110,6 +110,12 @@ public class Player : NetworkBehaviour
     // The player this client controls, or null while dead
     public static Player Local { get; private set; }
 
+    // Every body in the match (people and bots), alive or not yet despawned
+    public static readonly List<Player> All = new List<Player>();
+
+    // Thinks for this body if it's a bot (host only)
+    private BotBrain brain;
+
     #endregion
 
     #region Networked state
@@ -128,15 +134,20 @@ public class Player : NetworkBehaviour
     [Networked] private float RegenBuffer { get; set; }
     [Networked] private NetworkButtons PreviousButtons { get; set; }
     [Networked] private NetworkBool Dead { get; set; }
+    // Set when this body is a bot: the bot's own id, standing in for the player that would control
+    // it. Bots have no input authority (nobody's game sends their input); the host runs them.
+    [Networked] public PlayerRef BotId { get; set; }
 
     #endregion
 
     #region Public state
 
     public bool IsLocal => Object != null && Object.IsValid && HasInputAuthority;
-    // The PlayerRef.PlayerId of the player controlling this body
-    public int ActorId => Object != null && Object.IsValid ? Object.InputAuthority.PlayerId : -1;
-    public PlayerRef Owner => Object != null && Object.IsValid ? Object.InputAuthority : PlayerRef.None;
+    public bool IsBot => Object != null && Object.IsValid && BotId.IsRealPlayer;
+    // Who this body belongs to on the scoreboard: the player controlling it, or the bot's id
+    public PlayerRef Owner => Object != null && Object.IsValid ? (BotId.IsRealPlayer ? BotId : Object.InputAuthority) : PlayerRef.None;
+    // Owner's PlayerRef.PlayerId
+    public int ActorId => Object != null && Object.IsValid ? Owner.PlayerId : -1;
     public int currentHealth => Object != null && Object.IsValid ? Health : maxHealth;
     public bool IsCrouched => Object != null && Object.IsValid && Crouched;
     public bool IsProtected => Object != null && Object.IsValid && ProtectionTimer.IsRunning;
@@ -213,13 +224,22 @@ public class Player : NetworkBehaviour
     {
         manager = Manager.Instance != null ? Manager.Instance : FindAnyObjectByType<Manager>();
         if (GetComponent<PlayerSounds>() == null) gameObject.AddComponent<PlayerSounds>();
+        if (!All.Contains(this)) All.Add(this);
 
         if (HasStateAuthority)
         {
             Health = maxHealth;
             ProtectionTimer = spawnProtectionTime > 0f ? TickTimer.CreateFromSeconds(Runner, spawnProtectionTime) : TickTimer.None;
-            Runner.SetPlayerObject(Object.InputAuthority, Object);
+            // Bots aren't Fusion players, so they have no player object
+            if (!IsBot) Runner.SetPlayerObject(Object.InputAuthority, Object);
             SetHitboxes(false);
+
+            if (IsBot)
+            {
+                brain = GetComponent<BotBrain>();
+                if (brain == null) brain = gameObject.AddComponent<BotBrain>();
+                brain.Initialize(this);
+            }
         }
 
         // The HUD is hidden while the local player has no body, and GameObject.Find can't see hidden objects
@@ -289,13 +309,30 @@ public class Player : NetworkBehaviour
     public override void Despawned(NetworkRunner runner, bool hasState)
     {
         if (Local == this) Local = null;
+        All.Remove(this);
+    }
+
+    // This tick's input: from the controlling player's game, or for a bot from its brain on the host
+    public bool ReadInput(out PlayerInputData input)
+    {
+        if (BotId.IsRealPlayer)
+        {
+            if (brain != null && HasStateAuthority)
+            {
+                input = brain.InputForTick(Runner.Tick, Runner.DeltaTime);
+                return true;
+            }
+            input = default;
+            return false;
+        }
+        return GetInput(out input);
     }
 
     public override void FixedUpdateNetwork()
     {
         if (Dead) return;
 
-        bool hasInput = GetInput(out PlayerInputData input);
+        bool hasInput = ReadInput(out PlayerInputData input);
         if (!hasInput)
         {
             // No input arrived for this tick: keep facing the same way and stand still
@@ -637,7 +674,7 @@ public class Player : NetworkBehaviour
     {
         if (Dead || manager == null || transform.position.y > manager.killHeight) return;
         ProtectionTimer = TickTimer.None;
-        TakeDamage(maxHealth * 10, Object.InputAuthority, "Fell", false);
+        TakeDamage(maxHealth * 10, Owner, "Fell", false);
     }
 
     // Host only. Applies a hit and reports whether it killed. bulletDirection and hitOffset (where
@@ -652,7 +689,9 @@ public class Player : NetworkBehaviour
         Health = Mathf.Max(0, Health - damage);
 
         Player attackerPlayer = FindPlayer(attacker);
-        RPC_Damaged((float)damage / maxHealth, attackerPlayer != null ? attackerPlayer.transform.position : transform.position, attackerPlayer != null && attackerPlayer != this);
+        // Bots have no screen to flash; they turn to face whoever hit them instead
+        if (IsBot) { if (brain != null) brain.OnDamaged(attackerPlayer); }
+        else RPC_Damaged((float)damage / maxHealth, attackerPlayer != null ? attackerPlayer.transform.position : transform.position, attackerPlayer != null && attackerPlayer != this);
 
         if (Health > 0) return false;
 
@@ -678,7 +717,7 @@ public class Player : NetworkBehaviour
         {
             manager.SpawnRagdoll(transform.position, transform.rotation, Velocity, hitDirection.normalized, hitOffset, knockback, headshot, ActorId);
             manager.DropAmmo(GroundPosition());
-            manager.PlayerKilled(Object.InputAuthority, attacker, weaponName, headshot);
+            manager.PlayerKilled(Owner, attacker, weaponName, headshot);
         }
 
         Runner.Despawn(Object);
@@ -764,6 +803,7 @@ public class Player : NetworkBehaviour
     private void OnDestroy()
     {
         if (Local == this) Local = null;
+        All.Remove(this);
     }
 
     // Draws the player's own gun with a second camera on top of the world (a URP overlay camera),
@@ -858,13 +898,13 @@ public class Player : NetworkBehaviour
         }
     }
 
-    // The body of the given player, or null if they're dead or gone
+    // The body of the given player or bot, or null if they're dead or gone
     public static Player FindPlayer(PlayerRef player)
     {
         if (player == PlayerRef.None) return null;
         foreach (Player p in FindObjectsByType<Player>(FindObjectsSortMode.None))
         {
-            if (p.Object != null && p.Object.IsValid && p.Object.InputAuthority == player) return p;
+            if (p.Object != null && p.Object.IsValid && p.Owner == player) return p;
         }
         return null;
     }
