@@ -263,15 +263,16 @@ public class LoadingScreen : MonoBehaviour
         }
     }
 
-    // The background colour with the accent glow blended over it, opaque and dithered. Half the
-    // size it's drawn at (1600 x 900 on a 1080p canvas), which is plenty for something this soft
-    // as long as it's dithered; its edge is exactly the background colour, so it blends in seamlessly.
+    // The background colour with the accent glow blended over it, opaque and dithered. The same
+    // size it's drawn at on a 1080p canvas (1600 x 900): at half size the upscale smeared the
+    // dither into a blurry, low-res look. Its edge is exactly the background colour, so it blends
+    // into the solid background behind it.
     private static Sprite Backdrop
     {
         get
         {
             if (backdrop != null) return backdrop;
-            const int width = 800, height = 450;
+            const int width = 1600, height = 900;
             Texture2D tex = Texture("LoadingScreen Backdrop", width, height);
             Color32[] pixels = new Color32[width * height];
 

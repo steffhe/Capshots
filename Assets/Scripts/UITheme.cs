@@ -123,14 +123,23 @@ public static partial class UITheme
         };
     }
 
-    // Gives an image the rounded sprite with the given corner radius (in canvas units)
+    // Gives an image the rounded sprite with the given corner radius (in canvas units). A radius of
+    // 0 gives a plain, sharp-cornered rectangle (no sprite): the small rounded sprite stretched
+    // unsliced over a big area turns into a blurry blob with see-through corners.
     public static void Round(Image image, float radius)
     {
         if (image == null) return;
-        image.sprite = Rounded;
-        image.type = radius > 0f ? Image.Type.Sliced : Image.Type.Simple;
         image.fillCenter = true;
-        image.pixelsPerUnitMultiplier = radius > 0f ? (SpriteRadius + 0.5f) / radius : 1f;
+        if (radius <= 0f)
+        {
+            image.sprite = null;
+            image.type = Image.Type.Simple;
+            image.pixelsPerUnitMultiplier = 1f;
+            return;
+        }
+        image.sprite = Rounded;
+        image.type = Image.Type.Sliced;
+        image.pixelsPerUnitMultiplier = (SpriteRadius + 0.5f) / radius;
     }
 
     #endregion
