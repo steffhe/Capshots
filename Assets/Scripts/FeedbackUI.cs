@@ -45,7 +45,7 @@ public class FeedbackUI : MonoBehaviour
     private readonly List<GameObject> killFeedEntries = new List<GameObject>();
 
     private AudioSource audioSource;
-    private AudioClip hitClip, headshotClip, killClip, hurtClip, pickupClip, deathClip;
+    private AudioClip hitClip, headshotClip, killClip, capshotKillClip, hurtClip, pickupClip, deathClip;
 
     #region Setup
 
@@ -119,6 +119,10 @@ public class FeedbackUI : MonoBehaviour
         headshotClip = MakeClip("Headshot", 0.18f, t => (Tone(t, 1500f) * Decay(t, 40f) + Tone(t, 2250f) * Decay(Mathf.Max(0f, t - 0.05f), 25f) * (t > 0.05f ? 1f : 0f)) * 0.6f);
         killClip = MakeClip("Kill", 0.35f, t => (Tone(t, 880f) + Tone(t, t > 0.09f ? 1320f : 0f)) * 0.5f * Decay(t, 9f));
         pickupClip = MakeClip("Pickup", 0.2f, t => (Tone(t, t < 0.07f ? 660f : 990f) * 0.5f + Tone(t, t < 0.07f ? 1320f : 1980f) * 0.15f) * Decay(t, 12f));
+        // A cap shot kill: the kill sound's two notes plus a third higher up, and a shimmer on top
+        capshotKillClip = MakeClip("Capshot Kill", 0.6f, t =>
+            (Tone(t, 880f) + Tone(t, t > 0.07f ? 1320f : 0f) + Tone(t, t > 0.14f ? 1760f : 0f) * 0.9f) * 0.4f * Decay(t, 5.5f) +
+            Tone(t, 3520f + 220f * Mathf.Sin(2f * Mathf.PI * 18f * t)) * 0.12f * Decay(Mathf.Max(0f, t - 0.14f), 6f) * (t > 0.14f ? 1f : 0f));
         deathClip = MakeDeathClip();
         hurtClip = MakeClip("Hurt", 0.18f, t => (Tone(t, Mathf.Lerp(140f, 55f, t / 0.18f)) * 0.8f + Random.Range(-0.25f, 0.25f)) * Decay(t, 18f));
     }
@@ -159,11 +163,12 @@ public class FeedbackUI : MonoBehaviour
         Instance.Play(Instance.pickupClip, 0.154f);
     }
 
-    // Local player got a kill
-    public static void Kill()
+    // Local player got a kill: louder, and grander for a cap shot (headshot)
+    public static void Kill(bool headshot = false)
     {
         if (Instance == null) return;
-        Instance.Play(Instance.killClip, 0.162f);
+        if (headshot) Instance.Play(Instance.capshotKillClip, 0.42f);
+        else Instance.Play(Instance.killClip, 0.32f);
     }
 
     // The local player died: the drone powering down

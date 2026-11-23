@@ -458,7 +458,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
         RPC_KillFeed(killer.IsRealPlayer ? killer.PlayerId : -1, victim.PlayerId, weaponName, headshot);
 
-        ScheduleSpawn(victim);
+        ScheduleSpawn(victim, true);
         ScoreCheck();
     }
 

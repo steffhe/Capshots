@@ -13,7 +13,7 @@ using UnityEngine.UI;
 public class DeathCam : MonoBehaviour
 {
     // How long the camera stays on your body before the map view
-    public const float LingerTime = 1.8f;
+    public const float LingerTime = 2.5f;
     private const float FadeTime = 0.22f;
     // Waiting this long for the ragdoll before giving up
     private const float TargetWait = 0.6f;

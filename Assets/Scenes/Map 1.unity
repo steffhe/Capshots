@@ -1666,7 +1666,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   dropAmmoOnDeath: 1
   pickupLifetime: 20
-  respawnTime: 3
+  respawnTime: 5
   spawnSightPenalty: 30
   spawnRandomness: 5
   mode: 0

@@ -7,17 +7,17 @@ using UnityEngine;
 // Purely cosmetic and local: every client spawns its own burst together with the ragdoll.
 public class CapshotBurst : MonoBehaviour
 {
-    private const int ConfettiCount = 22;
-    private const int StarCount = 6;
+    private const int ConfettiCount = 60;
+    private const int StarCount = 12;
     private const float Gravity = 9.81f;
     private const float FlashTime = 0.12f;
 
     // The yellow of the sparkle in the logo
     private static readonly Color StarColor = new Color(1f, 0.82f, 0.31f);
 
-    // Measured (A-weighted) against the other synthesized sounds: about 6 dB under a sniper shot, so
-    // louder than reloads and the hover sound and clearly heard across the map, but still under the guns
-    private const float PopVolume = 0.123f;
+    // Measured (A-weighted) against the other synthesized sounds: twice the level it started at, so
+    // about as loud as a sniper shot. A cap shot should be heard across the map.
+    private const float PopVolume = 0.25f;
 
     private Transform[] pieces;
     private Vector3[] velocities;
@@ -48,8 +48,8 @@ public class CapshotBurst : MonoBehaviour
         flash = gameObject.AddComponent<Light>();
         flash.type = LightType.Point;
         flash.color = Color.Lerp(capColor, Color.white, 0.4f);
-        flash.range = 5f;
-        flash.intensity = 4f;
+        flash.range = 7f;
+        flash.intensity = 6f;
         flash.shadows = LightShadows.None;
 
         PlayPop();
