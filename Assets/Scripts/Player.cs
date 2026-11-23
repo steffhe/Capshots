@@ -561,8 +561,8 @@ public class Player : NetworkBehaviour
         {
             Gun currentGun = weapon.CurrentGun;
             bool scoped = weapon.isAiming && currentGun != null && currentGun.scopeViewmodelFov > 0f;
-            float targetFov = scoped ? currentGun.scopeViewmodelFov : viewmodelFov;
-            viewmodelCam.fieldOfView = Mathf.Lerp(viewmodelCam.fieldOfView, targetFov, t * 15f);
+            float targetViewmodelFov = scoped ? currentGun.scopeViewmodelFov : viewmodelFov;
+            viewmodelCam.fieldOfView = Mathf.Lerp(viewmodelCam.fieldOfView, targetViewmodelFov, t * 15f);
         }
     }
 
