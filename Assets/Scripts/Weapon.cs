@@ -44,6 +44,9 @@ public class Weapon : NetworkBehaviour
     private Player player;
     private Look look;
     private Image hitmarkImage;
+    // The HUD's centre dot, faded out while aiming so the gun's own sights take over
+    private Graphic crosshairDot;
+    private float crosshairAlpha = 1f;
     private readonly List<Image> arsenalImages = new List<Image>();
     private Transform weaponAnchor, stateAds, stateHip;
     private Coroutine hitmarkRoutine;
@@ -132,6 +135,9 @@ public class Weapon : NetworkBehaviour
 
             hitmark = GameObject.Find("HUD/Crosshair/Hitmark");
             if (hitmark != null) hitmarkImage = hitmark.GetComponent<Image>();
+            GameObject dot = GameObject.Find("HUD/Crosshair/Dot");
+            crosshairDot = dot != null ? dot.GetComponent<Graphic>() : null;
+            SetCrosshairAlpha(1f);
         }
 
         ShowGun(Equipped);
@@ -217,6 +223,7 @@ public class Weapon : NetworkBehaviour
         // Reloading is animated by DroneHands: the gun stays out and its energy cell is swapped
 
         if (HasInputAuthority && !Pause.paused) Aim(isAiming);
+        if (HasInputAuthority) SetCrosshairAlpha(Mathf.MoveTowards(crosshairAlpha, isAiming ? 0f : 1f, Time.deltaTime * 6f));
 
         //weapon position elasticity
         currentWeapon.transform.localPosition = Vector3.Lerp(currentWeapon.transform.localPosition, Vector3.zero, Time.deltaTime * 4f);
@@ -613,6 +620,18 @@ public class Weapon : NetworkBehaviour
         line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         line.receiveShadows = false;
         return line;
+    }
+
+    void SetCrosshairAlpha(float alpha)
+    {
+        crosshairAlpha = alpha;
+        if (crosshairDot != null) crosshairDot.canvasRenderer.SetAlpha(alpha);
+    }
+
+    // Brings the dot back if this body goes away mid-aim (death, leaving the match)
+    private void OnDestroy()
+    {
+        if (crosshairDot != null) crosshairDot.canvasRenderer.SetAlpha(1f);
     }
 
     void Aim(bool aiming)
