@@ -4,10 +4,16 @@ using UnityEngine;
 using UnityEngine.UI;
 using Fusion;
 
-// A player's guns. Firing, ammo, reloading and switching run in FixedUpdateNetwork from the
-// player's input: the host decides what is hit (with lag compensation, so shots are checked against
-// where targets were on the shooter's screen) and the shooter's own game predicts the rest, so
-// shooting feels instant. Laser beams, sounds and the gun model are local presentation.
+// A player's gun: one sidearm that transforms between forms (pistol, machine gun, shotgun, sniper),
+// each with its own stats (the Gun assets in loadout). All forms draw on one shared pool of energy,
+// which refills by itself shortly after the last shot; each shot costs its form's energyPerShot.
+// Trying to fire without enough energy swaps the energy cell (a full refill, which the reload key
+// also does). Changing form takes a moment, during which the gun can't fire or aim (GunMorph
+// animates it).
+// Firing, energy and switching run in FixedUpdateNetwork from the player's input: the host decides
+// what is hit (with lag compensation, so shots are checked against where targets were on the
+// shooter's screen) and the shooter's own game predicts the rest, so shooting feels instant. Laser
+// beams, sounds and the gun model are local presentation.
 public class Weapon : NetworkBehaviour
 {
     #region Variables
@@ -29,9 +35,19 @@ public class Weapon : NetworkBehaviour
     // Spread multiplier while jumping or falling, for every gun
     public float airborneBloomMultiplier = 2f;
 
-    [Header("Ammo pickups")]
-    // Each pickup adds this many clips of reserve ammo to every gun
-    public int clipsPerPickup = 2;
+    [Header("Energy")]
+    // The shared pool every form fires from
+    public float maxEnergy = 100f;
+    // Refilling starts this long after the last shot...
+    public float regenDelay = 1.2f;
+    // ...at this many points a second
+    public float regenRate = 30f;
+    // Swapping the energy cell (a full refill) takes this long
+    public float cellSwapTime = 1.5f;
+
+    [Header("Transforming")]
+    // How long the gun takes to change form; it can't fire or aim meanwhile
+    public float morphTime = 0.5f;
 
     private const int MaxGuns = 4;
 
@@ -53,8 +69,9 @@ public class Weapon : NetworkBehaviour
 
     public int EquippedIndex => Object != null && Object.IsValid ? Equipped : 0;
     public Gun CurrentGun => loadout != null && EquippedIndex >= 0 && EquippedIndex < loadout.Length ? loadout[EquippedIndex] : null;
-    // Not while reloading: the gun is tipped over to change its energy cell
-    public bool isAiming => Object != null && Object.IsValid && Aiming && !ReloadTimer.IsRunning;
+    // Not while swapping the energy cell (the gun is tipped over) or changing form
+    public bool isAiming => Object != null && Object.IsValid && Aiming && !ReloadTimer.IsRunning && !MorphTimer.IsRunning;
+    public float CellSwapTime => cellSwapTime;
 
     // How far through a reload this player is (0 to 1), or -1 when not reloading. For the reload animation.
     public float ReloadProgress
@@ -62,10 +79,9 @@ public class Weapon : NetworkBehaviour
         get
         {
             if (Object == null || !Object.IsValid || !ReloadTimer.IsRunning) return -1f;
-            Gun gun = CurrentGun;
             float? remaining = ReloadTimer.RemainingTime(Runner);
-            if (gun == null || gun.reloadTime <= 0f || remaining == null) return -1f;
-            return Mathf.Clamp01(1f - remaining.Value / gun.reloadTime);
+            if (cellSwapTime <= 0f || remaining == null) return -1f;
+            return Mathf.Clamp01(1f - remaining.Value / cellSwapTime);
         }
     }
     #endregion
@@ -73,8 +89,11 @@ public class Weapon : NetworkBehaviour
     #region Networked state
 
     [Networked, OnChangedRender(nameof(OnEquippedChanged))] private int Equipped { get; set; }
-    [Networked, Capacity(MaxGuns)] private NetworkArray<int> Clips => default;
-    [Networked, Capacity(MaxGuns)] private NetworkArray<int> Stashes => default;
+    // The shared energy pool, 0 to maxEnergy
+    [Networked] private float Energy { get; set; }
+    [Networked] private TickTimer RegenDelay { get; set; }
+    // Running while the gun changes form
+    [Networked] private TickTimer MorphTimer { get; set; }
     [Networked] private TickTimer FireCooldown { get; set; }
     [Networked] private TickTimer ReloadTimer { get; set; }
     [Networked] private TickTimer BurstTimer { get; set; }
@@ -99,11 +118,7 @@ public class Weapon : NetworkBehaviour
     {
         if (HasStateAuthority)
         {
-            for (int i = 0; i < loadout.Length && i < MaxGuns; i++)
-            {
-                Clips.Set(i, loadout[i].clipSize);
-                Stashes.Set(i, loadout[i].ammo);
-            }
+            Energy = maxEnergy;
             Equipped = 0;
         }
 
@@ -161,21 +176,29 @@ public class Weapon : NetworkBehaviour
 
         Aiming = input.Buttons.IsSet(InputButton.Aim);
 
-        // Switching guns cancels a reload or burst in progress
+        // Changing form cancels a cell swap or burst in progress, and takes a moment
         int slot = input.WeaponSlot - 1;
         if (slot >= 0 && slot < loadout.Length && slot != Equipped)
         {
             Equipped = slot;
             ReloadTimer = TickTimer.None;
             BurstLeft = 0;
+            MorphTimer = TickTimer.CreateFromSeconds(Runner, morphTime);
         }
+        if (MorphTimer.Expired(Runner)) MorphTimer = TickTimer.None;
 
         Gun gun = loadout[Equipped];
 
         if (ReloadTimer.Expired(Runner))
         {
             ReloadTimer = TickTimer.None;
-            FinishReload(Equipped);
+            Energy = maxEnergy;
+        }
+
+        // The energy refills by itself a little after the last shot
+        if (!ReloadTimer.IsRunning && Energy < maxEnergy && RegenDelay.ExpiredOrNotRunning(Runner))
+        {
+            Energy = GunEnergy.Regenerate(Energy, maxEnergy, regenRate, Runner.DeltaTime);
         }
 
         if (BurstLeft > 0)
@@ -183,17 +206,17 @@ public class Weapon : NetworkBehaviour
             // The rest of a burst fires on its own, one shot every fireRate seconds
             if (BurstTimer.ExpiredOrNotRunning(Runner))
             {
-                if (Clips[Equipped] > 0) FireBurstShot(gun, input);
+                if (GunEnergy.CanFire(Energy, gun.energyPerShot)) FireBurstShot(gun, input);
                 else BurstLeft = 0;
             }
         }
-        else if (!ReloadTimer.IsRunning)
+        else if (!ReloadTimer.IsRunning && !MorphTimer.IsRunning)
         {
             bool fireInput = gun.burst == 1 ? input.Buttons.IsSet(InputButton.Fire) : pressed.IsSet(InputButton.Fire);
 
             if (fireInput && FireCooldown.ExpiredOrNotRunning(Runner))
             {
-                if (Clips[Equipped] <= 0)
+                if (!GunEnergy.CanFire(Energy, gun.energyPerShot))
                 {
                     StartReload();
                 }
@@ -232,33 +255,30 @@ public class Weapon : NetworkBehaviour
 
     #region Public Methods
 
+    // Whether an ammo box would do anything: the energy isn't full
     public bool NeedsAmmo()
     {
-        for (int i = 0; i < loadout.Length; i++)
-        {
-            if (Stashes[i] < loadout[i].ammo) return true;
-        }
-        return false;
+        return Energy < maxEnergy;
     }
 
-    // Host only: an ammo box was picked up
+    // Host only: an ammo box was picked up. It fills the energy, and ends a cell swap in progress.
     public void AddAmmoPickup()
     {
-        for (int i = 0; i < loadout.Length; i++)
-        {
-            Stashes.Set(i, Mathf.Min(loadout[i].ammo, Stashes[i] + loadout[i].clipSize * clipsPerPickup));
-        }
-
-        // Reload straight away if the current gun is empty
-        if (Clips[Equipped] == 0 && BurstLeft == 0) StartReload();
+        Energy = maxEnergy;
+        ReloadTimer = TickTimer.None;
     }
 
     public void RefreshAmmo(Text text)
     {
         if (text == null || Object == null || !Object.IsValid) return;
-        // Clip count large, the spare ammo smaller and muted
+        // Shots left in this form large; shots in a full cell smaller and muted. The energy is
+        // shared, so the numbers change with the form.
+        Gun gun = CurrentGun;
+        if (gun == null) return;
+        int shots = GunEnergy.ShotsLeft(Energy, gun.energyPerShot);
+        int full = GunEnergy.ShotsLeft(maxEnergy, gun.energyPerShot);
         text.supportRichText = true;
-        text.text = Clips[Equipped].ToString("d2") + $"<size={Mathf.RoundToInt(text.fontSize * 0.55f)}><color={UITheme.Hex(UITheme.MutedText)}> / " + Stashes[Equipped].ToString("d2") + "</color></size>";
+        text.text = shots.ToString("d2") + $"<size={Mathf.RoundToInt(text.fontSize * 0.55f)}><color={UITheme.Hex(UITheme.MutedText)}> / " + full.ToString("d2") + "</color></size>";
     }
 
     // How fast the player can move with the current gun, relative to normal
@@ -272,28 +292,19 @@ public class Weapon : NetworkBehaviour
 
     #region Simulation
 
+    // Swaps the energy cell for a full one (it refills when the swap is done)
     void StartReload()
     {
-        Gun gun = loadout[Equipped];
-        if (ReloadTimer.IsRunning || Clips[Equipped] >= gun.clipSize || Stashes[Equipped] <= 0) return;
+        if (ReloadTimer.IsRunning || MorphTimer.IsRunning || Energy >= maxEnergy) return;
 
-        ReloadTimer = TickTimer.CreateFromSeconds(Runner, gun.reloadTime);
+        ReloadTimer = TickTimer.CreateFromSeconds(Runner, cellSwapTime);
 
-        // Everyone nearby hears the reload: the reloading player straight away, others through the host
+        // Everyone nearby hears the swap: the player straight away, others through the host
         if (Runner.IsForward)
         {
-            if (HasInputAuthority) PlayReloadSound(gun.reloadTime);
-            if (HasStateAuthority) RPC_ReloadSound(gun.reloadTime);
+            if (HasInputAuthority) PlayReloadSound(cellSwapTime);
+            if (HasStateAuthority) RPC_ReloadSound(cellSwapTime);
         }
-    }
-
-    void FinishReload(int index)
-    {
-        Gun gun = loadout[index];
-        int stash = Stashes[index] + Clips[index];
-        int clip = Mathf.Min(gun.clipSize, stash);
-        Clips.Set(index, clip);
-        Stashes.Set(index, stash - clip);
     }
 
     void FireBurstShot(Gun gun, PlayerInputData input)
@@ -325,7 +336,8 @@ public class Weapon : NetworkBehaviour
     {
         Gun gun = loadout[Equipped];
 
-        Clips.Set(Equipped, Clips[Equipped] - 1);
+        Energy = Mathf.Max(0f, Energy - gun.energyPerShot);
+        RegenDelay = TickTimer.CreateFromSeconds(Runner, regenDelay);
         FireCooldown = TickTimer.CreateFromSeconds(Runner, gun.fireRate);
         ShotCount++;
 
@@ -553,20 +565,21 @@ public class Weapon : NetworkBehaviour
         ShowGun(Equipped);
     }
 
-    // Swaps the gun model to the equipped gun
+    // Shows the equipped form. After the first, each change transforms the old model into the new
+    // one (GunMorph) instead of just swapping it.
     void ShowGun(int ind)
     {
         if (ind == shownIndex && currentWeapon != null) return;
 
-        if (currentWeapon != null)
+        GameObject oldWeapon = currentWeapon;
+        if (oldWeapon != null)
         {
-            // Also stops the reload sound everyone else hears
+            // Also stops the cell swap sound everyone else hears
             PlayerSounds sounds = GetComponent<PlayerSounds>();
             if (sounds != null) sounds.StopReload();
             StopAllCoroutines();
             hitmarkRoutine = null;
             if (hitmark != null && HasInputAuthority) hitmark.SetActive(false);
-            Destroy(currentWeapon);
         }
         shownIndex = ind;
         GameObject newWeapon = Instantiate(loadout[ind].prefab, weaponParent.position, weaponParent.rotation, weaponParent) as GameObject;
@@ -577,6 +590,11 @@ public class Weapon : NetworkBehaviour
         foreach (Collider c in newWeapon.GetComponentsInChildren<Collider>(true)) c.enabled = false;
 
         currentWeapon = newWeapon;
+        if (oldWeapon != null)
+        {
+            GunMorph.Begin(newWeapon, oldWeapon, morphTime);
+            Destroy(oldWeapon);
+        }
         // The gun's own line is only a template for the laser beams (see ShotLine)
         lineRend = currentWeapon.GetComponentInChildren<LineRenderer>();
         if (lineRend != null) lineRend.enabled = false;

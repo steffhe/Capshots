@@ -185,7 +185,7 @@ GameObject:
   - component: {fileID: 7466018458704635956}
   - component: {fileID: 1261338022535070000}
   m_Layer: 7
-  m_Name: Cube
+  m_Name: Body
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -410,7 +410,7 @@ GameObject:
   - component: {fileID: 7466018459114425765}
   - component: {fileID: 7466018459114425762}
   m_Layer: 7
-  m_Name: Cube (1)
+  m_Name: Grip
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

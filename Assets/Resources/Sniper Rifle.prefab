@@ -13,7 +13,7 @@ GameObject:
   - component: {fileID: 6441903233849816792}
   - component: {fileID: 1554742692893455306}
   m_Layer: 7
-  m_Name: Glass2
+  m_Name: Lens Front
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -108,7 +108,7 @@ GameObject:
   - component: {fileID: 1730514081056824200}
   - component: {fileID: 7175242711751203785}
   m_Layer: 7
-  m_Name: Cube (6)
+  m_Name: Scope Top
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -203,7 +203,7 @@ GameObject:
   - component: {fileID: 7323056371011333219}
   - component: {fileID: 4217852827281026660}
   m_Layer: 7
-  m_Name: Cube (2)
+  m_Name: Under
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -298,7 +298,7 @@ GameObject:
   - component: {fileID: 3949305007649889858}
   - component: {fileID: 5522215925300757297}
   m_Layer: 7
-  m_Name: Glass
+  m_Name: Lens Rear
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -393,7 +393,7 @@ GameObject:
   - component: {fileID: 1858259008339586934}
   - component: {fileID: 3652712411738183413}
   m_Layer: 7
-  m_Name: Cube (7)
+  m_Name: Scope Bottom
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -489,7 +489,7 @@ GameObject:
   - component: {fileID: 7780559294615131865}
   - component: {fileID: 5135548399136401194}
   m_Layer: 7
-  m_Name: Cube (3)
+  m_Name: Barrel
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -861,7 +861,7 @@ GameObject:
   - component: {fileID: 7466018458704635959}
   - component: {fileID: 7466018458704635956}
   m_Layer: 7
-  m_Name: Cube
+  m_Name: Body
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -988,7 +988,7 @@ GameObject:
   - component: {fileID: 7466018459114425765}
   - component: {fileID: 7466018459114425762}
   m_Layer: 7
-  m_Name: Cube (1)
+  m_Name: Grip
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1115,7 +1115,7 @@ GameObject:
   - component: {fileID: 6614326890434954734}
   - component: {fileID: 3893139924449246382}
   m_Layer: 7
-  m_Name: Cube (4)
+  m_Name: Scope Left
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1210,7 +1210,7 @@ GameObject:
   - component: {fileID: 7979042076350689198}
   - component: {fileID: 7221583030432649868}
   m_Layer: 7
-  m_Name: Cube (5)
+  m_Name: Scope Right
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

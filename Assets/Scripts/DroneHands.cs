@@ -145,18 +145,37 @@ public class DroneHands : MonoBehaviour
         if (gunDesign == null && gun != null) gunDesign = gun.transform;
         if (gunDesign == null) return;
 
-        // The biggest part is the gun's body; "Cube (1)" is the handle on every gun in the game
+        // Measured on the finished shape, even while the gun is still transforming into it
+        GunMorph morph = gun.GetComponent<GunMorph>();
+        if (morph != null) morph.ShowFinalShape(true);
+
+        // The part named Body (else the biggest part) is the gun's body, and Grip its handle
         Bounds body = new Bounds();
         float biggest = -1f;
-        Transform handle = gunDesign.Find("Cube (1)");
-        foreach (MeshFilter filter in gunDesign.GetComponentsInChildren<MeshFilter>(true))
+        Transform handle = gunDesign.Find("Grip");
+        Transform bodyPart = gunDesign.Find("Body");
+        MeshFilter bodyMesh = bodyPart != null ? bodyPart.GetComponent<MeshFilter>() : null;
+        if (bodyMesh != null && bodyMesh.sharedMesh != null)
         {
-            if (filter.sharedMesh == null) continue;
-            Bounds b = LocalBounds(filter);
-            float volume = b.size.x * b.size.y * b.size.z;
-            if (volume > biggest) { biggest = volume; body = b; }
+            body = LocalBounds(bodyMesh);
+            biggest = 1f;
         }
-        if (biggest < 0f) { gunDesign = null; return; }
+        else
+        {
+            foreach (MeshFilter filter in gunDesign.GetComponentsInChildren<MeshFilter>(true))
+            {
+                if (filter.sharedMesh == null) continue;
+                Bounds b = LocalBounds(filter);
+                float volume = b.size.x * b.size.y * b.size.z;
+                if (volume > biggest) { biggest = volume; body = b; }
+            }
+        }
+        if (biggest < 0f)
+        {
+            if (morph != null) morph.ShowFinalShape(false);
+            gunDesign = null;
+            return;
+        }
 
         Vector3 grip;
         float handleBottom;
@@ -188,6 +207,7 @@ public class DroneHands : MonoBehaviour
         }
         slot = new Vector3(grip.x, handleBottom, grip.z);
         top = new Vector3(body.center.x, body.max.y + Size * 0.5f, grip.z + 0.1f);
+        if (morph != null) morph.ShowFinalShape(false);
 
         // The gun's layer: other players' guns are drawn by the main camera, your own by the viewmodel camera
         int layer = gunDesign.gameObject.layer;
@@ -322,7 +342,7 @@ public class DroneHands : MonoBehaviour
         else if (spent)
         {
             // Flicked away, tumbling and shrinking to nothing
-            float t = (p - Flick) * (weapon.CurrentGun != null ? weapon.CurrentGun.reloadTime : 1f);
+            float t = (p - Flick) * weapon.CellSwapTime;
             Vector3 local = tossStart + tossVelocity * t + Vector3.down * (4.9f * t * t);
             cell.position = root.TransformPoint(local);
             cell.rotation = hand.rotation * Quaternion.Euler(t * 900f, 0f, t * 400f);

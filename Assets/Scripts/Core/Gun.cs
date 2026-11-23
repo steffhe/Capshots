@@ -1,7 +1,8 @@
 using UnityEngine;
 
-// A gun's settings, set up as an asset in Assets/ScriptableObjects/Guns, plus its ammo state.
-// Each player works on their own copy (see Weapon.Awake).
+// One form of the player's transforming gun (pistol, machine gun, shotgun, sniper): its settings,
+// set up as an asset in Assets/ScriptableObjects/Guns. Every form fires from the same energy pool
+// (see Weapon and GunEnergy).
 
 [CreateAssetMenu(fileName ="New Gun", menuName ="Gun")]
 public class Gun : ScriptableObject
@@ -13,9 +14,8 @@ public class Gun : ScriptableObject
     public float kickback;
     public float aimSpeed;
     public int damage;
-    public int ammo;
-    public int clipSize;
-    public float reloadTime;
+    // Energy each shot takes from the shared pool (100 when full)
+    public float energyPerShot = 10f;
     public int burst;  // 0 semi - 1 auto - 2 burst
     public int burstCount = 3; // shots per trigger pull in burst mode
     // Projectiles per shot. More than 1 makes a shotgun: each pellet gets its own spread (bloom) and does
@@ -50,15 +50,6 @@ public class Gun : ScriptableObject
     public float moveSpeedMultiplier = 1f;
     public float aimMoveSpeedMultiplier = 0.7f;
 
-    private int clip; //current in clip
-    private int stash; //current ammo
-
-    public void Initialize()
-    {
-        stash = ammo;
-        clip = clipSize;
-    }
-
     // Damage for a hit at the given distance, before any other modifiers
     public int DamageAt(float distance, bool headshot)
     {
@@ -72,54 +63,4 @@ public class Gun : ScriptableObject
         float multiplier = headshot ? headshotMultiplier : 1f;
         return Mathf.Max(1, Mathf.RoundToInt(damage * falloff * multiplier));
     }
-
-    public bool FireBullet()
-    {
-        if (clip> 0)
-        {
-            clip -= 1;
-            return true;
-        }
-        else
-        {
-            return false;
-        }
-    }
-
-    public void Reload()
-    {
-        stash += clip;
-        clip = Mathf.Min(clipSize, stash);
-        stash -= clip;
-    }
-
-    public bool CanReload()
-    {
-        return clip < clipSize && stash > 0;
-    }
-
-    // Adds reserve ammo, up to the gun's starting amount. Returns true if anything was added.
-    public bool AddAmmo(int amount)
-    {
-        int before = stash;
-        stash = Mathf.Min(ammo, stash + amount);
-        return stash > before;
-    }
-
-    public bool NeedsAmmo()
-    {
-        return stash < ammo;
-    }
-
-    public int GetStash()
-    {
-        return stash;
-    }
-
-    public int GetClip()
-    {
-        return clip;
-    }
-
-
 }
