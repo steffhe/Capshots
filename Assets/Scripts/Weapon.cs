@@ -36,6 +36,8 @@ public class Weapon : NetworkBehaviour
     private const int MaxGuns = 4;
 
     private GameObject currentWeapon;
+    // The gun model being shown, for the drone's hand-orbs
+    public GameObject CurrentGun => currentWeapon;
     private int shownIndex = -1;
 
     // Looked up once instead of every shot or frame

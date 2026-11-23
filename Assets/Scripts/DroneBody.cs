@@ -3,8 +3,8 @@ using UnityEngine;
 
 // Turns a player's capsule body and sphere head into a cute, round hover drone, built from primitives so
 // no art is needed:
-//  - Body: a white egg-shaped shell with a coloured belt, a glowing chest light and a thruster underneath
-//    (which sits on HoverVisuals' glow disc), and a glowing ring in the gap below the floating head.
+//  - Body: a slim white capsule (crouching makes it shorter, not thinner) with a coloured belt, a glowing
+//    chest light, a glowing collar under the head and a thruster underneath, over HoverVisuals' glow disc.
 //  - Head: the same white shell, a dark glossy face screen with two big glowing eyes that blink now and
 //    then, a little blush, and round "ear" pods on the sides. The cap still sits on top.
 // Accents are the player's colour (the team colour in Team Deathmatch, which also tints the shell a bit).
@@ -21,6 +21,8 @@ public class DroneBody : MonoBehaviour
     // How bright the glowing parts are (above 1 so the bloom picks them up)
     private const float EyeGlow = 2.2f;
     private const float LightGlow = 2.6f;
+    // The body capsule's radius, standing and crouching (the head's is about 0.35)
+    private const float BodyRadius = 0.3f;
 
     private Renderer[] shell;   // body shell and head
     private Renderer[] accents; // belt and ear pods: lit, in the accent colour
@@ -151,39 +153,40 @@ public class DroneBody : MonoBehaviour
         float radius = (capsuleMesh != null ? capsuleMesh.bounds.extents.x : 0.5f) * Mathf.Max(body.lossyScale.x, body.lossyScale.z);
         float bottom = -halfHeight;
 
-        // The head floats just above the shell, so the shell fills the space from the thruster to the chin
+        // A capsule like the original body, but slimmer than the head, and with the same radius standing
+        // and crouching: crouching only makes it shorter. Its top tucks up into the head, as before.
         float headRadius = head != null ? 0.5f * Mathf.Max(head.lossyScale.x, head.lossyScale.z) : 0.35f;
         float headY = head != null ? root.InverseTransformPoint(head.position).y : halfHeight + headRadius;
-        // Hangs from just under the head, no taller than MaxBodyHeight, so the head stays big and cute
-        // and a tall body floats higher over its glow instead of stretching into a pill
-        const float thrusterSpace = 0.14f;
-        const float MaxBodyHeight = 0.78f;
-        float top = headY - headRadius - 0.06f;
-        float height = Mathf.Clamp(top - (bottom + thrusterSpace), 0.3f, MaxBodyHeight);
-        float shellBottom = top - height;
-        // Round: about as wide as tall, and narrower than the capsule
-        float width = Mathf.Clamp(height * 1.05f, 0.5f, Mathf.Min(MaxBodyHeight, radius * 2f * 0.84f));
-        float centre = shellBottom + height * 0.5f;
-        float k = width / MaxBodyHeight; // scales the details with the body
+        float headBottom = headY - headRadius;
+        const float thrusterSpace = 0.12f;
+        float R = Mathf.Min(BodyRadius, radius);
+        float shellBottom = bottom + thrusterSpace;
+        float shellTop = Mathf.Min(halfHeight, headY);
+        float height = Mathf.Max(2f * R, shellTop - shellBottom);
+        shellTop = shellBottom + height;
+        float cylinderTop = shellTop - R;
 
-        Renderer egg = Part(root, "Shell", PrimitiveType.Sphere, ShellMaterial, new Vector3(0f, centre, 0f), new Vector3(width, height, width));
+        Renderer egg = Part(root, "Shell", PrimitiveType.Capsule, ShellMaterial, new Vector3(0f, shellBottom + height * 0.5f, 0f), Vector3.one);
+        egg.GetComponent<MeshFilter>().sharedMesh = CapsuleMesh(R, height);
 
-        // Belt: a band round the shell a little below its middle, as wide as the shell there
-        float beltY = -0.1f * height;
-        float beltWidth = width * Mathf.Sqrt(1f - 0.04f) + 0.02f;
-        Renderer belt = Part(root, "Belt", PrimitiveType.Cylinder, ShellMaterial, new Vector3(0f, centre + beltY, 0f), new Vector3(beltWidth, 0.025f, beltWidth));
+        // Belt: a band round the bottom of the straight part
+        float beltY = shellBottom + R + Mathf.Min(0.1f, (height - 2f * R) * 0.3f);
+        float beltWidth = 2f * R + 0.02f;
+        Renderer belt = Part(root, "Belt", PrimitiveType.Cylinder, ShellMaterial, new Vector3(0f, beltY, 0f), new Vector3(beltWidth, 0.025f, beltWidth));
 
-        // Chest light: a flat round lamp on the front, above the belt
-        float chestY = 0.14f * height;
-        float chestZ = 0.5f * width * Mathf.Sqrt(1f - Mathf.Pow(chestY / (0.5f * height), 2f));
-        Renderer chest = Part(root, "Chest Light", PrimitiveType.Sphere, GlowMaterial, new Vector3(0f, centre + chestY, chestZ - 0.01f), new Vector3(0.13f, 0.13f, 0.05f) * k, false);
+        // Chest light: a flat round lamp on the front, between the belt and the head
+        float chestY = beltY + Mathf.Min(0.16f, (headBottom - beltY) * 0.5f);
+        float chestZ = BodyRadiusAt(chestY, R, cylinderTop, shellBottom + R);
+        Renderer chest = Part(root, "Chest Light", PrimitiveType.Sphere, GlowMaterial, new Vector3(0f, chestY, chestZ - 0.01f), new Vector3(0.12f, 0.12f, 0.05f), false);
 
         // Thruster: a dark cap under the shell with a glowing nozzle
-        Renderer housing = Part(root, "Thruster", PrimitiveType.Cylinder, VisorMaterial, new Vector3(0f, shellBottom + 0.01f, 0f), new Vector3(0.32f * k, 0.04f, 0.32f * k));
-        thruster = Part(root, "Nozzle", PrimitiveType.Cylinder, GlowMaterial, new Vector3(0f, shellBottom - 0.03f, 0f), new Vector3(0.22f * k, 0.012f, 0.22f * k), false);
+        Renderer housing = Part(root, "Thruster", PrimitiveType.Cylinder, VisorMaterial, new Vector3(0f, shellBottom + 0.03f, 0f), new Vector3(0.3f, 0.035f, 0.3f));
+        thruster = Part(root, "Nozzle", PrimitiveType.Cylinder, GlowMaterial, new Vector3(0f, shellBottom - 0.005f, 0f), new Vector3(0.2f, 0.012f, 0.2f), false);
 
-        // A thin glowing ring in the gap under the head, as if the head floats on it
-        Renderer neck = Part(root, "Neck Ring", PrimitiveType.Cylinder, GlowMaterial, new Vector3(0f, top + 0.03f, 0f), new Vector3(0.26f * k, 0.008f, 0.26f * k), false);
+        // A glowing collar where the body meets the head
+        float collarY = headBottom + 0.02f;
+        float collarWidth = 2f * BodyRadiusAt(collarY, R, cylinderTop, shellBottom + R) + 0.03f;
+        Renderer neck = Part(root, "Collar", PrimitiveType.Cylinder, GlowMaterial, new Vector3(0f, collarY, 0f), new Vector3(collarWidth, 0.01f, collarWidth), false);
 
         var shellList = new List<Renderer> { egg };
         var accentList = new List<Renderer> { belt };
@@ -243,6 +246,68 @@ public class DroneBody : MonoBehaviour
         }
     }
 
+    // Half the width of the body capsule at height y (bottomCentre/topCentre: the centres of its round ends)
+    private static float BodyRadiusAt(float y, float radius, float topCentre, float bottomCentre)
+    {
+        float d = y > topCentre ? y - topCentre : (y < bottomCentre ? bottomCentre - y : 0f);
+        return Mathf.Sqrt(Mathf.Max(0f, radius * radius - d * d));
+    }
+
+    private static readonly Dictionary<Vector2, Mesh> capsules = new Dictionary<Vector2, Mesh>();
+
+    // A capsule of the given radius and total height, centred on the origin. Unity's capsule can only be
+    // scaled, which squashes its round ends when it's made shorter than it is wide.
+    private static Mesh CapsuleMesh(float radius, float height)
+    {
+        Vector2 key = new Vector2(Mathf.Round(radius * 1000f), Mathf.Round(height * 1000f));
+        if (capsules.TryGetValue(key, out Mesh cached) && cached != null) return cached;
+
+        const int segments = 32, capRings = 10;
+        float half = Mathf.Max(0f, height * 0.5f - radius);
+        // Rings from the bottom pole to the top pole; the two at the middle of the run are the straight part
+        int rings = capRings * 2 + 1;
+        var vertices = new List<Vector3>();
+        var normals = new List<Vector3>();
+        var uvs = new List<Vector2>();
+        for (int i = 0; i <= rings; i++)
+        {
+            float angle; // from -90 (bottom pole) to 90 (top pole) degrees
+            float offset;
+            if (i <= capRings) { angle = -90f + 90f * i / capRings; offset = -half; }
+            else { angle = 90f * (i - capRings - 1) / capRings; offset = half; }
+            float a = angle * Mathf.Deg2Rad;
+            float ringRadius = Mathf.Cos(a), y = Mathf.Sin(a);
+            for (int j = 0; j <= segments; j++)
+            {
+                float around = 2f * Mathf.PI * j / segments;
+                Vector3 n = new Vector3(Mathf.Sin(around) * ringRadius, y, Mathf.Cos(around) * ringRadius);
+                vertices.Add(n * radius + Vector3.up * offset);
+                normals.Add(n);
+                uvs.Add(new Vector2((float)j / segments, (float)i / rings));
+            }
+        }
+        var triangles = new List<int>();
+        for (int i = 0; i < rings; i++)
+        {
+            for (int j = 0; j < segments; j++)
+            {
+                int a0 = i * (segments + 1) + j, a1 = a0 + 1, b0 = a0 + segments + 1, b1 = b0 + 1;
+                // Wound so the outside faces outwards
+                triangles.Add(a0); triangles.Add(a1); triangles.Add(b0);
+                triangles.Add(a1); triangles.Add(b1); triangles.Add(b0);
+            }
+        }
+
+        Mesh mesh = new Mesh { name = "Drone Capsule" };
+        mesh.SetVertices(vertices);
+        mesh.SetNormals(normals);
+        mesh.SetUVs(0, uvs);
+        mesh.SetTriangles(triangles, 0);
+        mesh.RecalculateBounds();
+        capsules[key] = mesh;
+        return mesh;
+    }
+
     // A point on the front of the face screen (an ellipsoid) at the given x and y, pushed out by lift
     private static Vector3 OnVisor(Vector2 xy, Vector3 centre, Vector3 radii, float lift)
     {
@@ -281,12 +346,12 @@ public class DroneBody : MonoBehaviour
         return renderer;
     }
 
-    private static Material ShellMaterial => shellMaterial != null ? shellMaterial : (shellMaterial = Lit("Drone Shell", 0.7f));
-    private static Material VisorMaterial => visorMaterial != null ? visorMaterial : (visorMaterial = Lit("Drone Visor", 0.92f));
+    internal static Material ShellMaterial => shellMaterial != null ? shellMaterial : (shellMaterial = Lit("Drone Shell", 0.7f));
+    internal static Material VisorMaterial => visorMaterial != null ? visorMaterial : (visorMaterial = Lit("Drone Visor", 0.92f));
 
     // Glowing parts use a material asset with emission switched on, so builds keep the shader variant
     // that glows (a material made in code can't ask for one that was left out)
-    private static Material GlowMaterial
+    internal static Material GlowMaterial
     {
         get
         {

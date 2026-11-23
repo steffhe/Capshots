@@ -74,6 +74,7 @@ public class Player : NetworkBehaviour
 
     private PlayerCap[] caps = new PlayerCap[0];
     private DroneBody[] drones = new DroneBody[0];
+    private DroneHands hands;
     private HoverVisuals hoverVisuals;
     private bool appliedCrouch;
     private string shownName;
@@ -264,6 +265,8 @@ public class Player : NetworkBehaviour
             DroneBody.Dress(standingCollider != null ? standingCollider.transform : null, standingColliderHead != null ? standingColliderHead.transform : null, capColor, teamMode),
             DroneBody.Dress(crouchingCollider != null ? crouchingCollider.transform : null, crouchingColliderHead != null ? crouchingColliderHead.transform : null, capColor, teamMode),
         };
+        // Floating hand-orbs that hold the gun
+        if (hands == null) hands = DroneHands.Attach(this, capColor);
         caps = new PlayerCap[]
         {
             PlayerCap.Attach(standingColliderHead != null ? standingColliderHead.transform : null, capColor),
@@ -731,7 +734,7 @@ public class Player : NetworkBehaviour
             // Body meshes only: not the name tag, the gun, effects or the cap (coloured below)
             if (!(body is MeshRenderer || body is SkinnedMeshRenderer)) continue;
             if (body.GetComponentInParent<PlayerCap>() != null) continue;
-            if (body.GetComponentInParent<DroneBody>() != null) continue; // coloured below
+            if (body.GetComponentInParent<DroneBody>() != null || body.GetComponentInParent<DroneHands>() != null) continue; // coloured below
             if (hoverVisuals != null && hoverVisuals.IsGlow(body)) continue;
             if (body.GetComponent<TextMeshPro>() != null) continue;
             if (weaponParent != null && body.transform.IsChildOf(weaponParent)) continue;
@@ -744,6 +747,7 @@ public class Player : NetworkBehaviour
 
         foreach (PlayerCap cap in caps) if (cap != null) cap.SetColor(teamColor);
         foreach (DroneBody drone in drones) if (drone != null) drone.SetColor(teamColor, true);
+        if (hands != null) hands.SetColor(teamColor);
     }
 
     private void OnDestroy()
