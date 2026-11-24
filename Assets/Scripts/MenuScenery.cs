@@ -7,7 +7,8 @@ using UnityEngine.Rendering.Universal;
 // light on the player, a soft-focus background), a camera that drifts slowly and leans with the
 // mouse, and a player model that breathes and glances towards the cursor. Built at runtime by
 // the Launcher, on top of the menu scene. The model holds the gun form picked as the starting gun
-// in Customize, with its hand-orbs and floating pieces, as in a match.
+// in Customize, with its hand-orbs and floating pieces, as in a match. Behind it, three bots fight
+// (MenuBattle).
 public class MenuScenery : MonoBehaviour
 {
     // Camera drift: a slow figure-of-eight, plus a lean towards the mouse
@@ -72,6 +73,9 @@ public class MenuScenery : MonoBehaviour
         SetMood();
         AddRimLight();
         volume = CreateVolume(main);
+
+        // A few bots fighting in the background, behind the model
+        MenuBattle.Create(main, model);
     }
 
     // The menu scene's model holds a pistol placed in the scene. Swap it for the starting gun (the

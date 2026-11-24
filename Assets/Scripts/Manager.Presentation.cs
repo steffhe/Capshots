@@ -41,6 +41,12 @@ public partial class Manager
     {
         LoadingScreen.Hide(0.3f);
         if (state == GameState.Ending) return;
+        // Carrying on after the host left: no need to introduce the map again
+        if (resumed)
+        {
+            ShowMessage(HasStateAuthority ? "YOU'RE THE HOST NOW" : "NEW HOST: THE MATCH GOES ON");
+            return;
+        }
         StartCoroutine(IntroBanner());
     }
 

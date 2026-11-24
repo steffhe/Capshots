@@ -17,6 +17,9 @@ public class NetworkSession : MonoBehaviour, INetworkRunnerCallbacks
     private NetworkRunner runner;
     private readonly InputCollector input = new InputCollector();
     private bool leaving;
+    // The host left and this player is reconnecting to the new one (see OnHostMigration)
+    private bool migrating;
+    private bool menuQueued;
 
     public static NetworkRunner Runner => instance != null ? instance.runner : null;
     public static bool InSession => Runner != null && Runner.IsRunning && Runner.SessionInfo.IsValid;
@@ -141,6 +144,12 @@ public class NetworkSession : MonoBehaviour, INetworkRunnerCallbacks
         bool covered = LoadingScreen.Visible;
         LoadingScreen.Show("RETURNING TO MENU");
 
+        if (session != null && session.migrating)
+        {
+            // OnHostMigration sees this once the old session has shut down or the new one has started
+            session.leaving = true;
+            return;
+        }
         if (session == null || session.runner == null)
         {
             SceneManager.LoadScene(MenuScene);
@@ -179,8 +188,12 @@ public class NetworkSession : MonoBehaviour, INetworkRunnerCallbacks
     {
         if (shutdownRunner == runner) runner = null;
 
+        // The host left and this player is moving to the new host: the match carries on
+        if (reason == ShutdownReason.HostMigration) return;
+
         // Shutting down only the lobby runner (to start a match) needs nothing else
         if (SceneManager.GetActiveScene().buildIndex == MenuScene) return;
+        Manager.ClearHostMigration();
 
         // The host left or the connection dropped: say so for a moment, then go back to the menu
         if (!leaving && Manager.Instance != null && Manager.Instance.ShowDisconnected(reason))
@@ -201,7 +214,10 @@ public class NetworkSession : MonoBehaviour, INetworkRunnerCallbacks
 
     private System.Collections.IEnumerator LoadMenuAfter(float seconds)
     {
+        if (menuQueued) yield break;
+        menuQueued = true;
         yield return new WaitForSecondsRealtime(seconds);
+        menuQueued = false;
         LoadingScreen.Show("RETURNING TO MENU");
         yield return new WaitForSecondsRealtime(0.3f);
         if (runner == null) SceneManager.LoadScene(MenuScene);
@@ -224,7 +240,6 @@ public class NetworkSession : MonoBehaviour, INetworkRunnerCallbacks
     public void OnConnectRequest(NetworkRunner runner, NetworkRunnerCallbackArgs.ConnectRequest request, byte[] token) { }
     public void OnUserSimulationMessage(NetworkRunner runner, SimulationMessagePtr message) { }
     public void OnCustomAuthenticationResponse(NetworkRunner runner, Dictionary<string, object> data) { }
-    public void OnHostMigration(NetworkRunner runner, HostMigrationToken hostMigrationToken) { }
     public void OnReliableDataReceived(NetworkRunner runner, PlayerRef player, ReliableKey key, ReadOnlySpan<byte> data) { }
     public void OnReliableDataProgress(NetworkRunner runner, PlayerRef player, ReliableKey key, float progress) { }
     public void OnSceneLoadDone(NetworkRunner runner) { }
@@ -237,6 +252,86 @@ public class NetworkSession : MonoBehaviour, INetworkRunnerCallbacks
     }
     public void OnObjectExitAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player) { }
     public void OnObjectEnterAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player) { }
+
+    #endregion
+
+    #region Host migration
+
+    // The host left mid-match and Photon has picked a new one: this player, or someone else. The old
+    // session shuts down, a new runner starts with the token, the map reloads and Manager rebuilds
+    // the match from what everyone remembers of it (Manager.HostMigration.cs).
+    public async void OnHostMigration(NetworkRunner oldRunner, HostMigrationToken token)
+    {
+        Manager manager = Manager.Instance;
+        // Leaving anyway, or the match is over (results and map voting): end it as before
+        if (leaving || manager == null || manager.MatchOver)
+        {
+            await oldRunner.Shutdown();
+            return;
+        }
+
+        migrating = true;
+        bool hosting = token.GameMode == GameMode.Host;
+        manager.SaveForHostMigration();
+        LoadingScreen.Show(hosting ? "THE HOST LEFT: YOU'RE HOSTING NOW" : "THE HOST LEFT: MOVING TO THE NEW HOST");
+        if (oldRunner.SessionInfo.IsValid) LoadingScreen.SetMatch(oldRunner);
+        int scene = SceneManager.GetActiveScene().buildIndex;
+
+        await oldRunner.Shutdown(shutdownReason: ShutdownReason.HostMigration);
+
+        if (leaving)
+        {
+            migrating = false;
+            Manager.ClearHostMigration();
+            SceneManager.LoadScene(MenuScene);
+            return;
+        }
+
+        NetworkRunner newRunner = CreateRunner();
+        StartGameArgs args = new StartGameArgs
+        {
+            // The game mode and session come with the token
+            HostMigrationToken = token,
+            HostMigrationResume = ResumeAfterHostMigration,
+            SceneManager = newRunner.GetComponent<NetworkSceneManagerDefault>(),
+            CustomPhotonAppSettings = AppSettings(),
+        };
+        // The new host reloads the map; everyone else follows its scene
+        if (hosting)
+        {
+            NetworkSceneInfo sceneInfo = new NetworkSceneInfo();
+            sceneInfo.AddSceneRef(SceneRef.FromIndex(scene), LoadSceneMode.Single);
+            args.Scene = sceneInfo;
+        }
+
+        StartGameResult result = await newRunner.StartGame(args);
+        migrating = false;
+
+        if (!result.Ok)
+        {
+            Debug.LogWarning($"Couldn't carry on after the host left: {result.ShutdownReason} {result.ErrorMessage}");
+            Manager.ClearHostMigration();
+            if (runner == newRunner) runner = null;
+            LoadingScreen.SetStatus("THE HOST LEFT THE MATCH");
+            if (SceneManager.GetActiveScene().buildIndex != MenuScene) StartCoroutine(LoadMenuAfter(2f));
+            return;
+        }
+
+        // Pressed Leave while reconnecting
+        if (leaving)
+        {
+            leaving = false;
+            Leave();
+        }
+    }
+
+    // Called on the new host to restore the old host's objects. Nothing is restored from Fusion's
+    // snapshot: players reconnect with new PlayerRefs, so Manager rebuilds the match itself and
+    // everyone respawns.
+    private void ResumeAfterHostMigration(NetworkRunner resumedRunner)
+    {
+        Debug.Log("Hosting the match after the host left");
+    }
 
     #endregion
 }

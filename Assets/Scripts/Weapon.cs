@@ -908,7 +908,8 @@ public class Weapon : NetworkBehaviour
         }
     }
 
-    static LineRenderer CopyLine(LineRenderer original, GameObject target)
+    // A new beam that looks like the gun's shot line template (also used by MenuBattle)
+    public static LineRenderer CopyLine(LineRenderer original, GameObject target)
     {
         LineRenderer line = target.AddComponent<LineRenderer>();
         line.sharedMaterials = original.sharedMaterials;

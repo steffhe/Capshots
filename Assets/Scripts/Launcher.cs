@@ -50,6 +50,10 @@ public partial class Launcher : MonoBehaviour
     // Bots to fill the room with (they make way as people join). 0 = none.
     private const int MaxBots = 7;
     private int currentbots = 0;
+    // Quick play with no open match hosts a new one. Unless bots were picked in the create tab, it
+    // fills up with this many, so there's a match to play straight away instead of an empty
+    // warmup. They make way as people join.
+    private const int QuickPlayBots = 5;
     private Text botsValue;
     // How well the bots play (BotLogic.Easy to Hard)
     private int currentBotSkill = BotLogic.Normal;
@@ -128,7 +132,8 @@ public partial class Launcher : MonoBehaviour
         NetworkSession.JoinLobby();
     }
 
-    // Quick play: join any open match, or host one with the create tab's current settings
+    // Quick play: join any open match, or host one with the create tab's current settings (and
+    // bots, so the match starts at once)
     public async void Join ()
     {
         if (starting) return;
@@ -137,7 +142,9 @@ public partial class Launcher : MonoBehaviour
         // Quick play from the main tab never opened the create tab, so make sure the map is a playable one
         if (!maps[currentmap].enabled) currentmap = NextEnabledMap(0);
         LoadingScreen.Show("FINDING A MATCH");
-        StartGameResult result = await NetworkSession.JoinRandomOrHost((int)maxPlayersSlider.value, RoomProperties(), maps[currentmap].scene);
+        Dictionary<string, SessionProperty> properties = RoomProperties();
+        if (currentbots == 0) properties["bots"] = QuickPlayBots;
+        StartGameResult result = await NetworkSession.JoinRandomOrHost((int)maxPlayersSlider.value, properties, maps[currentmap].scene);
         starting = false;
         if (!result.Ok)
         {
