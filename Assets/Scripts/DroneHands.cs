@@ -7,7 +7,8 @@ using UnityEngine;
 // hand pulls the spent energy cell out of the bottom of the handle and flicks it away, fetches a fresh
 // glowing cell and pushes it in (the gun jolts), then taps the top of the gun as it comes back up ready.
 // Drawn on the gun's layer, so other players see them with the gun, and you see your own in first person.
-// Added by Player at runtime; purely cosmetic, so it needs no network traffic.
+// Added by Player at runtime; purely cosmetic, so it needs no network traffic. The main menu's
+// player model gets them too (AttachToDisplay), holding the gun it shows.
 public class DroneHands : MonoBehaviour
 {
     private const float Size = 0.13f;
@@ -39,6 +40,24 @@ public class DroneHands : MonoBehaviour
 
     // The spent cell, flicked away: where it was let go and how it flies, in the player's space
     private Vector3 tossStart, tossVelocity;
+
+    // On a display model (the main menu) there's no Player or Weapon: the gun model is given
+    private Transform owner;
+    private GameObject displayGun;
+
+    // For a model that isn't a player in a match: owner is the model, gun the gun model it holds
+    public static DroneHands AttachToDisplay(Transform owner, GameObject gun, Color color)
+    {
+        GameObject holder = new GameObject("Drone Hands");
+        holder.transform.SetParent(owner, false);
+        DroneHands hands = holder.AddComponent<DroneHands>();
+        hands.owner = owner;
+        hands.displayGun = gun;
+        hands.phase = Random.value * 10f;
+        hands.Build();
+        hands.SetColor(color);
+        return hands;
+    }
 
     public static DroneHands Attach(Player owner, Color color)
     {
@@ -72,9 +91,10 @@ public class DroneHands : MonoBehaviour
         tintedGun = gun;
         tintedTeamsVersion = Manager.TeamsVersion;
 
-        Color c = PlayerCap.ColorFor(player.ActorId);
+        // A display model's sights take its hands' colour
+        Color c = player != null ? PlayerCap.ColorFor(player.ActorId) : color;
         Manager m = Manager.Instance;
-        if (m != null && m.IsTeamMode)
+        if (player != null && m != null && m.IsTeamMode)
         {
             int team = m.GetTeam(player.ActorId);
             if (team >= 0) c = Manager.TeamColors[team % 2];
@@ -230,12 +250,12 @@ public class DroneHands : MonoBehaviour
     // After the gun has moved this frame (aiming, sway, the player's gun drift)
     private void LateUpdate()
     {
-        if (player == null || weapon == null) return;
-        GameObject gun = weapon.GunModel;
+        if ((player == null || weapon == null) && displayGun == null) return;
+        GameObject gun = weapon != null ? weapon.GunModel : displayGun;
         if (gun != shownGun) FitTo(gun);
         if (gun != null && (gun != tintedGun || tintedTeamsVersion != Manager.TeamsVersion)) TintSights(gun);
 
-        bool show = gunDesign != null && !player.IsDead;
+        bool show = gunDesign != null && (player == null || !player.IsDead);
         for (int i = 0; i < 2; i++) if (hands[i].gameObject.activeSelf != show) hands[i].gameObject.SetActive(show);
         if (!show)
         {
@@ -243,12 +263,12 @@ public class DroneHands : MonoBehaviour
             return;
         }
 
-        float reload = weapon.ReloadProgress;
+        float reload = weapon != null ? weapon.ReloadProgress : -1f;
         PoseGun(reload);
 
         float time = Time.time;
         float dt = Time.deltaTime;
-        Transform root = player.transform;
+        Transform root = player != null ? player.transform : owner;
 
         for (int i = 0; i < 2; i++)
         {
@@ -342,7 +362,7 @@ public class DroneHands : MonoBehaviour
         else if (spent)
         {
             // Flicked away, tumbling and shrinking to nothing
-            float t = (p - Flick) * weapon.CellSwapTime;
+            float t = (p - Flick) * (weapon != null ? weapon.CellSwapTime : 1.5f);
             Vector3 local = tossStart + tossVelocity * t + Vector3.down * (4.9f * t * t);
             cell.position = root.TransformPoint(local);
             cell.rotation = hand.rotation * Quaternion.Euler(t * 900f, 0f, t * 400f);

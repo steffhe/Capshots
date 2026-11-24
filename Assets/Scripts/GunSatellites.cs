@@ -10,6 +10,8 @@ using UnityEngine;
 // is swapped, snapping back as the fresh cell clicks in.
 // Everyone sees everyone's, so a player's form can be told from a distance. Added by Player at
 // runtime; purely cosmetic, driven by state every machine already has, so no network traffic.
+// The main menu's player model gets them too (AttachToDisplay), with a pretend shot now and then
+// to show them off.
 [DefaultExecutionOrder(100)] // After DroneHands, which tips the gun over for the cell swap
 public class GunSatellites : MonoBehaviour
 {
@@ -59,6 +61,54 @@ public class GunSatellites : MonoBehaviour
     private Color color = Color.white;
     private float shownGlow = -1f;
     private MaterialPropertyBlock block;
+
+    // On a display model (the main menu) there's no Player or Weapon: the gun and its form are
+    // given, and it fires pretend shots now and then
+    private Transform owner;
+    private GameObject displayGun;
+    private Gun displayForm;
+    private float displayShotTime = -1f, nextDemoAt;
+    private int demoShotsLeft;
+
+    // What drives the pieces: the player's gun in a match, or the display gun
+    private GameObject CurrentGunModel => weapon != null ? weapon.GunModel : displayGun;
+    private Gun CurrentForm => weapon != null ? weapon.ShownGun : displayForm;
+    private bool Dead => player != null && player.IsDead;
+    private float LastShotTime => weapon != null ? weapon.LastShotTime : displayShotTime;
+    private bool Aiming => weapon != null && weapon.isAiming;
+    private float ReloadProgress => weapon != null ? weapon.ReloadProgress : -1f;
+    private float EnergyFraction => weapon != null ? weapon.EnergyFraction : 1f;
+
+    // For a model that isn't a player in a match: owner is the model, gun the gun model it holds
+    public static GunSatellites AttachToDisplay(Transform owner, GameObject gun, Gun form, Color color)
+    {
+        GameObject holder = new GameObject("Gun Satellites");
+        holder.transform.SetParent(owner, false);
+        GunSatellites satellites = holder.AddComponent<GunSatellites>();
+        satellites.owner = owner;
+        satellites.displayGun = gun;
+        satellites.displayForm = form;
+        satellites.phase = Random.value * 10f;
+        satellites.nextDemoAt = Time.time + 2f;
+        satellites.Build();
+        satellites.SetColor(color);
+        return satellites;
+    }
+
+    // The display model's pretend shots: a burst from the machine gun, a double tap from the
+    // pistol, a single shot otherwise, every few seconds
+    private void UpdateDemo(float now)
+    {
+        if (displayForm == null || now < nextDemoAt) return;
+        if (demoShotsLeft == 0)
+        {
+            GunSatelliteLayout.Form f = GunSatelliteLayout.FormOf(displayForm);
+            demoShotsLeft = f == GunSatelliteLayout.Form.Orbit ? 12 : f == GunSatelliteLayout.Form.Tight ? 2 : 1;
+        }
+        displayShotTime = now;
+        demoShotsLeft--;
+        nextDemoAt = demoShotsLeft > 0 ? now + Mathf.Max(displayForm.fireRate, 0.07f) : now + Random.Range(3.5f, 5.5f);
+    }
 
     public static GunSatellites Attach(Player owner, Color color)
     {
@@ -278,8 +328,7 @@ public class GunSatellites : MonoBehaviour
 
         design = newDesign;
         shape = newShape;
-        Gun shownForm = weapon.ShownGun;
-        form = GunSatelliteLayout.FormOf(shownForm);
+        form = GunSatelliteLayout.FormOf(CurrentForm);
 
         // The part the pieces stand in for is hidden (its copy retracting into the next form is too)
         string part = GunSatelliteLayout.ReplacedPart(form);
@@ -320,12 +369,13 @@ public class GunSatellites : MonoBehaviour
 
     private void LateUpdate()
     {
-        if (player == null || weapon == null) return;
-        GameObject gun = weapon.GunModel;
+        if ((player == null || weapon == null) && displayGun == null) return;
+        if (weapon == null) UpdateDemo(Time.time);
+        GameObject gun = CurrentGunModel;
         if (gun != shownGun) FitTo(gun);
 
         // Hidden without a gun or once dead; placed afresh when they come back
-        bool show = design != null && !player.IsDead;
+        bool show = design != null && !Dead;
         for (int i = 0; i < Count; i++) if (pieces[i].gameObject.activeSelf != show) pieces[i].gameObject.SetActive(show);
         if (!show)
         {
@@ -337,30 +387,31 @@ public class GunSatellites : MonoBehaviour
         float now = Time.time;
 
         // Each shot spins the machine gun's barrel up; it slows back down after
-        if (weapon.LastShotTime > seenShotTime)
+        float lastShot = LastShotTime;
+        if (lastShot > seenShotTime)
         {
-            seenShotTime = weapon.LastShotTime;
+            seenShotTime = lastShot;
             spinSpeed = Mathf.Min(spinSpeed + SpinPerShot, MaxSpin);
         }
         spinSpeed = Mathf.Lerp(spinSpeed, RestSpin, 1f - Mathf.Exp(-dt * SpinDown));
         spin = Mathf.Repeat(spin + spinSpeed * dt, Mathf.PI * 2f);
-        aim = Mathf.MoveTowards(aim, weapon.isAiming ? 1f : 0f, dt * 5f);
+        aim = Mathf.MoveTowards(aim, Aiming ? 1f : 0f, dt * 5f);
 
         GunSatelliteLayout.Motion motion = new GunSatelliteLayout.Motion
         {
             time = now + phase,
             spin = spin,
-            shotAge = weapon.LastShotTime >= 0f ? now - weapon.LastShotTime : 100f,
+            shotAge = lastShot >= 0f ? now - lastShot : 100f,
             aim = aim,
         };
 
         // The cell swap: loose from when the spent cell comes out until the fresh one clicks in
-        float reload = weapon.ReloadProgress;
+        float reload = ReloadProgress;
         float loose = reload >= 0f ? Ease(0f, 0.15f, reload) * (1f - Ease(CellIn - 0.02f, CellIn + 0.03f, reload)) : 0f;
         float drift = shape.body.size.x * 0.5f;
 
         // Dimmer as the energy runs down, and almost dark while the cell is out
-        Paint(Mathf.Lerp(0.3f + 0.7f * weapon.EnergyFraction, 0.15f, loose));
+        Paint(Mathf.Lerp(0.3f + 0.7f * EnergyFraction, 0.15f, loose));
 
         float trail = 1f - Mathf.Exp(-dt * TrailRate);
         // Sizes are in the gun model's units; the pieces hang off this holder, which may be scaled differently
