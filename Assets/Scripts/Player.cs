@@ -526,11 +526,13 @@ public class Player : NetworkBehaviour
         ApplyCrouchVisuals(false);
         RefreshNameTag();
         RefreshHat();
+        // See-through while spawn protected: to everyone else, and your own gun to you, so you can
+        // see you're protected
+        UpdateProtectionGhost();
 
         if (!IsLocal)
         {
             RefreshMultiplayerState();
-            UpdateProtectionGhost();
             RefreshTeamVisuals();
             return;
         }
@@ -919,7 +921,8 @@ public class Player : NetworkBehaviour
         return transform.position;
     }
 
-    // Other players see a protected player see-through. Each body part's material is swapped for a
+    // A protected player is see-through, to everyone (your own body is hidden from you, so you see
+    // it on your gun and hand-orbs). Each body part's material is swapped for a
     // transparent one (Resources/ProtectionGhost, an asset so builds keep its shader variant) and
     // given the part's own colour and glow at protectionAlpha. Parts drawn with another shader
     // (effects that manage themselves) and text are left alone.

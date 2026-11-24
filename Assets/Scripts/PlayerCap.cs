@@ -284,7 +284,7 @@ public class PlayerCap : MonoBehaviour
     private static Mesh Dome() => domeMesh != null ? domeMesh : (domeMesh = BuildDome(10, 24, "Cap Crown", true));
 
     // A round tube 1 high with a bottom radius of 1 and a top radius of topRadius (0 for a cone),
-    // seen from inside and out; capTop closes its top with a flat disc
+    // seen from inside and out; capTop closes its top with a flat disc. A cone's base is always closed.
     private static Mesh Frustum(float topRadius, bool capTop)
     {
         string key = "Frustum " + topRadius.ToString("0.###") + (capTop ? " capped" : "");
@@ -317,20 +317,30 @@ public class PlayerCap : MonoBehaviour
             }
         }
 
-        if (capTop && topRadius > 0f)
+        // A flat disc, drawn from above and below, so it doesn't vanish when seen from the inside
+        void Disc(float y, float radius)
         {
-            int centre = vertices.Count;
-            vertices.Add(Vector3.up); normals.Add(Vector3.up);
-            for (int j = 0; j <= segments; j++)
+            for (int face = 0; face < 2; face++)
             {
-                float a = 2f * Mathf.PI * j / segments;
-                vertices.Add(new Vector3(Mathf.Cos(a) * topRadius, 1f, Mathf.Sin(a) * topRadius)); normals.Add(Vector3.up);
-            }
-            for (int j = 0; j < segments; j++)
-            {
-                triangles.Add(centre); triangles.Add(centre + j + 2); triangles.Add(centre + j + 1);
+                Vector3 discNormal = face == 0 ? Vector3.up : Vector3.down;
+                int middle = vertices.Count;
+                vertices.Add(Vector3.up * y); normals.Add(discNormal);
+                for (int k = 0; k <= segments; k++)
+                {
+                    float angle = 2f * Mathf.PI * k / segments;
+                    vertices.Add(new Vector3(Mathf.Cos(angle) * radius, y, Mathf.Sin(angle) * radius)); normals.Add(discNormal);
+                }
+                for (int k = 0; k < segments; k++)
+                {
+                    if (face == 0) { triangles.Add(middle); triangles.Add(middle + k + 2); triangles.Add(middle + k + 1); }
+                    else { triangles.Add(middle); triangles.Add(middle + k + 1); triangles.Add(middle + k + 2); }
+                }
             }
         }
+
+        if (capTop && topRadius > 0f) Disc(1f, topRadius);
+        // A cone (a horn, a crown's point) is closed at its base, so you can't see into it
+        if (topRadius <= 0f) Disc(0f, 1f);
 
         mesh = new Mesh { name = "Hat " + key };
         mesh.SetVertices(vertices);

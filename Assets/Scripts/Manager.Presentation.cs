@@ -311,8 +311,8 @@ public partial class Manager
     {
         string newHats = Manager.NewHatsText(xpStartLevel, Launcher.myProfile.level);
         RectTransform panel = NewLayer("XP", new Vector2(0.5f, 0f), new Vector2(560f, newHats != null ? 124f : 92f), parent);
-        // A row taller for the new hats, grown downwards (towards the countdown) to keep clear of the leaderboard
-        panel.anchoredPosition = new Vector2(0f, newHats != null ? 56f : 84f);
+        // Its bottom edge stays just above the countdown; a row taller for new caps grows it upwards
+        panel.anchoredPosition = new Vector2(0f, 84f);
         Image bg = UITheme.NewImage("Background", panel, UITheme.Panel, 10f);
         UITheme.Stretch(bg.rectTransform);
 
