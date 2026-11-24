@@ -110,8 +110,9 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
             UpdateBots();
         }
 
-        // Tell the host our name and level for the scoreboard
-        RPC_Register(Launcher.myProfile.username, Launcher.myProfile.level);
+        // Tell the host our name and level for the scoreboard, and the hat everyone sees us in
+        RPC_Register(Launcher.myProfile.username, Launcher.myProfile.level, GameSettings.Hat);
+        GameSettings.HatChanged += SendHat;
 
         state = State;
         currentMatchTime = MatchTime;
@@ -127,6 +128,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
     public override void Despawned(NetworkRunner runner, bool hasState)
     {
+        GameSettings.HatChanged -= SendHat;
         ready = false;
     }
 
@@ -274,6 +276,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
             PlayerInfo p = new PlayerInfo(new ProfileData(s.Username.ToString(), s.Level, 0, 150f, 150f), entry.Key.PlayerId, s.Kills, s.Deaths);
             p.team = s.Team;
             p.ping = s.Ping;
+            p.hat = s.Hat;
             list.Add(p);
         }
         list.Sort((a, b) => a.actor.CompareTo(b.actor));
@@ -296,6 +299,13 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
     {
         int index = FindPlayerIndex(actor);
         return index >= 0 ? playerInfo[index].profile.level : 1;
+    }
+
+    // The hat a player wears (see Hats); the cap for anyone not on the list
+    public int GetPlayerHat(int actor)
+    {
+        int index = FindPlayerIndex(actor);
+        return index >= 0 && Hats.IsValid(playerInfo[index].hat) ? playerInfo[index].hat : Hats.Cap;
     }
 
     private int FindPlayerIndex(int actor)
@@ -352,9 +362,9 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         ScheduleSpawn(player);
     }
 
-    // Each player tells the host its name and level once it has joined
+    // Each player tells the host its name, level and hat once it has joined
     [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
-    private void RPC_Register(string username, int level, RpcInfo info = default)
+    private void RPC_Register(string username, int level, int hat, RpcInfo info = default)
     {
         PlayerRef player = info.Source.IsRealPlayer ? info.Source : Runner.LocalPlayer;
         if (!Stats.ContainsKey(player)) AddPlayer(player);
@@ -363,6 +373,23 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         if (username != null && username.Length > 20) username = username.Substring(0, 20);
         stats.Username = string.IsNullOrWhiteSpace(username) ? "PLAYER " + player.PlayerId : username;
         stats.Level = Mathf.Max(1, level);
+        stats.Hat = (byte)Hats.Wearable(hat, level);
+        Stats.Set(player, stats);
+    }
+
+    // A new hat picked in the pause menu's Customize panel: everyone sees it at once
+    private void SendHat()
+    {
+        if (Object != null && Object.IsValid) RPC_SetHat(GameSettings.Hat);
+    }
+
+    [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+    private void RPC_SetHat(int hat, RpcInfo info = default)
+    {
+        PlayerRef player = info.Source.IsRealPlayer ? info.Source : Runner.LocalPlayer;
+        PlayerStats stats;
+        if (!Hats.IsValid(hat) || !Stats.TryGet(player, out stats)) return;
+        stats.Hat = (byte)hat;
         Stats.Set(player, stats);
     }
 

@@ -5,27 +5,21 @@ using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 // Settings panel inside the pause menu: look sensitivity, ADS sensitivity, field of view, volume,
-// graphics quality, starting gun and key bindings. Built at runtime from copies of the pause menu's own button,
+// graphics quality and key bindings. Built at runtime from copies of the pause menu's own button,
 // slider and label (styled by UITheme.StylePause), so the Pause prefab doesn't need editing.
+// It also adds the pause menu's Customize button and panel (CustomizeMenu), under Settings.
 // The main menu has the same panel (CreateForMainMenu), built from copies of its own button,
 // slider and label, and opened by its own Settings button.
-public class SettingsMenu : MonoBehaviour
+public class SettingsMenu : MenuPanel
 {
     private Transform anchor;
     private GameObject mainButtons;
     private GameObject sensitivity;
     private GameObject panel;
 
-    private GameObject buttonTemplate;
-    private Slider sliderTemplate;
-    private Text labelTemplate;
-
     private Text xSensValue, ySensValue, fovValue, adsValue, volumeValue;
     private Slider xSensSlider, ySensSlider, fovSlider, adsSlider, volumeSlider;
     private Text qualityText;
-    private Text startingGunText;
-    // The player body's gun, for the forms the starting gun can be
-    private Weapon playerWeapon;
 
     private class BindingRow
     {
@@ -120,11 +114,17 @@ public class SettingsMenu : MonoBehaviour
         sliderTemplate = xSens.GetComponent<Slider>();
         labelTemplate = label.GetComponent<Text>();
 
-        // "Settings" goes where Quit was, and Quit moves down a row
+        // "Settings" and "Customize" go where Quit was, and Quit moves down below them
         RectTransform quitRect = (RectTransform)quit;
         GameObject settingsButton = NewButton(buttons, "SETTINGS", OpenSettings);
         settingsButton.transform.SetSiblingIndex(quit.GetSiblingIndex());
         ((RectTransform)settingsButton.transform).anchoredPosition = quitRect.anchoredPosition;
+        quitRect.anchoredPosition -= new Vector2(0f, 60f);
+
+        CustomizeMenu customize = CustomizeMenu.CreateForPause(gameObject, anchor, mainButtons, buttonTemplate, labelTemplate);
+        GameObject customizeButton = NewButton(buttons, "CUSTOMIZE", customize.Open);
+        customizeButton.transform.SetSiblingIndex(quit.GetSiblingIndex());
+        ((RectTransform)customizeButton.transform).anchoredPosition = quitRect.anchoredPosition;
         quitRect.anchoredPosition -= new Vector2(0f, 60f);
 
         BuildPanel();
@@ -213,19 +213,12 @@ public class SettingsMenu : MonoBehaviour
         Place(quality, new Vector2(LeftColumn, y - 72f), new Vector2(ColumnWidth, 48f));
         qualityText = quality.GetComponentInChildren<Text>();
 
-        Button startingGunButton = null;
-        GameObject startingGun = NewButton(rect, "", () => PickStartingGun(startingGunButton));
-        startingGunButton = startingGun.GetComponent<Button>();
-        UITheme.StyleSelector(startingGun.GetComponent<Button>());
-        Place(startingGun, new Vector2(LeftColumn, y - 128f), new Vector2(ColumnWidth, 48f));
-        startingGunText = startingGun.GetComponentInChildren<Text>();
-
         GameObject reset = NewButton(rect, "RESET CONTROLS", () =>
         {
             GameInput.ResetBindings();
             RefreshBindings();
         });
-        Place(reset, new Vector2(LeftColumn, y - 184f), new Vector2(ColumnWidth, 48f));
+        Place(reset, new Vector2(LeftColumn, y - 128f), new Vector2(ColumnWidth, 48f));
 
         GameObject done = NewButton(rect, "DONE", CloseSettings);
         UITheme.StyleButton(done.GetComponent<Button>(), UITheme.ButtonStyle.Primary);
@@ -267,7 +260,7 @@ public class SettingsMenu : MonoBehaviour
         NewLabel(parent, name, new Vector2(LeftColumn, y), ColumnWidth, 16, TextAnchor.MiddleLeft);
         value = NewLabel(parent, "", new Vector2(LeftColumn, y), ColumnWidth, 16, TextAnchor.MiddleRight);
         value.color = UITheme.AccentText;
-        return NewSlider(parent, new Vector2(LeftColumn, y - 26f), min, max, wholeNumbers, current, onChange);
+        return NewSlider(parent, new Vector2(LeftColumn, y - 26f), ColumnWidth, min, max, wholeNumbers, current, onChange);
     }
 
     private void AddBindingRow(RectTransform parent, string name, InputAction action, int bindingIndex)
@@ -314,33 +307,6 @@ public class SettingsMenu : MonoBehaviour
         adsValue.text = GameSettings.AdsSensitivity.ToString("0.00") + "x";
         volumeValue.text = Mathf.RoundToInt(GameSettings.Volume * 100f) + "%";
         qualityText.text = UITheme.Option("GRAPHICS", GameSettings.QualityName.ToUpperInvariant());
-        Weapon weapon = PlayerWeapon();
-        string gun = weapon != null ? weapon.loadout[weapon.PreferredStartingSlot].gunName : "-";
-        startingGunText.text = UITheme.Option("STARTING GUN", gun.ToUpperInvariant());
-    }
-
-    // A list of the gun's forms, in loadout order
-    private void PickStartingGun(Button button)
-    {
-        Weapon weapon = PlayerWeapon();
-        if (weapon == null) return;
-        string[] options = new string[weapon.loadout.Length];
-        for (int i = 0; i < options.Length; i++) options[i] = weapon.loadout[i].gunName.ToUpperInvariant();
-        OptionPicker.Open(button, options, weapon.PreferredStartingSlot, i =>
-        {
-            GameSettings.StartingGun = weapon.loadout[i].gunName;
-            RefreshLabels();
-        });
-    }
-
-    private Weapon PlayerWeapon()
-    {
-        if (playerWeapon == null)
-        {
-            GameObject prefab = Resources.Load<GameObject>("Player");
-            playerWeapon = prefab != null ? prefab.GetComponent<Weapon>() : null;
-        }
-        return playerWeapon != null && playerWeapon.loadout != null && playerWeapon.loadout.Length > 0 ? playerWeapon : null;
     }
 
     private void OpenSettings()
@@ -361,83 +327,6 @@ public class SettingsMenu : MonoBehaviour
     {
         panel.SetActive(false);
         mainButtons.SetActive(true);
-    }
-
-    #endregion
-
-    #region Building blocks
-
-    // Copies the pause menu's Resume button (or the main menu's button), without its own action
-    // (Resume, or opening a menu tab), as a secondary button
-    private GameObject NewButton(Transform parent, string text, UnityAction onClick)
-    {
-        GameObject copy = Instantiate(buttonTemplate, parent);
-        copy.name = string.IsNullOrEmpty(text) ? "Button" : text;
-
-        Button button = copy.GetComponent<Button>();
-        if (button != null)
-        {
-            for (int i = 0; i < button.onClick.GetPersistentEventCount(); i++)
-            {
-                if (button.onClick.GetPersistentMethodName(i) == "TogglePause" || button.onClick.GetPersistentTarget(i) is Launcher)
-                {
-                    button.onClick.SetPersistentListenerState(i, UnityEventCallState.Off);
-                }
-            }
-            button.onClick.AddListener(onClick);
-        }
-
-        Text label = copy.GetComponentInChildren<Text>();
-        if (label != null) label.text = text;
-        UITheme.StyleButton(button, UITheme.ButtonStyle.Secondary, 20);
-        return copy;
-    }
-
-    private Slider NewSlider(RectTransform parent, Vector2 position, float min, float max, bool wholeNumbers, float value, UnityAction<float> onChange)
-    {
-        Slider slider = Instantiate(sliderTemplate, parent);
-        slider.name = "Slider";
-        for (int i = 0; i < slider.onValueChanged.GetPersistentEventCount(); i++)
-        {
-            slider.onValueChanged.SetPersistentListenerState(i, UnityEventCallState.Off);
-        }
-
-        RectTransform rect = (RectTransform)slider.transform;
-        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.anchoredPosition = position;
-        rect.sizeDelta = new Vector2(ColumnWidth, 20f);
-        UITheme.StyleSlider(slider);
-
-        slider.minValue = min;
-        slider.maxValue = max;
-        slider.wholeNumbers = wholeNumbers;
-        slider.SetValueWithoutNotify(value);
-        slider.onValueChanged.AddListener(onChange);
-        return slider;
-    }
-
-    private Text NewLabel(RectTransform parent, string text, Vector2 position, float width, int fontSize, TextAnchor alignment)
-    {
-        Text label = Instantiate(labelTemplate, parent);
-        label.name = "Label";
-        RectTransform rect = (RectTransform)label.transform;
-        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.anchoredPosition = position;
-        rect.sizeDelta = new Vector2(width, 34f);
-        UITheme.StyleText(label, fontSize, UITheme.TextColor, alignment);
-        label.horizontalOverflow = HorizontalWrapMode.Overflow;
-        label.verticalOverflow = VerticalWrapMode.Overflow;
-        label.raycastTarget = false;
-        label.text = text;
-        return label;
-    }
-
-    private static void Place(GameObject go, Vector2 position, Vector2 size)
-    {
-        RectTransform rect = (RectTransform)go.transform;
-        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.anchoredPosition = position;
-        rect.sizeDelta = size;
     }
 
     #endregion

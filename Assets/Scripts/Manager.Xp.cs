@@ -50,6 +50,7 @@ public partial class Manager
         // Added up for the results screen, which fills the level bar with the whole match's XP
         xpGained += amount;
         xpReason = reason;
+        int oldLevel = profile.level;
         int levelsGained = profile.AddXp(amount);
         Data.SaveProfile(profile);
 
@@ -57,6 +58,8 @@ public partial class Manager
         if (levelsGained > 0)
         {
             message += $"\nLEVEL UP!  LVL {profile.level}";
+            string hats = NewHatsText(oldLevel, profile.level);
+            if (hats != null) message += "\n" + hats;
             // Let everyone update this player's level on the scoreboard
             RPC_LevelUp(levelsGained);
         }
@@ -64,6 +67,16 @@ public partial class Manager
         if (uiUsername != null) uiUsername.text = UsernameWithLevel(profile);
         // At the end of the match the results screen shows the XP instead
         if (!matchEnded) ShowMessage(message);
+    }
+
+    // "NEW CAP UNLOCKED: BEANIE" for the hats unlocked between these levels, or null if none were
+    public static string NewHatsText(int oldLevel, int newLevel)
+    {
+        List<int> hats = Hats.UnlockedBetween(oldLevel, newLevel);
+        if (hats.Count == 0) return null;
+        string[] names = new string[hats.Count];
+        for (int i = 0; i < names.Length; i++) names[i] = Hats.Name(hats[i]);
+        return (hats.Count == 1 ? "NEW CAP UNLOCKED: " : "NEW CAPS UNLOCKED: ") + string.Join(", ", names);
     }
 
     // Lets the host update this player's level on everyone's scoreboard

@@ -41,15 +41,15 @@ public class DeadPlayer : MonoBehaviour
     // Sets the ragdoll going.
     // velocity: the player's movement at death. hitDirection: the killing bullet's direction.
     // hitOffset: where the bullet hit, relative to the player's position. knockback: how hard (m/s) the hit throws the body.
-    // capColor: the colour of the cap on the head (see PlayerCap.ColorFor).
-    public void Launch(Vector3 velocity, Vector3 hitDirection, Vector3 hitOffset, float knockback, bool headshot, Color capColor)
+    // capColor: the colour of the hat on the head (see PlayerCap.ColorFor). hat: which hat (see Hats).
+    public void Launch(Vector3 velocity, Vector3 hitDirection, Vector3 hitOffset, float knockback, bool headshot, Color capColor, int hat = Hats.Cap)
     {
         body = GetComponent<Rigidbody>();
         body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
 
         Vector3 push = hitDirection.sqrMagnitude > 0.001f ? hitDirection.normalized : -transform.forward;
 
-        DetachHead(velocity, push, knockback, headshot, capColor);
+        DetachHead(velocity, push, knockback, headshot, capColor, hat);
         // The head is no longer part of the body: work out the body's own balance point before pushing it
         body.ResetCenterOfMass();
         body.ResetInertiaTensor();
@@ -97,13 +97,13 @@ public class DeadPlayer : MonoBehaviour
         return all.ToArray();
     }
 
-    private void DetachHead(Vector3 velocity, Vector3 push, float knockback, bool headshot, Color capColor)
+    private void DetachHead(Vector3 velocity, Vector3 push, float knockback, bool headshot, Color capColor, int hat)
     {
         SphereCollider headCollider = GetComponentInChildren<SphereCollider>();
         if (headCollider == null) return;
 
         head = headCollider.transform;
-        PlayerCap headCap = PlayerCap.Attach(head, capColor, true);
+        PlayerCap headCap = PlayerCap.Attach(head, capColor, true, hat);
 
         // Where the head joined the body: the bottom of the head, towards the body
         Vector3 scale = head.lossyScale;

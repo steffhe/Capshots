@@ -7,7 +7,7 @@ using UnityEngine.Rendering.Universal;
 // light on the player, a soft-focus background), a camera that drifts slowly and leans with the
 // mouse, and a player model that breathes and glances towards the cursor. Built at runtime by
 // the Launcher, on top of the menu scene. The model holds the gun form picked as the starting gun
-// in the settings, with its hand-orbs and floating pieces, as in a match.
+// in Customize, with its hand-orbs and floating pieces, as in a match.
 public class MenuScenery : MonoBehaviour
 {
     // Camera drift: a slow figure-of-eight, plus a lean towards the mouse
@@ -56,7 +56,7 @@ public class MenuScenery : MonoBehaviour
             modelPosition = model.position;
         }
 
-        // The model holds the starting gun. Picking another in the menu's settings swaps it at once.
+        // The model holds the starting gun. Picking another in Customize swaps it at once.
         FindHeldGun();
         // The menu scene's model has no Player script: it's the one holding the gun. It breathes and
         // glances towards the cursor (see Update).
