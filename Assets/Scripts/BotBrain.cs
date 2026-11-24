@@ -7,9 +7,10 @@ using UnityEngine.AI;
 //
 // What it does: heads for the nearest enemy along the map's walkable paths (BotNavigation), and once
 // it can see one, turns to aim (with a reaction delay and some aim error that settles the longer it
-// tracks), sidesteps, keeps a sensible distance for its gun form and fires when on target. On Normal
-// and Hard (BotLogic.Skill.tactical) it also backs off into cover to heal when badly hurt, and picks
-// up a nearby ammo box when its energy is low. With the scoped form it holds its ground.
+// tracks), sidesteps, keeps a sensible distance for its gun form and fires when on target, with the odd
+// plasma grenade at mid range. On Normal and Hard (BotLogic.Skill.tactical) it also backs off into
+// cover to heal when badly hurt, and picks up a nearby ammo box when its energy is low. With the scoped
+// form it holds its ground.
 [DisallowMultipleComponent]
 public class BotBrain : MonoBehaviour
 {
@@ -69,6 +70,11 @@ public class BotBrain : MonoBehaviour
     private float nextGunChangeAt;
     private bool triggerWasDown;
     private bool reloadNextTick;
+    // Plasma grenades: not before this time (Time.time)
+    private float nextGrenadeAt;
+
+    private const float BotGrenadeMinRange = 5f;
+    private const float BotGrenadeMaxRange = 14f;
 
     private int lastHealth;
     private Player lastAttacker;
@@ -92,6 +98,7 @@ public class BotBrain : MonoBehaviour
         nextStuckCheckAt = Time.time + 1f;
         // A short pause after spawning, like a person getting their bearings
         nextScanAt = Time.time + Random.Range(0.2f, 0.6f);
+        nextGrenadeAt = Time.time + Random.Range(3f, 6f);
 
         int shootable = weapon != null ? weapon.canBeShot.value : ~0;
         sightMask = shootable & ~((1 << Layers.LocalPlayer) | (1 << Layers.RemotePlayer) | (1 << Layers.Hitbox) | (1 << Layers.Glass));
@@ -217,6 +224,23 @@ public class BotBrain : MonoBehaviour
             // Scoped and far away: aim down the sights (steadier, slower)
             aim = gun.scopeFov > 0f && targetDistance > 20f;
         }
+        // Now and then a plasma grenade at an enemy in the middle distance, where the arc still reaches
+        // them, while looking right at them
+        if (fighting && !eyeInWall && weapon != null && weapon.GrenadeCount > 0 && now >= nextGrenadeAt
+            && targetDistance >= BotGrenadeMinRange && targetDistance <= BotGrenadeMaxRange)
+        {
+            Vector2 exact = BotLogic.LookAngles(eye, AimPoint(target));
+            bool lookingAtThem = Mathf.Abs(Mathf.DeltaAngle(yaw, exact.x)) < 4f && Mathf.Abs(Mathf.DeltaAngle(pitch, exact.y)) < 4f;
+            if (lookingAtThem && Random.value < 0.4f)
+            {
+                data.Buttons.Set(InputButton.Grenade, true);
+                nextGrenadeAt = now + Random.Range(8f, 14f);
+                trigger = false;
+            }
+            // Not this time: think about it again in a moment
+            else nextGrenadeAt = now + Random.Range(0.8f, 1.6f);
+        }
+
         triggerWasDown = trigger;
         data.Buttons.Set(InputButton.Fire, trigger);
         data.Buttons.Set(InputButton.Aim, aim);

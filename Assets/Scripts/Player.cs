@@ -206,6 +206,26 @@ public class Player : NetworkBehaviour
         }
     }
 
+    // How fast the body is moving (a thrown grenade carries some of it)
+    public Vector3 CurrentVelocity => Object != null && Object.IsValid ? Velocity : Vector3.zero;
+
+    // The body's capsule in world space (its character controller), for plasma grenades sticking to it
+    public void BodyCapsule(out Vector3 bottom, out Vector3 top, out float radius)
+    {
+        if (controller == null)
+        {
+            radius = 0.5f;
+            bottom = transform.position + Vector3.up * (bodyBottom + radius);
+            top = transform.position + Vector3.up * (bodyBottom + standingHeight - radius);
+            return;
+        }
+        radius = controller.radius * Mathf.Max(transform.lossyScale.x, transform.lossyScale.z);
+        float half = Mathf.Max(0f, controller.height * 0.5f * transform.lossyScale.y - radius);
+        Vector3 center = transform.TransformPoint(controller.center);
+        bottom = center - transform.up * half;
+        top = center + transform.up * half;
+    }
+
     #endregion
 
     #region Fusion Callbacks

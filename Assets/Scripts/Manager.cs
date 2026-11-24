@@ -9,7 +9,7 @@ using Fusion;
 // A network object in each map scene. The host owns it: it keeps everyone's stats, runs the
 // match timer and spawns players; Fusion syncs that state to everyone else.
 // Other parts of this class are in Manager.Teams.cs, Manager.Scoreboard.cs, Manager.Spawning.cs,
-// Manager.Pickups.cs, Manager.Chat.cs and Manager.Xp.cs.
+// Manager.Pickups.cs, Manager.Grenades.cs, Manager.Chat.cs and Manager.Xp.cs.
 public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 {
     public static Manager Instance { get; private set; }
@@ -429,6 +429,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
         SpawnWaitingPlayers();
         CheckPickups();
+        UpdateGrenades();
         BotNavigation.Tick();
 
         // The match is over and everyone has cut away to the results: remove the bodies

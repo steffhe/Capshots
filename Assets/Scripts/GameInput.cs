@@ -18,7 +18,7 @@ public static class GameInput
 
     public static InputActionMap Map { get; private set; }
 
-    public static InputAction Move, Look, LookStick, Fire, Aim, Jump, Sprint, Crouch, Slide, Reload;
+    public static InputAction Move, Look, LookStick, Fire, Aim, Jump, Sprint, Crouch, Slide, Reload, Grenade;
     public static InputAction Weapon1, Weapon2, Weapon3, Weapon4, WeaponNext, WeaponPrev, WeaponScroll;
     public static InputAction Scoreboard, Chat, PauseMenu;
 
@@ -62,6 +62,7 @@ public static class GameInput
         Crouch = Button("Crouch", Browser.IsBrowser ? "<Keyboard>/z" : "<Keyboard>/leftCtrl", "<Gamepad>/buttonEast");
         Slide = Button("Slide", "<Keyboard>/c", "<Gamepad>/rightStickPress");
         Reload = Button("Reload", "<Keyboard>/r", "<Gamepad>/buttonWest");
+        Grenade = Button("Grenade", "<Keyboard>/g", "<Gamepad>/buttonNorth");
         Weapon1 = Button("Weapon1", "<Keyboard>/1", null);
         Weapon2 = Button("Weapon2", "<Keyboard>/2", null);
         Weapon3 = Button("Weapon3", "<Keyboard>/3", null);
@@ -78,6 +79,7 @@ public static class GameInput
         Rebindable.Add(new KeyValuePair<string, InputAction>("FIRE", Fire));
         Rebindable.Add(new KeyValuePair<string, InputAction>("AIM", Aim));
         Rebindable.Add(new KeyValuePair<string, InputAction>("RELOAD", Reload));
+        Rebindable.Add(new KeyValuePair<string, InputAction>("GRENADE", Grenade));
         Rebindable.Add(new KeyValuePair<string, InputAction>("JUMP", Jump));
         Rebindable.Add(new KeyValuePair<string, InputAction>("SPRINT", Sprint));
         Rebindable.Add(new KeyValuePair<string, InputAction>("CROUCH", Crouch));

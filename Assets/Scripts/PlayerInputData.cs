@@ -11,6 +11,7 @@ public enum InputButton
     Fire = 4,
     Aim = 5,
     Reload = 6,
+    Grenade = 7,
 }
 
 // Everything a player sends the host each tick. The host runs the player's movement and weapon
@@ -30,7 +31,7 @@ public struct PlayerInputData : INetworkInput
 // two ticks is remembered until the next one, so quick presses are never lost.
 public class InputCollector
 {
-    private bool jump, crouch, slide, fire, reload;
+    private bool jump, crouch, slide, fire, reload, grenade;
     private int weaponSlot;
     // The body the last input was for: the first input for a new one asks for the starting form
     private Player inputBody;
@@ -45,6 +46,7 @@ public class InputCollector
         if (GameInput.Pressed(GameInput.Slide)) slide = true;
         if (GameInput.Pressed(GameInput.Fire)) fire = true;
         if (GameInput.Pressed(GameInput.Reload)) reload = true;
+        if (GameInput.Pressed(GameInput.Grenade)) grenade = true;
 
         Weapon weapon = local.GetComponent<Weapon>();
         if (weapon == null) return;
@@ -74,6 +76,7 @@ public class InputCollector
         data.Buttons.Set(InputButton.Fire, fire || GameInput.Held(GameInput.Fire));
         data.Buttons.Set(InputButton.Aim, GameInput.Held(GameInput.Aim));
         data.Buttons.Set(InputButton.Reload, reload);
+        data.Buttons.Set(InputButton.Grenade, grenade);
         // A new body (just spawned) starts in the form picked in the settings, unless a form was
         // just picked by hand
         if (local != inputBody)
@@ -97,7 +100,7 @@ public class InputCollector
 
     private void Clear()
     {
-        jump = crouch = slide = fire = reload = false;
+        jump = crouch = slide = fire = reload = grenade = false;
         weaponSlot = 0;
     }
 }

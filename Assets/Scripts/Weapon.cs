@@ -118,6 +118,11 @@ public class Weapon : NetworkBehaviour
     // is the starting form picked in the settings, and happens instantly.
     [Networked] private TickTimer StartingFormWindow { get; set; }
     [Networked] private NetworkBool HasChangedForm { get; set; }
+    // Plasma grenades carried (see PlasmaGrenadeRules.MaxCarried), how many this body has thrown (each
+    // throw's number, to tell them apart), and the moment after a throw when the gun can't fire
+    [Networked] private int Grenades { get; set; }
+    [Networked] private int GrenadesThrown { get; set; }
+    [Networked] private TickTimer ThrowTimer { get; set; }
 
     #endregion
 
@@ -128,6 +133,8 @@ public class Weapon : NetworkBehaviour
         player = GetComponent<Player>();
         look = GetComponent<Look>();
         if (loadout.Length > MaxGuns) Debug.LogError($"Weapon supports at most {MaxGuns} guns");
+        // Grenades bounce off whatever bullets hit
+        PlasmaGrenade.SetWorldMask(canBeShot.value);
     }
 
     public override void Spawned()
@@ -136,6 +143,7 @@ public class Weapon : NetworkBehaviour
         {
             Energy = maxEnergy;
             Equipped = DefaultSlot;
+            Grenades = PlasmaGrenadeRules.MaxCarried;
             StartingFormWindow = TickTimer.CreateFromSeconds(Runner, StartingFormSeconds);
         }
 
@@ -171,6 +179,7 @@ public class Weapon : NetworkBehaviour
             GameObject dot = GameObject.Find("HUD/Crosshair/Dot");
             crosshairDot = dot != null ? dot.GetComponent<Graphic>() : null;
             SetCrosshairAlpha(1f);
+            BuildGrenadeIndicator();
         }
 
         ShowGun(Equipped);
@@ -222,6 +231,7 @@ public class Weapon : NetworkBehaviour
             MorphTimer = startingForm ? TickTimer.None : TickTimer.CreateFromSeconds(Runner, morphTime);
         }
         if (MorphTimer.Expired(Runner)) MorphTimer = TickTimer.None;
+        if (ThrowTimer.Expired(Runner)) ThrowTimer = TickTimer.None;
 
         Gun gun = loadout[Equipped];
 
@@ -246,8 +256,14 @@ public class Weapon : NetworkBehaviour
                 else BurstLeft = 0;
             }
         }
-        else if (!ReloadTimer.IsRunning && !MorphTimer.IsRunning)
+        else if (!ReloadTimer.IsRunning && !MorphTimer.IsRunning && !ThrowTimer.IsRunning)
         {
+            if (pressed.IsSet(InputButton.Grenade) && Grenades > 0)
+            {
+                ThrowGrenade(input);
+                return;
+            }
+
             bool fireInput = gun.burst == 1 ? input.Buttons.IsSet(InputButton.Fire) : pressed.IsSet(InputButton.Fire);
 
             if (fireInput && FireCooldown.ExpiredOrNotRunning(Runner))
@@ -294,17 +310,29 @@ public class Weapon : NetworkBehaviour
     // How full the energy is, 0 to 1 (bots use it to decide when to swap the cell)
     public float EnergyFraction => Object != null && Object.IsValid && maxEnergy > 0f ? Energy / maxEnergy : 1f;
 
-    // Whether an ammo box would do anything: the energy isn't full
+    // Plasma grenades carried
+    public int GrenadeCount => Object != null && Object.IsValid ? Grenades : 0;
+
+    // Whether an ammo box would do anything: the energy isn't full, or a grenade has been used
     public bool NeedsAmmo()
     {
-        return Energy < maxEnergy;
+        return Energy < maxEnergy || Grenades < PlasmaGrenadeRules.MaxCarried;
     }
 
-    // Host only: an ammo box was picked up. It fills the energy, and ends a cell swap in progress.
+    // Host only: an ammo box was picked up. It fills the energy, gives back a used grenade, and ends
+    // a cell swap in progress.
     public void AddAmmoPickup()
     {
         Energy = maxEnergy;
+        Grenades = PlasmaGrenadeRules.MaxCarried;
         ReloadTimer = TickTimer.None;
+    }
+
+    // Host only: a grenade this player threw hurt someone. Hit marker and sound, like a shot.
+    public void ConfirmHit(bool killed)
+    {
+        if (Object == null || !Object.IsValid) return;
+        RPC_HitConfirm(false, killed);
     }
 
     public void RefreshAmmo(Text text)
@@ -318,6 +346,7 @@ public class Weapon : NetworkBehaviour
         int full = GunEnergy.ShotsLeft(maxEnergy, gun.energyPerShot);
         text.supportRichText = true;
         text.text = shots.ToString("d2") + $"<size={Mathf.RoundToInt(text.fontSize * 0.55f)}><color={UITheme.Hex(UITheme.MutedText)}> / " + full.ToString("d2") + "</color></size>";
+        RefreshGrenadeIndicator();
     }
 
     // How fast the player can move with the current gun, relative to normal
@@ -351,6 +380,44 @@ public class Weapon : NetworkBehaviour
         Fire(input);
         BurstLeft--;
         BurstTimer = BurstLeft > 0 ? TickTimer.CreateFromSeconds(Runner, gun.fireRate) : TickTimer.None;
+    }
+
+    // Throws a plasma grenade from the left hand, in an arc along the view. The host flies it and
+    // decides what it sticks to (Manager.Grenades); the thrower's own game shows it straight away.
+    void ThrowGrenade(PlayerInputData input)
+    {
+        Grenades--;
+        GrenadesThrown++;
+        ThrowTimer = TickTimer.CreateFromSeconds(Runner, PlasmaGrenadeRules.ThrowTime);
+        BurstLeft = 0;
+        // Throwing gives up spawn protection, like shooting
+        player.EndSpawnProtection();
+
+        if (!Runner.IsForward || Manager.Instance == null) return;
+
+        Quaternion view = Quaternion.Euler(-input.Pitch, input.Yaw, 0f);
+        Vector3 eye = player.EyePosition;
+        // Out of the left hand, a little below and in front of the eyes; from the eyes if that's in a wall
+        Vector3 hand = eye + view * new Vector3(-0.25f, -0.2f, 0.45f);
+        if (Physics.Linecast(eye, hand, PlasmaGrenade.WorldMask, QueryTriggerInteraction.Ignore)) hand = eye;
+        Vector3 velocity = PlasmaGrenadeRules.ThrowVelocity(view * Vector3.forward, player.CurrentVelocity);
+        int body = (int)Object.Id.Raw;
+
+        if (HasStateAuthority) Manager.Instance.ThrowGrenade(player.Owner, player.ActorId, body, GrenadesThrown, hand, velocity);
+        else if (HasInputAuthority) Manager.Instance.PredictGrenade(body, GrenadesThrown, player.ActorId, hand, velocity);
+    }
+
+    // How far through a grenade throw this player is (0 to 1), or -1 when not throwing. For the
+    // hand-orb's throwing swing (DroneHands).
+    public float ThrowProgress
+    {
+        get
+        {
+            if (Object == null || !Object.IsValid || !ThrowTimer.IsRunning) return -1f;
+            float? remaining = ThrowTimer.RemainingTime(Runner);
+            if (remaining == null) return -1f;
+            return Mathf.Clamp01(1f - remaining.Value / PlasmaGrenadeRules.ThrowTime);
+        }
     }
 
     float CurrentBloom()
@@ -772,6 +839,50 @@ public class Weapon : NetworkBehaviour
         line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         line.receiveShadows = false;
         return line;
+    }
+
+    // A glowing dot above the ammo count in the player's colour while they carry a grenade, an empty
+    // ring when they don't. The HUD outlives the body, so it's made once and reused.
+    Image grenadeDot;
+    Text grenadeLabel;
+
+    void BuildGrenadeIndicator()
+    {
+        GameObject ammo = GameObject.Find("HUD/Ammo");
+        if (ammo == null) return;
+
+        Transform existing = ammo.transform.Find("Grenade");
+        RectTransform holder;
+        if (existing != null) holder = (RectTransform)existing;
+        else
+        {
+            holder = new GameObject("Grenade", typeof(RectTransform)).GetComponent<RectTransform>();
+            holder.SetParent(ammo.transform, false);
+            UITheme.Place(holder, new Vector2(1f, 0f), new Vector2(0f, 64f), new Vector2(220f, 26f));
+
+            Image dot = UITheme.NewImage("Dot", holder, Color.white, 10f);
+            UITheme.Place(dot.rectTransform, new Vector2(1f, 0.5f), Vector2.zero, new Vector2(20f, 20f));
+            UITheme.AddShadow(dot);
+
+            Text label = UITheme.NewText("Label", holder, 16, UITheme.MutedText, TextAnchor.MiddleRight);
+            label.rectTransform.offsetMax = new Vector2(-28f, 0f);
+            label.text = "PLASMA";
+            UITheme.AddShadow(label);
+        }
+        grenadeDot = holder.Find("Dot")?.GetComponent<Image>();
+        grenadeLabel = holder.Find("Label")?.GetComponent<Text>();
+        RefreshGrenadeIndicator();
+    }
+
+    void RefreshGrenadeIndicator()
+    {
+        if (grenadeDot == null) return;
+        bool has = GrenadeCount > 0;
+        Color c = ShotColor();
+        // Breathes gently while ready, like the grenade itself
+        float pulse = 0.85f + 0.15f * Mathf.Sin(Time.time * 6f);
+        grenadeDot.color = has ? new Color(c.r * pulse, c.g * pulse, c.b * pulse, 1f) : new Color(1f, 1f, 1f, 0.15f);
+        if (grenadeLabel != null) grenadeLabel.color = has ? UITheme.MutedText : new Color(1f, 1f, 1f, 0.25f);
     }
 
     void SetCrosshairAlpha(float alpha)

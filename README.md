@@ -32,7 +32,8 @@ To play together, each player runs the game, picks a username and either creates
 - Health regeneration after 5 seconds without taking damage
 - Every player wears a cap: the team colour in Team Deathmatch, otherwise a colour of their own. Levelling up unlocks new ones: a backwards cap (level 2), beanie (4), bucket hat (6), hard hat (9), propeller beanie (12, the propeller spins faster as you move), top hat (16), viking helmet (20), crown (25) and halo (30). Pick yours in **Customize**, in the main menu or the pause menu. Each is made of its own materials, with their own shine and fine surface detail: cotton twill caps, a knitted beanie, a felt top hat with a satin band, a glossy plastic hard hat, a hammered metal viking helmet, a metal crown and a glowing halo. It's always in your (or your team's) colour, and never changes where you can be hit: only the head counts. Bots wear one of the first few
 - Physics ragdolls, with X-es for eyes and a broken neck that sparks and crackles as it shorts out: the body is thrown along the killing bullet's path, and the head (cap and all) comes off and flies separately, harder on a headshot
-- Players drop an ammo box when they die; walk over it to refill your gun's energy
+- A sticky plasma grenade: everyone spawns with one (and can carry only one). It's a ball of plasma glowing in the thrower's colour (the team colour in Team Deathmatch), held in a small dark claw, thrown from the free hand-orb in a floaty arc with a glowing tail. It sticks only to enemies: walls and floors it bounces off, going off 3 seconds after the throw wherever it ended up. Stuck to someone, it fizzles, pulses faster and faster and swells for 1.5 seconds, then always kills them; everyone else nearby (including the thrower, but not teammates) takes damage by distance unless a wall shields them, and nearby glass shatters. Both sides get a STUCK! warning. Bots throw them too, at enemies in the middle distance
+- Players drop an ammo box when they die; walk over it to refill your gun's energy and get a used grenade back
 - Scoreboard with kills, deaths and ping
 - Text chat
 - Settings menu, in the main menu and the pause menu: field of view, aim sensitivity, volume, graphics quality and key rebinding
@@ -58,6 +59,7 @@ Keyboard and mouse controls can be changed in **Settings**, from the main menu o
 | Shoot | Left mouse button | Right trigger |
 | Aim | Right mouse button | Left trigger |
 | Swap energy cell | `R` | X / Square |
+| Throw plasma grenade | `G` | Y / Triangle |
 | Change gun form | `1` shotgun, `2` machine gun, `3` pistol, `4` sniper / mouse wheel (wraps round) | Bumpers (wrap round) |
 | Sprint | `Shift` | Left stick press |
 | Jump | `Space` | A / Cross |
@@ -75,7 +77,7 @@ Hold the device sideways. On phones that allow it (Android), the game goes fulls
 - **Look:** drag anywhere else on the screen. Dragging on the **FIRE** button turns the view too, so you can shoot and aim with one thumb.
 - **AIM** is a toggle: tap to aim down sights, tap again to stop.
 - **CROUCH** crouches when standing, and slides when sprinting.
-- **JUMP**, **RELOAD** and **SWAP** (next gun form; after the sniper it goes back to the shotgun) are buttons on the right; **SCORE** (hold) and **II** (pause) are at the top.
+- **JUMP**, **RELOAD**, **NADE** (plasma grenade) and **SWAP** (next gun form; after the sniper it goes back to the shotgun) are buttons on the right; **SCORE** (hold) and **II** (pause) are at the top.
 - A keyboard, mouse or trackpad connected to a tablet works as on a computer. Using the mouse or trackpad hides the on-screen controls, and touching the screen brings them back. The keyboard works alongside them, including **Esc** to pause and **T** to chat.
 - Without a keyboard, chat isn't available.
 
