@@ -38,6 +38,9 @@ public class FeedbackUI : MonoBehaviour
     private Transform viewer;
 
     private Text deathText;
+    // The death screen's second line: the weapon, and on a cap shot the cap logo and CAPSHOT
+    private Text deathWeapon;
+    private Image deathIcon;
     private Text protectionText;
     private Coroutine deathRoutine;
 
@@ -92,8 +95,16 @@ public class FeedbackUI : MonoBehaviour
 
         // "Killed by" text in the middle of the screen while waiting to respawn
         deathText = NewText("Death Text", root, 32, TextAnchor.MiddleCenter);
-        Center(deathText.rectTransform, new Vector2(900f, 120f));
-        deathText.rectTransform.anchoredPosition = new Vector2(0f, 60f);
+        Center(deathText.rectTransform, new Vector2(900f, 44f));
+        deathText.rectTransform.anchoredPosition = new Vector2(0f, 76f);
+        // The weapon line under it, with room for the cap logo on its left
+        deathWeapon = NewText("Weapon", deathText.transform, 22, TextAnchor.MiddleCenter);
+        Center(deathWeapon.rectTransform, new Vector2(900f, 30f));
+        deathWeapon.rectTransform.anchoredPosition = new Vector2(0f, -36f);
+        deathIcon = NewImage("Capshot Icon", deathText.transform, Color.white);
+        deathIcon.preserveAspect = true;
+        Center(deathIcon.rectTransform, new Vector2(DeathIconSize, DeathIconSize));
+        deathIcon.gameObject.SetActive(false);
         deathText.gameObject.SetActive(false);
 
         // Spawn protection countdown under the crosshair
@@ -184,7 +195,23 @@ public class FeedbackUI : MonoBehaviour
         FeedbackUI ui = Instance;
 
         string text = string.IsNullOrEmpty(killerName) ? "YOU DIED" : "KILLED BY <color=#ff5a4a>" + killerName + "</color>";
-        if (!string.IsNullOrEmpty(weaponName)) text += "\n<size=22>" + weaponName.ToUpper() + (headshot ? "  ·  CAPSHOT" : "") + "</size>";
+        string weapon = string.IsNullOrEmpty(weaponName) ? "" : weaponName.ToUpper();
+        // A cap shot: "(cap logo) SNIPER · CAPSHOT", the CAPSHOT in the logo's gold
+        if (headshot) weapon = (weapon.Length > 0 ? weapon + "  ·  " : "") + $"<color={CapshotColor}>CAPSHOT</color>";
+        ui.deathWeapon.text = weapon;
+
+        Sprite icon = headshot ? CapshotIcon : null;
+        ui.deathIcon.gameObject.SetActive(icon != null);
+        ui.deathWeapon.rectTransform.anchoredPosition = new Vector2(0f, -36f);
+        if (icon != null)
+        {
+            // Logo and text centred together as one group
+            ui.deathIcon.sprite = icon;
+            float width = ui.deathWeapon.preferredWidth;
+            float group = DeathIconSize + IconGap + width;
+            ui.deathIcon.rectTransform.anchoredPosition = new Vector2(-group / 2f + DeathIconSize / 2f, -36f);
+            ui.deathWeapon.rectTransform.anchoredPosition = new Vector2(group / 2f - width / 2f, -36f);
+        }
 
         if (ui.deathRoutine != null) ui.StopCoroutine(ui.deathRoutine);
         ui.deathRoutine = ui.StartCoroutine(ui.DeathText(text, duration));
@@ -201,11 +228,15 @@ public class FeedbackUI : MonoBehaviour
         if (show) text.text = "SPAWN PROTECTION  " + secondsLeft.ToString("0.0");
     }
 
-    // The cap logo (the game's icon), shown in the kill feed on a cap shot
+    // The cap logo (the game's icon), shown with a cap shot in the kill feed, on the death screen
+    // and in the XP popup. Null if it's missing, and then they show without it.
     private static Sprite capshotIcon;
+    public static Sprite CapshotIcon => capshotIcon != null ? capshotIcon : (capshotIcon = Resources.Load<Sprite>("UI/CapshotIcon"));
     private const float CapshotIconSize = 26f;
+    private const float DeathIconSize = 30f;
+    private const float IconGap = 6f;
     // The gold of the logo's sparkle
-    private const string CapshotColor = "#ffcc4d";
+    public const string CapshotColor = "#ffcc4d";
 
     // In team mode, killerColor and victimColor give each name its team colour.
     // A headshot is a cap shot: "KILLER  (cap logo) [SNIPER · CAPSHOT]  VICTIM", in gold.
@@ -228,8 +259,8 @@ public class FeedbackUI : MonoBehaviour
         string weaponPart = headshot ? $"<color={CapshotColor}>[{weapon} · CAPSHOT]</color>" : $"<color=#bbbbbb>[{weapon}]</color>";
         string victimPart = $"<color={victimColor}>{victim}</color>";
 
-        if (headshot && capshotIcon == null) capshotIcon = Resources.Load<Sprite>("UI/CapshotIcon");
-        if (!headshot || capshotIcon == null)
+        Sprite iconSprite = headshot ? CapshotIcon : null;
+        if (iconSprite == null)
         {
             Text line = ui.NewText("Text", rect, 20, TextAnchor.MiddleRight);
             UITheme.Stretch(line.rectTransform);
@@ -241,10 +272,10 @@ public class FeedbackUI : MonoBehaviour
             Text right = ui.NewText("Text", rect, 20, TextAnchor.MiddleRight);
             UITheme.Stretch(right.rectTransform);
             right.text = weaponPart + "  " + victimPart;
-            float iconRight = right.preferredWidth + 6f;
+            float iconRight = right.preferredWidth + IconGap;
 
             Image icon = ui.NewImage("Capshot Icon", rect, Color.white);
-            icon.sprite = capshotIcon;
+            icon.sprite = iconSprite;
             icon.preserveAspect = true;
             RectTransform iconRect = icon.rectTransform;
             iconRect.anchorMin = iconRect.anchorMax = iconRect.pivot = new Vector2(1f, 0.5f);
@@ -253,7 +284,7 @@ public class FeedbackUI : MonoBehaviour
 
             Text left = ui.NewText("Killer", rect, 20, TextAnchor.MiddleRight);
             UITheme.Stretch(left.rectTransform);
-            left.rectTransform.offsetMax = new Vector2(-(iconRight + CapshotIconSize + 6f), 0f);
+            left.rectTransform.offsetMax = new Vector2(-(iconRight + CapshotIconSize + IconGap), 0f);
             left.text = killerPart;
         }
 
