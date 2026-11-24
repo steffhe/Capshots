@@ -27,6 +27,16 @@ public static class BotNavigation
     private static string builtScene;
     private static int agentTypeId;
 
+    // What the mesh was built from, kept so it can be updated when scenery goes away (glass shot out)
+    private static NavMeshData data;
+    private static NavMeshBuildSettings builtSettings;
+    private static Bounds builtBounds;
+    private static List<NavMeshBuildSource> builtSources;
+    private static readonly HashSet<Component> removed = new HashSet<Component>();
+    private static AsyncOperation updating;
+
+    // Ready once the first build is done. An update afterwards doesn't stop bots using the mesh: the
+    // tiles it rebuilds swap in when they're finished.
     public static bool Ready => instance.valid && (building == null || building.isDone);
 
     // Starts building the map's navigation mesh, if it isn't built (or building) already
@@ -57,10 +67,32 @@ public static class BotNavigation
         settings.voxelSize = VoxelSize;
         agentTypeId = settings.agentTypeID;
 
-        NavMeshData data = new NavMeshData(settings.agentTypeID);
+        data = new NavMeshData(settings.agentTypeID);
         instance = NavMesh.AddNavMeshData(data);
         building = NavMeshBuilder.UpdateNavMeshDataAsync(data, settings, sources, bounds);
         builtScene = scene;
+        builtSettings = settings;
+        builtBounds = bounds;
+        builtSources = sources;
+    }
+
+    // Something solid is gone (a glass pane shot out): the mesh is updated to walk through where it
+    // was. Batched: Tick starts one update for everything removed since the last one.
+    public static void RemoveObstacle(Component solid)
+    {
+        if (builtSources == null || solid == null) return;
+        removed.Add(solid);
+    }
+
+    // Host, once a tick: starts an update for removed scenery, when no build or update is running.
+    // Only the tiles whose sources changed are rebuilt, so it's quick.
+    public static void Tick()
+    {
+        if (removed.Count == 0 || !instance.valid || data == null) return;
+        if ((building != null && !building.isDone) || (updating != null && !updating.isDone)) return;
+        builtSources.RemoveAll(s => s.component != null && removed.Contains(s.component));
+        removed.Clear();
+        updating = NavMeshBuilder.UpdateNavMeshDataAsync(data, builtSettings, builtSources, builtBounds);
     }
 
     // Outside the editor, the builder can't read a mesh collider's mesh unless the model was imported
@@ -89,7 +121,11 @@ public static class BotNavigation
         if (instance.valid) instance.Remove();
         instance = default;
         building = null;
+        updating = null;
         builtScene = null;
+        data = null;
+        builtSources = null;
+        removed.Clear();
     }
 
     // The spawn points' area, widened by a margin and cut down to the solid things actually there

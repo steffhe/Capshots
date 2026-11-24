@@ -148,6 +148,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         if (properties.TryGetValue("mode", out value)) mode = (MatchMode)(int)value;
         if (properties.TryGetValue("matchlength", out value)) matchlength = (int)value;
         if (properties.TryGetValue("bots", out value)) botSetting = (int)value;
+        if (properties.TryGetValue("botskill", out value)) BotSkill = Mathf.Clamp((int)value, BotLogic.Easy, BotLogic.Hard);
         // A match needs some way to end
         if (!HasKillLimit && !HasTimeLimit) killcount = 20;
     }
@@ -418,6 +419,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
         SpawnWaitingPlayers();
         CheckPickups();
+        BotNavigation.Tick();
 
         // The match is over and everyone has cut away to the results: remove the bodies
         if (despawnTimer.Expired(Runner))

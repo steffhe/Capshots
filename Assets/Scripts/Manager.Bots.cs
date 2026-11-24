@@ -19,6 +19,8 @@ public partial class Manager
 
     // How many bots the host asked for (the "bots" room setting)
     private int botSetting;
+    // How well they play (the "botskill" room setting, BotLogic.Easy to Hard)
+    public int BotSkill { get; private set; } = BotLogic.Normal;
     // Host only: the bots in the match, oldest first
     private readonly List<PlayerRef> bots = new List<PlayerRef>();
     private int botsAdded;

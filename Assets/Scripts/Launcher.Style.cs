@@ -335,7 +335,7 @@ public partial class Launcher
         {
             Button button = child.GetComponent<Button>();
             Text label = button != null ? button.GetComponentInChildren<Text>() : null;
-            if (label != null && (label == mapValue || label == modeValue || label == botsValue || label == winByValue))
+            if (label != null && (label == mapValue || label == modeValue || label == botsValue || label == botSkillValue || label == winByValue))
             {
                 UITheme.StyleSelector(button);
             }

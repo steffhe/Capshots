@@ -49,6 +49,9 @@ public partial class Launcher : MonoBehaviour
     private const int MaxBots = 7;
     private int currentbots = 0;
     private Text botsValue;
+    // How well the bots play (BotLogic.Easy to Hard)
+    private int currentBotSkill = BotLogic.Normal;
+    private Text botSkillValue;
 
     // How the match is won: the first to a number of kills, or the most kills when the time runs out.
     // The kills slider row sets whichever it is, and each keeps its own value.
@@ -67,6 +70,7 @@ public partial class Launcher : MonoBehaviour
         usernameField.text = myProfile.username;
         CreateModeButton();
         CreateBotsButton();
+        CreateBotSkillButton();
         CreateWinByButton();
         // Each goes in just above Quit, so they read in this order: Customize, Settings, Quit
         CreateColumnButton("CUSTOMIZE", () => { if (customizeMenu != null) customizeMenu.Open(); });
@@ -164,6 +168,7 @@ public partial class Launcher : MonoBehaviour
         properties.Add("mapname", maps[currentmap].name);
         properties.Add("mode", currentmode);
         properties.Add("bots", currentbots);
+        properties.Add("botskill", currentBotSkill);
         return properties;
     }
 
@@ -223,6 +228,20 @@ public partial class Launcher : MonoBehaviour
     private void RefreshBotsText()
     {
         if (botsValue != null) botsValue.text = UITheme.Option("BOTS", currentbots == 0 ? "OFF" : currentbots.ToString());
+    }
+
+    public void ChangeBotSkill()
+    {
+        OptionPicker.Open(ButtonOf(botSkillValue), BotLogic.SkillNames, currentBotSkill, i =>
+        {
+            currentBotSkill = i;
+            RefreshBotSkillText();
+        });
+    }
+
+    private void RefreshBotSkillText()
+    {
+        if (botSkillValue != null) botSkillValue.text = UITheme.Option("BOT SKILL", BotLogic.SkillNames[currentBotSkill]);
     }
 
     public void ChangeWinBy()
@@ -340,10 +359,18 @@ public partial class Launcher : MonoBehaviour
         RefreshBotsText();
     }
 
+    // And a "Bot Skill" button under that
+    private void CreateBotSkillButton()
+    {
+        botSkillValue = CopyMapRow(botsValue != null ? botsValue : mapValue, "Bot Skill", ChangeBotSkill);
+        RefreshBotSkillText();
+    }
+
     // And a "Win By" button under that
     private void CreateWinByButton()
     {
-        winByValue = CopyMapRow(botsValue != null ? botsValue : mapValue, "Win By", ChangeWinBy);
+        Text above = botSkillValue != null ? botSkillValue : botsValue;
+        winByValue = CopyMapRow(above != null ? above : mapValue, "Win By", ChangeWinBy);
         RefreshWinBy();
     }
 
