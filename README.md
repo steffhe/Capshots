@@ -28,7 +28,7 @@ To play together, each player runs the game, picks a username and either creates
 - Hovering players: every player is a little drone with a capsule body, a round head with a glowing face screen and blinking eyes, a thruster and two floating hand-orbs that hold the gun, in their own (or their team's) colour; it floats, bobs and leans into its movement over a glowing disc, and the gun drifts instead of bobbing with footsteps
 - Weapon balance: damage falls off over distance, per-weapon headshot multipliers, heavier guns and aiming slow you down, and shots spread more while moving or jumping
 - Sprinting, jumping, crouching and sliding
-- Smarter spawns (away from enemies and out of their sight) and 3 seconds of spawn protection, which ends early if you shoot
+- Smarter spawns (away from enemies and out of their sight) and 3 seconds of spawn protection (other players see you semi-transparent), which ends early if you shoot
 - Health regeneration after 5 seconds without taking damage
 - Every player wears a cap: the team colour in Team Deathmatch, otherwise a colour of their own
 - Physics ragdolls: the body is thrown along the killing bullet's path, and the head (cap and all) comes off and flies separately, harder on a headshot

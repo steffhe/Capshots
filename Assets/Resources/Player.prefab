@@ -490,7 +490,7 @@ MonoBehaviour:
     ysens: 150
   playerUsername: {fileID: 92553370870592266}
   spawnProtectionTime: 3
-  protectionBlinkRate: 8
+  protectionAlpha: 0.35
   regenDelay: 5
   regenPerSecond: 150
   teamTintStrength: 0.6

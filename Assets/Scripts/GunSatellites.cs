@@ -207,6 +207,8 @@ public class GunSatellites : MonoBehaviour
     private void Set(Renderer r, Color c, Color emission)
     {
         r.GetPropertyBlock(block);
+        // Keep any see-through-ness set on it (Player's spawn protection)
+        if (block.HasColor("_BaseColor")) c.a = block.GetColor("_BaseColor").a;
         block.SetColor("_BaseColor", c);
         block.SetColor("_Color", c);
         block.SetColor("_EmissionColor", emission);

@@ -87,10 +87,19 @@ public class Player : NetworkBehaviour
     [Header("Spawn protection")]
     // Seconds a freshly spawned player can't be damaged. Firing ends it early.
     public float spawnProtectionTime = 3f;
-    public float protectionBlinkRate = 8f;
+    // How see-through other players look while protected (0 invisible, 1 solid)
+    [Range(0f, 1f)] public float protectionAlpha = 0.35f;
 
-    private Renderer[] blinkRenderers;
-    private bool[] blinkRenderersEnabled;
+    // While protected: each body part drawn see-through, with what to put back afterwards
+    private class GhostedRenderer
+    {
+        public Material[] materials;
+        public UnityEngine.Rendering.ShadowCastingMode shadows;
+    }
+    private Dictionary<Renderer, GhostedRenderer> ghosted;
+    private GameObject ghostedGun;
+    private MaterialPropertyBlock ghostBlock;
+    private static Material ghostMaterial;
 
     [Header("Health regeneration")]
     // Seconds without taking damage before health starts coming back
@@ -522,7 +531,7 @@ public class Player : NetworkBehaviour
         if (!IsLocal)
         {
             RefreshMultiplayerState();
-            UpdateProtectionBlink();
+            UpdateProtectionGhost();
             RefreshTeamVisuals();
             return;
         }
@@ -880,34 +889,91 @@ public class Player : NetworkBehaviour
         return transform.position;
     }
 
-    // Other players see a protected player blink
-    private void UpdateProtectionBlink()
+    // Other players see a protected player see-through. Each body part's material is swapped for a
+    // transparent one (Resources/ProtectionGhost, an asset so builds keep its shader variant) and
+    // given the part's own colour and glow at protectionAlpha. Parts drawn with another shader
+    // (effects that manage themselves) and text are left alone.
+    private void UpdateProtectionGhost()
     {
-        if (IsProtected)
+        if (!IsProtected)
         {
-            if (blinkRenderers == null)
-            {
-                // Only meshes: tracers and effects manage their own visibility
-                blinkRenderers = System.Array.FindAll(GetComponentsInChildren<Renderer>(), r => r is MeshRenderer || r is SkinnedMeshRenderer);
-                blinkRenderersEnabled = new bool[blinkRenderers.Length];
-                for (int i = 0; i < blinkRenderers.Length; i++) blinkRenderersEnabled[i] = blinkRenderers[i].enabled;
-            }
+            if (ghosted != null) EndGhost();
+            return;
+        }
 
-            bool visible = Mathf.Repeat(Time.time * protectionBlinkRate, 1f) < 0.5f;
-            for (int i = 0; i < blinkRenderers.Length; i++)
-            {
-                if (blinkRenderers[i] != null && blinkRenderersEnabled[i]) blinkRenderers[i].enabled = visible;
-            }
-        }
-        else if (blinkRenderers != null)
+        if (ghostMaterial == null) ghostMaterial = Resources.Load<Material>("ProtectionGhost");
+        if (ghostMaterial == null) return;
+        if (ghostBlock == null) ghostBlock = new MaterialPropertyBlock();
+
+        // The first frame, and again whenever the gun model changes (a new form brings new parts)
+        GameObject gun = weapon != null ? weapon.GunModel : null;
+        if (ghosted == null || gun != ghostedGun)
         {
-            for (int i = 0; i < blinkRenderers.Length; i++)
+            if (ghosted == null) ghosted = new Dictionary<Renderer, GhostedRenderer>();
+            ghostedGun = gun;
+            foreach (Renderer r in GetComponentsInChildren<Renderer>(true))
             {
-                if (blinkRenderers[i] != null) blinkRenderers[i].enabled = blinkRenderersEnabled[i];
+                if (ghosted.ContainsKey(r) || !CanGhost(r)) continue;
+                ghosted[r] = new GhostedRenderer { materials = r.sharedMaterials, shadows = r.shadowCastingMode };
+                Material[] ghosts = new Material[r.sharedMaterials.Length];
+                for (int i = 0; i < ghosts.Length; i++) ghosts[i] = ghostMaterial;
+                r.sharedMaterials = ghosts;
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             }
-            blinkRenderers = null;
-            blinkRenderersEnabled = null;
         }
+
+        // Every frame, as other code may repaint a part (team colours, the gun's glow) meanwhile
+        List<Renderer> gone = null;
+        foreach (KeyValuePair<Renderer, GhostedRenderer> entry in ghosted)
+        {
+            if (entry.Key == null) { if (gone == null) gone = new List<Renderer>(); gone.Add(entry.Key); continue; }
+            SetGhostAlpha(entry.Key, entry.Value.materials[0], protectionAlpha);
+        }
+        if (gone != null) foreach (Renderer r in gone) ghosted.Remove(r);
+    }
+
+    private static bool CanGhost(Renderer r)
+    {
+        if (!(r is MeshRenderer || r is SkinnedMeshRenderer)) return false;
+        if (r.GetComponent<TextMeshPro>() != null) return false;
+        Material[] materials = r.sharedMaterials;
+        if (materials.Length == 0) return false;
+        foreach (Material m in materials)
+        {
+            if (m == null || m.shader != ghostMaterial.shader || m.renderQueue >= 3000) return false;
+        }
+        return true;
+    }
+
+    // The part's own colour and glow (from its property block, else its material) at this alpha
+    private void SetGhostAlpha(Renderer r, Material original, float alpha)
+    {
+        r.GetPropertyBlock(ghostBlock);
+        Color color = ghostBlock.HasColor("_BaseColor") ? ghostBlock.GetColor("_BaseColor")
+            : original != null && original.HasProperty("_BaseColor") ? original.GetColor("_BaseColor") : Color.white;
+        color.a = alpha;
+        ghostBlock.SetColor("_BaseColor", color);
+        ghostBlock.SetColor("_Color", color);
+        if (!ghostBlock.HasColor("_EmissionColor"))
+        {
+            bool glows = original != null && original.IsKeywordEnabled("_EMISSION") && original.HasProperty("_EmissionColor");
+            ghostBlock.SetColor("_EmissionColor", glows ? original.GetColor("_EmissionColor") : Color.black);
+        }
+        r.SetPropertyBlock(ghostBlock);
+    }
+
+    private void EndGhost()
+    {
+        foreach (KeyValuePair<Renderer, GhostedRenderer> entry in ghosted)
+        {
+            Renderer r = entry.Key;
+            if (r == null) continue;
+            r.sharedMaterials = entry.Value.materials;
+            r.shadowCastingMode = entry.Value.shadows;
+            SetGhostAlpha(r, entry.Value.materials[0], 1f);
+        }
+        ghosted = null;
+        ghostedGun = null;
     }
 
     // The body of the given player or bot, or null if they're dead or gone
