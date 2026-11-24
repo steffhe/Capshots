@@ -305,11 +305,14 @@ public partial class Manager
         }
     }
 
-    // XP earned this match, with the level bar filling up (and rolling over on a level up)
+    // XP earned this match, with the level bar filling up (and rolling over on a level up), and any
+    // hats the new level unlocked
     private void BuildXpPanel(Transform parent)
     {
-        RectTransform panel = NewLayer("XP", new Vector2(0.5f, 0f), new Vector2(560f, 92f), parent);
-        panel.anchoredPosition = new Vector2(0f, 84f);
+        string newHats = Manager.NewHatsText(xpStartLevel, Launcher.myProfile.level);
+        RectTransform panel = NewLayer("XP", new Vector2(0.5f, 0f), new Vector2(560f, newHats != null ? 124f : 92f), parent);
+        // A row taller for the new hats, grown downwards (towards the countdown) to keep clear of the leaderboard
+        panel.anchoredPosition = new Vector2(0f, newHats != null ? 56f : 84f);
         Image bg = UITheme.NewImage("Background", panel, UITheme.Panel, 10f);
         UITheme.Stretch(bg.rectTransform);
 
@@ -333,10 +336,22 @@ public partial class Manager
         UITheme.Row(progress.rectTransform, 66f, 22f);
         progress.rectTransform.offsetMax = new Vector2(-22f, progress.rectTransform.offsetMax.y);
 
-        StartCoroutine(FillXp(level, fill.rectTransform, progress));
+        Text hats = null;
+        if (newHats != null)
+        {
+            hats = UITheme.NewText("New Hats", panel, 18, UITheme.AccentText, TextAnchor.MiddleLeft);
+            UITheme.Row(hats.rectTransform, 92f, 24f);
+            hats.rectTransform.offsetMin = new Vector2(22f, hats.rectTransform.offsetMin.y);
+            hats.horizontalOverflow = HorizontalWrapMode.Overflow;
+            hats.text = newHats;
+            // Shown once the bar has filled up to the level that unlocks them
+            hats.enabled = false;
+        }
+
+        StartCoroutine(FillXp(level, fill.rectTransform, progress, hats));
     }
 
-    private IEnumerator FillXp(Text levelText, RectTransform fill, Text progress)
+    private IEnumerator FillXp(Text levelText, RectTransform fill, Text progress, Text newHats)
     {
         int level = xpStartLevel;
         float xp = xpStartXp;
@@ -376,6 +391,7 @@ public partial class Manager
         level = final.level;
         xp = final.xp;
         Draw();
+        if (newHats != null) newHats.enabled = true;
     }
 
     // Grey and a little darker, for the frozen moment at the end

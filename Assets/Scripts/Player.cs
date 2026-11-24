@@ -75,6 +75,8 @@ public class Player : NetworkBehaviour
     private bool wasCursorLocked;
 
     private PlayerCap[] caps = new PlayerCap[0];
+    // The hat the caps are (see Hats)
+    private int wornHat = -1;
     private DroneBody[] drones = new DroneBody[0];
     private DroneHands hands;
     private GunSatellites satellites;
@@ -288,8 +290,7 @@ public class Player : NetworkBehaviour
         baseFOV = GameSettings.Fov;
         ApplyCrouchVisuals(true);
 
-        // A cap on both heads (standing and crouching), after the layers above are set so it's drawn
-        // like the head: hidden from your own camera, visible to everyone else
+        // The player's colour (their team's in Team Deathmatch), for the body, hands, gun pieces and hat
         Color capColor = PlayerCap.ColorFor(ActorId);
         // The body is a little round drone (standing and crouching), on the same layers as the capsule and head
         bool teamMode = manager != null && manager.IsTeamMode;
@@ -302,11 +303,8 @@ public class Player : NetworkBehaviour
         if (hands == null) hands = DroneHands.Attach(this, capColor);
         // Pieces floating round the gun, arranged for its form
         if (satellites == null) satellites = GunSatellites.Attach(this, capColor);
-        caps = new PlayerCap[]
-        {
-            PlayerCap.Attach(standingColliderHead != null ? standingColliderHead.transform : null, capColor),
-            PlayerCap.Attach(crouchingColliderHead != null ? crouchingColliderHead.transform : null, capColor),
-        };
+        // A hat, after the layers above are set so it's drawn like the head
+        PutOnHat(WornHat());
 
         // The players float: the body hovers and leans, with a glow underneath. On the body's layer, so
         // the glow is hidden from your own camera like the rest of your body.
@@ -527,6 +525,7 @@ public class Player : NetworkBehaviour
 
         ApplyCrouchVisuals(false);
         RefreshNameTag();
+        RefreshHat();
 
         if (!IsLocal)
         {
@@ -805,6 +804,37 @@ public class Player : NetworkBehaviour
         foreach (DroneBody drone in drones) if (drone != null) drone.SetColor(teamColor, true);
         if (hands != null) hands.SetColor(teamColor);
         if (satellites != null) satellites.SetColor(teamColor);
+    }
+
+    // The hat this player wears: your own pick, or the one the host has for everyone else (bots included)
+    private int WornHat()
+    {
+        if (IsLocal && !IsBot) return GameSettings.Hat;
+        return manager != null ? manager.GetPlayerHat(ActorId) : Hats.Cap;
+    }
+
+    // Swaps the hat when it changes: a new pick in the pause menu, or the host's list arriving after
+    // this player spawned
+    private void RefreshHat()
+    {
+        int hat = WornHat();
+        if (hat != wornHat) PutOnHat(hat);
+    }
+
+    // A hat on both heads (standing and crouching), drawn like the head: hidden from your own camera,
+    // visible to everyone else
+    private void PutOnHat(int hat)
+    {
+        wornHat = hat;
+        foreach (PlayerCap cap in caps) if (cap != null) Destroy(cap.gameObject);
+        Color color = PlayerCap.ColorFor(ActorId);
+        caps = new PlayerCap[]
+        {
+            PlayerCap.Attach(standingColliderHead != null ? standingColliderHead.transform : null, color, false, hat),
+            PlayerCap.Attach(crouchingColliderHead != null ? crouchingColliderHead.transform : null, color, false, hat),
+        };
+        // See-through while spawn protected: look again for parts to ghost, so the new hat is too
+        ghostedGun = null;
     }
 
     // Your own hands (the only part of your body you see) take your team's colour in team mode, like

@@ -66,6 +66,8 @@ public partial class Manager
             Level = 1,
             Team = ChooseTeamForNewPlayer(),
             Ping = 0,
+            // One of the first few hats, so bots look like people who've played a little
+            Hat = (byte)Random.Range(0, Hats.BotHatCount),
         };
         Stats.Set(bot, stats);
         bots.Add(bot);
