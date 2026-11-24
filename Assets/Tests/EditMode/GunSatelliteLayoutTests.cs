@@ -1,14 +1,39 @@
 using NUnit.Framework;
 using UnityEngine;
+using Layout = GunSatelliteLayout;
 
 public class GunSatelliteLayoutTests
 {
-    private const int Count = 5;
-    // A pistol-sized gun: 6 cm wide, 20 cm tall with the grip, 30 cm long, muzzle at the front top
-    private static readonly Bounds Pistol = new Bounds(new Vector3(0f, 0f, 0.1f), new Vector3(0.06f, 0.2f, 0.3f));
-    private static readonly Vector3 Muzzle = new Vector3(0f, 0.06f, 0.25f);
-    // The top of the gun, above which the iron sights and scope are
-    private static float Top => Pistol.max.y;
+    // The game's gun models' parts (Assets/Resources), in their own space
+    private static Layout.Shape Pistol => new Layout.Shape
+    {
+        body = new Bounds(new Vector3(0.444f, 0.288f, 1.333f), new Vector3(0.14f, 0.218f, 0.62f)),
+    };
+    private static Layout.Shape MachineGun => new Layout.Shape
+    {
+        body = new Bounds(new Vector3(0.444f, 0.288f, 1.628f), new Vector3(0.14f, 0.218f, 1.496f)),
+    };
+    private static Layout.Shape Shotgun => new Layout.Shape
+    {
+        body = new Bounds(new Vector3(0.444f, 0.288f, 1.45f), new Vector3(0.2f, 0.26f, 1.15f)),
+        hasUnder = true,
+        under = new Bounds(new Vector3(0.444f, 0.12f, 1.68f), new Vector3(0.17f, 0.1f, 0.42f)),
+    };
+    private static Layout.Shape Sniper => new Layout.Shape
+    {
+        body = new Bounds(new Vector3(0.444f, 0.288f, 1.564f), new Vector3(0.14f, 0.218f, 1.125f)),
+        hasBarrel = true,
+        barrel = new Bounds(new Vector3(0.444f, 0.34f, 2.66f), new Vector3(0.109f, 0.075f, 1.496f)),
+    };
+
+    private static Layout.Motion At(float shotAge, float time = 0f, float spin = 0f, float aim = 0f)
+    {
+        return new Layout.Motion { time = time, spin = spin, shotAge = shotAge, aim = aim };
+    }
+
+    private static readonly Layout.Motion Rest = At(100f);
+    // A moment into a shot, at its strongest
+    private static readonly Layout.Motion Firing = At(0.035f);
 
     private static Gun MakeGun(int burst, int pellets = 1, float scopeFov = 0f)
     {
@@ -22,94 +47,162 @@ public class GunSatelliteLayoutTests
     [Test]
     public void FormOf_ClassifiesEachGun()
     {
-        Assert.AreEqual(GunSatelliteLayout.Form.Fan, GunSatelliteLayout.FormOf(MakeGun(0, 8)));
-        Assert.AreEqual(GunSatelliteLayout.Form.Orbit, GunSatelliteLayout.FormOf(MakeGun(1)));
-        Assert.AreEqual(GunSatelliteLayout.Form.Tight, GunSatelliteLayout.FormOf(MakeGun(0)));
-        Assert.AreEqual(GunSatelliteLayout.Form.Rail, GunSatelliteLayout.FormOf(MakeGun(0, 1, 20f)));
-        Assert.AreEqual(GunSatelliteLayout.Form.Tight, GunSatelliteLayout.FormOf(null));
-    }
-
-    private static GunSatelliteLayout.Pose Arrange(GunSatelliteLayout.Form form, int i, float spin = 0f)
-    {
-        return GunSatelliteLayout.Arrange(form, i, Count, Pistol, Muzzle, spin);
+        Assert.AreEqual(Layout.Form.Fan, Layout.FormOf(MakeGun(0, 8)));
+        Assert.AreEqual(Layout.Form.Orbit, Layout.FormOf(MakeGun(1)));
+        Assert.AreEqual(Layout.Form.Tight, Layout.FormOf(MakeGun(0)));
+        Assert.AreEqual(Layout.Form.Rail, Layout.FormOf(MakeGun(0, 1, 20f)));
+        Assert.AreEqual(Layout.Form.Tight, Layout.FormOf(null));
     }
 
     [Test]
-    public void NothingSitsAboveTheSightsOnTheFormsAimedThroughThem()
+    public void Kick_RisesFastAndDiesAway()
     {
-        // The pistol and sniper are aimed down their sights: their pieces stay below the top of the gun
-        foreach (GunSatelliteLayout.Form form in new[] { GunSatelliteLayout.Form.Tight, GunSatelliteLayout.Form.Rail })
+        Assert.AreEqual(0f, Layout.Kick(-0.1f));
+        Assert.AreEqual(0f, Layout.Kick(0f));
+        Assert.AreEqual(1f, Layout.Kick(0.035f), 1e-4f);
+        Assert.Less(Layout.Kick(0.3f), 0.05f);
+        Assert.Less(Layout.Kick(100f), 1e-4f);
+    }
+
+    [Test]
+    public void Pump_RacksAfterTheShotAndComesBack()
+    {
+        Assert.AreEqual(0f, Layout.Pump(0f));
+        Assert.Greater(Layout.Pump(0.35f), 0.9f);
+        Assert.AreEqual(0f, Layout.Pump(1f));
+    }
+
+    [Test]
+    public void TheSniperBarrelIsTheSegments()
+    {
+        Assert.AreEqual("Barrel", Layout.ReplacedPart(Layout.Form.Rail));
+        Assert.IsNull(Layout.ReplacedPart(Layout.Form.Tight));
+
+        Bounds barrel = Sniper.barrel;
+        float lastZ = float.MinValue;
+        for (int i = 0; i < Layout.Count; i++)
         {
-            for (int i = 0; i < Count; i++)
+            Layout.Pose pose = Layout.Arrange(Layout.Form.Rail, i, Sniper, Rest);
+            Assert.Greater(pose.position.z, lastZ, "in order, back to front");
+            Assert.That(pose.position.z, Is.InRange(barrel.min.z, barrel.max.z), "piece " + i);
+            Assert.AreEqual(barrel.center.y, pose.position.y, 1e-4f);
+            Assert.Greater(pose.size.x, barrel.size.x * 0.9f, "as thick as the barrel");
+            lastZ = pose.position.z;
+        }
+    }
+
+    [Test]
+    public void AShotRunsAWaveDownTheSniperBarrel()
+    {
+        // Just after the shot the back segment has moved further than the front one
+        Layout.Motion early = At(0.02f);
+        float back = Layout.Arrange(Layout.Form.Rail, 0, Sniper, early).position.z - Layout.Arrange(Layout.Form.Rail, 0, Sniper, Rest).position.z;
+        float front = Layout.Arrange(Layout.Form.Rail, Layout.Count - 1, Sniper, early).position.z - Layout.Arrange(Layout.Form.Rail, Layout.Count - 1, Sniper, Rest).position.z;
+        Assert.Greater(back, front);
+        Assert.Greater(back, 0f);
+    }
+
+    [Test]
+    public void TheRotaryBarrelSpinsOffTheFrontOfTheBody()
+    {
+        Layout.Shape gun = MachineGun;
+        Vector3 muzzle = gun.Muzzle;
+        for (int i = 0; i < Layout.Count; i++)
+        {
+            Layout.Pose pose = Layout.Arrange(Layout.Form.Orbit, i, gun, Rest);
+            Assert.Greater(pose.position.z - pose.size.z * 0.5f, gun.body.max.z, "in front of the body");
+            float fromAxis = new Vector2(pose.position.x - muzzle.x, pose.position.y - muzzle.y).magnitude;
+            Assert.AreEqual(Layout.RotaryRadius(gun), fromAxis, 1e-4f);
+        }
+        Vector3 still = Layout.Arrange(Layout.Form.Orbit, 0, gun, At(100f, 0f, 0f)).position;
+        Vector3 turned = Layout.Arrange(Layout.Form.Orbit, 0, gun, At(100f, 0f, 1f)).position;
+        Assert.Greater(Vector3.Distance(still, turned), 0.03f);
+    }
+
+    [Test]
+    public void TheShotgunClawBloomsOnEachShot()
+    {
+        Layout.Shape gun = Shotgun;
+        Vector3 muzzle = gun.Muzzle;
+        for (int i = 0; i < Layout.ClawPetals; i++)
+        {
+            Vector3 rest = Layout.Arrange(Layout.Form.Fan, i, gun, Rest).position;
+            Vector3 blast = Layout.Arrange(Layout.Form.Fan, i, gun, Firing).position;
+            float restOut = new Vector2(rest.x - muzzle.x, rest.y - muzzle.y).magnitude;
+            float blastOut = new Vector2(blast.x - muzzle.x, blast.y - muzzle.y).magnitude;
+            Assert.Greater(blastOut, restOut + 0.02f, "petal " + i);
+        }
+    }
+
+    [Test]
+    public void TheShotgunPumpRacksBack()
+    {
+        for (int i = Layout.ClawPetals; i < Layout.Count; i++)
+        {
+            float rest = Layout.Arrange(Layout.Form.Fan, i, Shotgun, Rest).position.z;
+            float racked = Layout.Arrange(Layout.Form.Fan, i, Shotgun, At(0.35f)).position.z;
+            Assert.Less(racked, rest - 0.1f, "plate " + i);
+        }
+    }
+
+    [Test]
+    public void ThePistolsSidePanelsRecoilAndTheRestTuckAway()
+    {
+        for (int i = 0; i < Layout.Count; i++)
+        {
+            Layout.Pose rest = Layout.Arrange(Layout.Form.Tight, i, Pistol, Rest);
+            if (i >= 4) { Assert.AreEqual(Vector3.zero, rest.size, "piece " + i); continue; }
+            Assert.Greater(rest.size.sqrMagnitude, 0f, "piece " + i);
+        }
+        for (int i = 0; i < 2; i++)
+        {
+            float rest = Layout.Arrange(Layout.Form.Tight, i, Pistol, Rest).position.z;
+            float shot = Layout.Arrange(Layout.Form.Tight, i, Pistol, Firing).position.z;
+            Assert.Less(shot, rest - 0.05f, "panel " + i);
+        }
+    }
+
+    // Aimed down the sights, nothing may rise into the line of sight above the body
+    [TestCase(Layout.Form.Tight)]
+    [TestCase(Layout.Form.Orbit)]
+    public void NothingRisesAboveTheBody(Layout.Form form)
+    {
+        Layout.Shape gun = form == Layout.Form.Tight ? Pistol : MachineGun;
+        foreach (Layout.Motion motion in new[] { Rest, Firing, At(100f, 3f, 2f, 1f) })
+        {
+            for (int i = 0; i < Layout.Count; i++)
             {
-                Assert.LessOrEqual(Arrange(form, i).position.y, Top, form + " piece " + i);
+                Assert.LessOrEqual(Layout.Top(Layout.Arrange(form, i, gun, motion)), gun.body.max.y, "piece " + i);
             }
         }
     }
 
-    [TestCase(GunSatelliteLayout.Form.Fan)]
-    [TestCase(GunSatelliteLayout.Form.Orbit)]
-    public void RingsCircleTheBarrelAndLeaveTheLineOfFireClear(GunSatelliteLayout.Form form)
+    [Test]
+    public void TheSniperBarrelStaysUnderTheScope()
     {
-        float radius = GunSatelliteLayout.RingRadius(Pistol);
-        for (int i = 0; i < Count; i++)
+        const float scopeBottom = 0.422f - 0.005f; // the Scope Bottom part, less its thickness
+        foreach (Layout.Motion motion in new[] { Rest, Firing, At(0.05f, 7f) })
         {
-            Vector3 p = Arrange(form, i).position;
-            float fromAxis = new Vector2(p.x - Muzzle.x, p.y - Muzzle.y).magnitude;
-            Assert.GreaterOrEqual(fromAxis, radius - 1e-4f, "piece " + i);
+            for (int i = 0; i < Layout.Count; i++)
+            {
+                Assert.Less(Layout.Top(Layout.Arrange(Layout.Form.Rail, i, Sniper, motion)), scopeBottom, "piece " + i);
+            }
         }
     }
 
     [Test]
-    public void TheFanSpreadsAheadOfTheMuzzleAndTheOrbitWrapsTheBarrel()
+    public void TheShotgunClawLeavesTheBeadClear()
     {
-        for (int i = 0; i < Count; i++)
+        // Whatever rises above the body stays well off to the side of the bead
+        Layout.Shape gun = Shotgun;
+        foreach (Layout.Motion motion in new[] { Rest, Firing })
         {
-            Assert.Greater(Arrange(GunSatelliteLayout.Form.Fan, i).position.z, Muzzle.z, "fan " + i);
-            Assert.Less(Arrange(GunSatelliteLayout.Form.Orbit, i).position.z, Muzzle.z, "orbit " + i);
+            for (int i = 0; i < Layout.Count; i++)
+            {
+                Layout.Pose pose = Layout.Arrange(Layout.Form.Fan, i, gun, motion);
+                if (Layout.Top(pose) <= gun.body.max.y) continue;
+                Assert.Greater(Mathf.Abs(pose.position.x - gun.body.center.x), gun.body.size.x * 0.5f, "piece " + i);
+            }
         }
-    }
-
-    [Test]
-    public void SpinTurnsTheOrbitOnly()
-    {
-        Vector3 still = Arrange(GunSatelliteLayout.Form.Orbit, 0, 0f).position;
-        Vector3 turned = Arrange(GunSatelliteLayout.Form.Orbit, 0, 1f).position;
-        Assert.Greater(Vector3.Distance(still, turned), 0.01f);
-        Assert.AreEqual(Arrange(GunSatelliteLayout.Form.Fan, 0, 0f).position, Arrange(GunSatelliteLayout.Form.Fan, 0, 1f).position);
-    }
-
-    [Test]
-    public void TheRailRunsForwardPastTheMuzzle()
-    {
-        float lastZ = float.MinValue;
-        for (int i = 0; i < Count; i++)
-        {
-            float z = Arrange(GunSatelliteLayout.Form.Rail, i).position.z;
-            Assert.Greater(z, lastZ, "piece " + i);
-            lastZ = z;
-        }
-        Assert.Greater(lastZ, Muzzle.z);
-    }
-
-    [Test]
-    public void ThePistolShowsAFewPiecesAndTucksTheRestAway()
-    {
-        for (int i = 0; i < Count; i++)
-        {
-            float scale = Arrange(GunSatelliteLayout.Form.Tight, i).scale;
-            if (i < GunSatelliteLayout.TightCount) Assert.AreEqual(1f, scale, "piece " + i);
-            else Assert.AreEqual(0f, scale, "piece " + i);
-        }
-    }
-
-    [Test]
-    public void KicksPushAwayFromTheBarrel()
-    {
-        Vector3 piece = Arrange(GunSatelliteLayout.Form.Fan, 0).position;
-        Vector3 kick = GunSatelliteLayout.KickDirection(GunSatelliteLayout.Form.Fan, piece, Muzzle);
-        Vector3 after = piece + kick * 0.05f;
-        Assert.Greater(new Vector2(after.x - Muzzle.x, after.y - Muzzle.y).magnitude, new Vector2(piece.x - Muzzle.x, piece.y - Muzzle.y).magnitude);
-        Assert.AreEqual(Vector3.forward, GunSatelliteLayout.KickDirection(GunSatelliteLayout.Form.Rail, piece, Muzzle));
     }
 }
