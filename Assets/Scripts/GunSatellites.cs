@@ -1,56 +1,114 @@
+using System.Collections.Generic;
 using UnityEngine;
 
-// Small cast-stone plates, each with a glowing strip in the player's (or team's) colour, that hover
-// around the player's dark metal gun and move into a different arrangement for each form
-// (GunSatelliteLayout): tucked along the pistol's sides, circling the machine gun's barrel (faster
-// while firing), fanned round the shotgun's muzzle, strung out under the sniper rifle's barrel. They glide to the new arrangement while the gun
-// transforms, jump outward with each shot, dim as the energy runs down, and come loose and drift
-// while the energy cell is swapped, snapping back as the fresh cell clicks in.
+// The floating cast-stone pieces built into the player's gun, each with a glowing strip in the
+// player's (or team's) colour. For each form they make up part of the gun (GunSatelliteLayout):
+// the sniper rifle's barrel, the machine gun's rotary barrel, the shotgun's flared muzzle and pump,
+// the pistol's side panels. They move all the time (breathing, turning, spinning), react to every
+// shot and to aiming, trail the gun a touch as it moves, re-form into the next form's parts while
+// the gun transforms, dim as the energy runs down, and come loose and drift while the energy cell
+// is swapped, snapping back as the fresh cell clicks in.
 // Everyone sees everyone's, so a player's form can be told from a distance. Added by Player at
 // runtime; purely cosmetic, driven by state every machine already has, so no network traffic.
+// The main menu's player model gets them too (AttachToDisplay), with a pretend shot now and then
+// to show them off.
 [DefaultExecutionOrder(100)] // After DroneHands, which tips the gun over for the cell swap
 public class GunSatellites : MonoBehaviour
 {
-    private const int Count = 5;
+    private const int Count = GunSatelliteLayout.Count;
     // Rough, non-metallic cast stone, with a fine grain and pores (StoneMaterial)
     private static readonly Color StoneColor = new Color(0.6f, 0.59f, 0.56f);
     private const float StoneSmoothness = 0.12f;
     private static Material stoneMaterial;
-    private static readonly Vector3 PlateSize = new Vector3(0.034f, 0.007f, 0.06f);
-    private static readonly Vector3 StripSize = new Vector3(0.012f, 0.004f, 0.046f);
+    // The glowing strip along each piece's outer face, as a share of the piece's size
+    private static readonly Vector3 StripScale = new Vector3(0.4f, 0.16f, 0.86f);
     private const float Glow = 2.6f;
     // The share of a cell swap at which the fresh cell clicks in (DroneHands' Inserted)
     private const float CellIn = 0.58f;
-    // How far a shot pushes the pieces out, in metres
-    private const float KickDistance = 0.035f;
-    // The machine gun's ring: turns this fast at rest (radians a second), up to MaxSpin while firing
-    private const float RestSpin = 1.2f, SpinPerShot = 2.5f, MaxSpin = 16f;
+    // Seconds the pieces take to re-form into a new form's parts, and the stagger between pieces
+    private const float ReformTime = 0.45f, ReformStagger = 0.025f;
+    // How tightly the pieces follow the gun as it moves (higher: less trailing)
+    private const float TrailRate = 28f;
+    // The machine gun's rotary barrel: turns this fast at rest (radians a second), faster with
+    // every shot up to MaxSpin, and slows back down after
+    private const float RestSpin = 1f, SpinPerShot = 4f, MaxSpin = 28f, SpinDown = 1.2f;
 
     private Player player;
     private Weapon weapon;
     private Transform[] pieces;
     private Renderer[] plates, strips;
-    private float[] rates; // how quickly each piece follows its place, slightly different for each
-
-    // Per piece, in the current gun model's space
-    private Vector3[] positions;
-    private Quaternion[] rotations;
-    private float[] scales;
 
     private GameObject shownGun;
     private Transform design;
-    private Bounds gunBounds;
-    private Vector3 muzzle;
+    private GunSatelliteLayout.Shape shape;
     private GunSatelliteLayout.Form form;
     private bool placed;
+    // The model part the pieces stand in for (the sniper's barrel), hidden while they do
+    private Renderer replaced;
+
+    // Re-forming: where each piece started, in the current gun model's space, and when
+    private Vector3[] fromPositions, fromSizes;
+    private Quaternion[] fromRotations;
+    private float reformStart = -10f;
+    // What each piece showed last frame, in the gun model's space, and where it is in the world
+    private Vector3[] shownPositions, shownSizes, worldPositions;
+    private Quaternion[] shownRotations;
 
     private float spin, spinSpeed = RestSpin;
-    private float kick;
     private float seenShotTime;
+    private float aim;
     private float phase;
     private Color color = Color.white;
     private float shownGlow = -1f;
     private MaterialPropertyBlock block;
+
+    // On a display model (the main menu) there's no Player or Weapon: the gun and its form are
+    // given, and it fires pretend shots now and then
+    private Transform owner;
+    private GameObject displayGun;
+    private Gun displayForm;
+    private float displayShotTime = -1f, nextDemoAt;
+    private int demoShotsLeft;
+
+    // What drives the pieces: the player's gun in a match, or the display gun
+    private GameObject CurrentGunModel => weapon != null ? weapon.GunModel : displayGun;
+    private Gun CurrentForm => weapon != null ? weapon.ShownGun : displayForm;
+    private bool Dead => player != null && player.IsDead;
+    private float LastShotTime => weapon != null ? weapon.LastShotTime : displayShotTime;
+    private bool Aiming => weapon != null && weapon.isAiming;
+    private float ReloadProgress => weapon != null ? weapon.ReloadProgress : -1f;
+    private float EnergyFraction => weapon != null ? weapon.EnergyFraction : 1f;
+
+    // For a model that isn't a player in a match: owner is the model, gun the gun model it holds
+    public static GunSatellites AttachToDisplay(Transform owner, GameObject gun, Gun form, Color color)
+    {
+        GameObject holder = new GameObject("Gun Satellites");
+        holder.transform.SetParent(owner, false);
+        GunSatellites satellites = holder.AddComponent<GunSatellites>();
+        satellites.owner = owner;
+        satellites.displayGun = gun;
+        satellites.displayForm = form;
+        satellites.phase = Random.value * 10f;
+        satellites.nextDemoAt = Time.time + 2f;
+        satellites.Build();
+        satellites.SetColor(color);
+        return satellites;
+    }
+
+    // The display model's pretend shots: a burst from the machine gun, a double tap from the
+    // pistol, a single shot otherwise, every few seconds
+    private void UpdateDemo(float now)
+    {
+        if (displayForm == null || now < nextDemoAt) return;
+        if (demoShotsLeft == 0)
+        {
+            GunSatelliteLayout.Form f = GunSatelliteLayout.FormOf(displayForm);
+            demoShotsLeft = f == GunSatelliteLayout.Form.Orbit ? 12 : f == GunSatelliteLayout.Form.Tight ? 2 : 1;
+        }
+        displayShotTime = now;
+        demoShotsLeft--;
+        nextDemoAt = demoShotsLeft > 0 ? now + Mathf.Max(displayForm.fireRate, 0.07f) : now + Random.Range(3.5f, 5.5f);
+    }
 
     public static GunSatellites Attach(Player owner, Color color)
     {
@@ -78,20 +136,22 @@ public class GunSatellites : MonoBehaviour
         pieces = new Transform[Count];
         plates = new Renderer[Count];
         strips = new Renderer[Count];
-        rates = new float[Count];
-        positions = new Vector3[Count];
-        rotations = new Quaternion[Count];
-        scales = new float[Count];
+        fromPositions = new Vector3[Count];
+        fromSizes = new Vector3[Count];
+        fromRotations = new Quaternion[Count];
+        shownPositions = new Vector3[Count];
+        shownSizes = new Vector3[Count];
+        shownRotations = new Quaternion[Count];
+        worldPositions = new Vector3[Count];
         for (int i = 0; i < Count; i++)
         {
+            // A unit block scaled to the piece's size, with a glowing strip along its outer face
             Transform piece = new GameObject("Piece " + i).transform;
             piece.SetParent(transform, false);
-            // A stone plate with a glowing strip along its outer face
-            plates[i] = Part(piece, "Plate", StoneMaterial, Vector3.zero, PlateSize);
-            strips[i] = Part(piece, "Strip", DroneBody.GlowMaterial, new Vector3(0f, (PlateSize.y + StripSize.y) * 0.5f, 0f), StripSize);
+            plates[i] = Part(piece, "Plate", StoneMaterial, Vector3.zero, Vector3.one);
+            strips[i] = Part(piece, "Strip", DroneBody.GlowMaterial, new Vector3(0f, 0.5f + StripScale.y * 0.5f, 0f), StripScale);
             pieces[i] = piece;
-            rates[i] = 9f + i * 0.9f;
-            rotations[i] = Quaternion.identity;
+            shownRotations[i] = fromRotations[i] = Quaternion.identity;
         }
     }
 
@@ -175,6 +235,7 @@ public class GunSatellites : MonoBehaviour
         return Mathf.Lerp(a, b, ty);
     }
 
+
     private static Renderer Part(Transform parent, string name, Material material, Vector3 position, Vector3 scale)
     {
         GameObject part = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -215,11 +276,17 @@ public class GunSatellites : MonoBehaviour
         r.SetPropertyBlock(block);
     }
 
-    // Measures a newly shown gun model, and carries the pieces over into its space where they are,
-    // so they glide from the old form's arrangement to the new one
+
+    #region Fitting to the gun
+
+    // Measures a newly shown gun model's parts, and carries the pieces over into its space where
+    // they are, so they re-form from wherever they were into the new form's parts
     private void FitTo(GameObject gun)
     {
+        if (replaced != null) replaced.enabled = true;
+        replaced = null;
         shownGun = gun;
+
         Transform newDesign = gun != null ? gun.transform.Find("Anchor/Design") : null;
         if (newDesign == null && gun != null) newDesign = gun.transform;
         if (newDesign == null) { design = null; return; }
@@ -228,38 +295,60 @@ public class GunSatellites : MonoBehaviour
         GunMorph morph = gun.GetComponent<GunMorph>();
         if (morph != null) morph.ShowFinalShape(true);
 
-        bool any = false;
-        Bounds bounds = new Bounds();
-        foreach (MeshFilter filter in newDesign.GetComponentsInChildren<MeshFilter>(true))
+        GunSatelliteLayout.Shape newShape = new GunSatelliteLayout.Shape();
+        bool hasBody = PartBounds(newDesign, "Body", out newShape.body);
+        newShape.hasBarrel = PartBounds(newDesign, "Barrel", out newShape.barrel);
+        newShape.hasUnder = PartBounds(newDesign, "Under", out newShape.under);
+        if (!hasBody)
         {
-            if (filter.sharedMesh == null) continue;
-            Bounds b = LocalBounds(newDesign, filter);
-            if (any) bounds.Encapsulate(b); else { bounds = b; any = true; }
+            // No part called Body: the whole gun stands in for it
+            bool any = false;
+            foreach (MeshFilter filter in newDesign.GetComponentsInChildren<MeshFilter>(true))
+            {
+                if (filter.sharedMesh == null) continue;
+                Bounds b = LocalBounds(newDesign, filter);
+                if (any) newShape.body.Encapsulate(b); else { newShape.body = b; any = true; }
+            }
+            hasBody = any;
         }
-        LineRenderer line = weapon.lineRend;
-        Vector3 newMuzzle = line != null && line.transform.IsChildOf(gun.transform)
-            ? newDesign.InverseTransformPoint(line.transform.position)
-            : new Vector3(bounds.center.x, bounds.center.y + bounds.extents.y * 0.4f, bounds.max.z);
-
         if (morph != null) morph.ShowFinalShape(false);
-        if (!any) { design = null; return; }
+        if (!hasBody) { design = null; return; }
 
-        if (placed)
+        // Carry the pieces over, as they are shown now, into the new model's space
+        if (placed && design != null)
         {
             for (int i = 0; i < Count; i++)
             {
-                positions[i] = newDesign.InverseTransformPoint(pieces[i].position);
-                rotations[i] = Quaternion.Inverse(newDesign.rotation) * pieces[i].rotation;
+                fromPositions[i] = newDesign.InverseTransformPoint(design.TransformPoint(shownPositions[i]));
+                fromRotations[i] = Quaternion.Inverse(newDesign.rotation) * design.rotation * shownRotations[i];
+                fromSizes[i] = shownSizes[i];
             }
+            reformStart = Time.time;
         }
 
         design = newDesign;
-        gunBounds = bounds;
-        muzzle = newMuzzle;
+        shape = newShape;
+        form = GunSatelliteLayout.FormOf(CurrentForm);
+
+        // The part the pieces stand in for is hidden (its copy retracting into the next form is too)
+        string part = GunSatelliteLayout.ReplacedPart(form);
+        Transform hidden = part != null ? design.Find(part) : null;
+        replaced = hidden != null ? hidden.GetComponent<Renderer>() : null;
+        if (replaced != null) replaced.enabled = false;
 
         // The gun's layer: other players' guns are drawn by the main camera, your own by the viewmodel camera
         int layer = design.gameObject.layer;
         foreach (Transform t in GetComponentsInChildren<Transform>(true)) t.gameObject.layer = layer;
+    }
+
+    private static bool PartBounds(Transform design, string name, out Bounds bounds)
+    {
+        bounds = new Bounds();
+        Transform part = design.Find(name);
+        MeshFilter filter = part != null ? part.GetComponent<MeshFilter>() : null;
+        if (filter == null || filter.sharedMesh == null) return false;
+        bounds = LocalBounds(design, filter);
+        return true;
     }
 
     private static Bounds LocalBounds(Transform space, MeshFilter filter)
@@ -274,19 +363,19 @@ public class GunSatellites : MonoBehaviour
         return result;
     }
 
+    #endregion
+
     private static float Ease(float from, float to, float t) => Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(from, to, t));
 
     private void LateUpdate()
     {
-        if (player == null || weapon == null) return;
-        GameObject gun = weapon.GunModel;
+        if ((player == null || weapon == null) && displayGun == null) return;
+        if (weapon == null) UpdateDemo(Time.time);
+        GameObject gun = CurrentGunModel;
         if (gun != shownGun) FitTo(gun);
-        // The form whose model is showing (it can trail the equipped form by a frame)
-        Gun shownForm = weapon.ShownGun;
-        if (shownForm != null) form = GunSatelliteLayout.FormOf(shownForm);
 
         // Hidden without a gun or once dead; placed afresh when they come back
-        bool show = design != null && !player.IsDead;
+        bool show = design != null && !Dead;
         for (int i = 0; i < Count; i++) if (pieces[i].gameObject.activeSelf != show) pieces[i].gameObject.SetActive(show);
         if (!show)
         {
@@ -295,66 +384,84 @@ public class GunSatellites : MonoBehaviour
         }
 
         float dt = Time.deltaTime;
-        float time = Time.time;
+        float now = Time.time;
 
-        // A shot: push the pieces out and spin the machine gun's ring up
-        if (weapon.LastShotTime > seenShotTime)
+        // Each shot spins the machine gun's barrel up; it slows back down after
+        float lastShot = LastShotTime;
+        if (lastShot > seenShotTime)
         {
-            seenShotTime = weapon.LastShotTime;
-            kick = 1f;
+            seenShotTime = lastShot;
             spinSpeed = Mathf.Min(spinSpeed + SpinPerShot, MaxSpin);
         }
-        kick *= Mathf.Exp(-dt * 14f);
-        spinSpeed = Mathf.Lerp(spinSpeed, RestSpin, 1f - Mathf.Exp(-dt * 1.5f));
+        spinSpeed = Mathf.Lerp(spinSpeed, RestSpin, 1f - Mathf.Exp(-dt * SpinDown));
         spin = Mathf.Repeat(spin + spinSpeed * dt, Mathf.PI * 2f);
+        aim = Mathf.MoveTowards(aim, Aiming ? 1f : 0f, dt * 5f);
+
+        GunSatelliteLayout.Motion motion = new GunSatelliteLayout.Motion
+        {
+            time = now + phase,
+            spin = spin,
+            shotAge = lastShot >= 0f ? now - lastShot : 100f,
+            aim = aim,
+        };
 
         // The cell swap: loose from when the spent cell comes out until the fresh one clicks in
-        float reload = weapon.ReloadProgress;
+        float reload = ReloadProgress;
         float loose = reload >= 0f ? Ease(0f, 0.15f, reload) * (1f - Ease(CellIn - 0.02f, CellIn + 0.03f, reload)) : 0f;
+        float drift = shape.body.size.x * 0.5f;
 
         // Dimmer as the energy runs down, and almost dark while the cell is out
-        Paint(Mathf.Lerp(0.3f + 0.7f * weapon.EnergyFraction, 0.15f, loose));
+        Paint(Mathf.Lerp(0.3f + 0.7f * EnergyFraction, 0.15f, loose));
 
+        float trail = 1f - Mathf.Exp(-dt * TrailRate);
+        // Sizes are in the gun model's units; the pieces hang off this holder, which may be scaled differently
+        float holderScale = transform.lossyScale.x;
+        float scale = holderScale > 0f ? design.lossyScale.x / holderScale : 1f;
         for (int i = 0; i < Count; i++)
         {
-            GunSatelliteLayout.Pose pose = GunSatelliteLayout.Arrange(form, i, Count, gunBounds, muzzle, spin);
-            Vector3 target = pose.position;
-
-            // Bob gently, each piece out of step
-            float t = time * 2.1f + phase + i * 1.7f;
-            target += new Vector3(Mathf.Sin(t * 0.7f), Mathf.Sin(t), 0f) * 0.004f;
-            target += GunSatelliteLayout.KickDirection(form, pose.position, muzzle) * (KickDistance * kick);
-
+            GunSatelliteLayout.Pose pose = GunSatelliteLayout.Arrange(form, i, shape, motion);
+            Vector3 position = pose.position;
             Quaternion rotation = pose.rotation;
+            Vector3 size = pose.size;
+
             if (loose > 0f)
             {
-                // Drift away from the gun and tumble a little
-                Vector3 drift = new Vector3(Mathf.Sin(time * 1.7f + i * 2f), Mathf.Sin(time * 1.3f + i * 3.1f) - 0.8f, Mathf.Sin(time * 1.1f + i));
-                target += drift * (0.05f * loose);
-                rotation *= Quaternion.Euler(Mathf.Sin(time * 2.3f + i) * 50f * loose, Mathf.Sin(time * 1.9f + i * 2f) * 50f * loose, 0f);
+                // Drift away from the gun and tumble
+                float t = now + phase;
+                Vector3 away = new Vector3(Mathf.Sin(t * 1.7f + i * 2f), Mathf.Sin(t * 1.3f + i * 3.1f) - 0.6f, Mathf.Sin(t * 1.1f + i));
+                position += away * (drift * loose);
+                rotation *= Quaternion.Euler(Mathf.Sin(t * 2.3f + i) * 50f * loose, Mathf.Sin(t * 1.9f + i * 2f) * 50f * loose, 0f);
             }
 
-            if (!placed)
+            // Re-forming after a change of form: each piece slides from where it was, a little after the last
+            if (placed)
             {
-                positions[i] = target;
-                rotations[i] = rotation;
-                scales[i] = pose.scale;
+                float k = Ease(0f, 1f, (now - reformStart - i * ReformStagger) / ReformTime);
+                if (k < 1f)
+                {
+                    position = Vector3.Lerp(fromPositions[i], position, k);
+                    rotation = Quaternion.Slerp(fromRotations[i], rotation, k);
+                    size = Vector3.Lerp(fromSizes[i], size, k);
+                }
             }
-            else
-            {
-                // Snap back faster as the fresh cell clicks in than they drifted away
-                float rate = rates[i] * (reload >= CellIn ? 2f : 1f);
-                float follow = 1f - Mathf.Exp(-dt * rate);
-                positions[i] = Vector3.Lerp(positions[i], target, follow);
-                rotations[i] = Quaternion.Slerp(rotations[i], rotation, follow);
-                scales[i] = Mathf.Lerp(scales[i], pose.scale, follow);
-            }
+            shownPositions[i] = position;
+            shownRotations[i] = rotation;
+            shownSizes[i] = size;
+
+            // Follow the gun a touch behind as it moves, so the pieces feel like they float
+            Vector3 world = design.TransformPoint(position);
+            worldPositions[i] = placed ? Vector3.Lerp(worldPositions[i], world, trail) : world;
 
             Transform piece = pieces[i];
-            piece.position = design.TransformPoint(positions[i]);
-            piece.rotation = design.rotation * rotations[i];
-            piece.localScale = Vector3.one * scales[i];
+            piece.position = worldPositions[i];
+            piece.rotation = design.rotation * rotation;
+            piece.localScale = size * scale;
         }
         placed = true;
+    }
+
+    private void OnDestroy()
+    {
+        if (replaced != null) replaced.enabled = true;
     }
 }

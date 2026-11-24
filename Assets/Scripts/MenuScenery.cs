@@ -6,7 +6,8 @@ using UnityEngine.Rendering.Universal;
 // Makes the main menu's 3D backdrop feel alive: a dusk mood (fog in the sky's colour, a warm rim
 // light on the player, a soft-focus background), a camera that drifts slowly and leans with the
 // mouse, and a player model that breathes and glances towards the cursor. Built at runtime by
-// the Launcher, on top of the menu scene.
+// the Launcher, on top of the menu scene. The model holds the gun form picked as the starting gun
+// in the settings, with its hand-orbs and floating pieces, as in a match.
 public class MenuScenery : MonoBehaviour
 {
     // Camera drift: a slow figure-of-eight, plus a lean towards the mouse
@@ -50,11 +51,50 @@ public class MenuScenery : MonoBehaviour
             model = player.transform;
             modelRotation = model.rotation;
             modelPosition = model.position;
+            HoldStartingGun(player);
         }
 
         SetMood();
         AddRimLight();
         volume = CreateVolume(main);
+    }
+
+    // The menu scene's model holds a pistol placed in the scene. Swap it for the starting gun (the
+    // same model a match would show) and give it hand-orbs and floating pieces, in the logo's colour.
+    private static void HoldStartingGun(Player player)
+    {
+        Weapon weapon = player.GetComponent<Weapon>();
+        if (weapon == null || weapon.loadout == null || weapon.loadout.Length == 0 || weapon.weaponParent == null) return;
+        Gun gun = weapon.loadout[weapon.PreferredStartingSlot];
+        if (gun == null || gun.prefab == null) return;
+
+        Transform holder = weapon.weaponParent;
+        Transform placed = holder.childCount > 0 ? holder.GetChild(0) : null;
+        GameObject model;
+        if (placed != null && placed.name == gun.prefab.name)
+        {
+            model = placed.gameObject;
+        }
+        else
+        {
+            model = Instantiate(gun.prefab, holder, false);
+            model.name = gun.prefab.name;
+            if (placed != null)
+            {
+                model.transform.localPosition = placed.localPosition;
+                model.transform.localRotation = placed.localRotation;
+                model.transform.localScale = placed.localScale;
+                Destroy(placed.gameObject);
+            }
+        }
+
+        // Held still: no sway from the mouse, no colliders, and the shot line is only a template
+        foreach (Sway sway in model.GetComponentsInChildren<Sway>(true)) sway.enabled = false;
+        foreach (Collider c in model.GetComponentsInChildren<Collider>(true)) c.enabled = false;
+        foreach (LineRenderer line in model.GetComponentsInChildren<LineRenderer>(true)) line.enabled = false;
+
+        DroneHands.AttachToDisplay(player.transform, model, PlayerCap.LogoColor);
+        GunSatellites.AttachToDisplay(player.transform, model, gun, PlayerCap.LogoColor);
     }
 
     // Fog the colour of the sunset sky's horizon, so the far end of the floor melts into it
