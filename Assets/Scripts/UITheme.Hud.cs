@@ -71,6 +71,12 @@ public static partial class UITheme
             }
         }
 
+        // Gun form icons: stacked up the right side from just above the ammo count. Anchored to the
+        // bottom (the prefab hangs them from the middle of the screen, so on wide screens and phones,
+        // where the HUD is shorter, they slid down into the ammo count)
+        RectTransform arsenal = hud.Find("Arsenal") as RectTransform;
+        if (arsenal != null) Place(arsenal, new Vector2(1f, 0f), new Vector2(-250f, 140f), Vector2.zero);
+
         // Timer: top centre on a dark pill
         RectTransform timer = hud.Find("Timer") as RectTransform;
         if (timer != null)
@@ -209,6 +215,11 @@ public static partial class UITheme
                 layout.spacing = 12f;
                 layout.childForceExpandHeight = false;
             }
+            // The column is 300 wide and starts at the holder's left edge (upper-left layout): put
+            // its middle on the screen's middle, where the settings and customize panels open (the
+            // prefab had it 21 units right of centre)
+            RectTransform holder = (RectTransform)buttons;
+            holder.anchoredPosition = new Vector2(holder.sizeDelta.x / 2f - 150f, holder.anchoredPosition.y);
 
             Text title = buttons.Find("Logo")?.GetComponent<Text>();
             if (title != null)

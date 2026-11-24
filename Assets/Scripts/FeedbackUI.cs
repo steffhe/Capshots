@@ -128,12 +128,15 @@ public class FeedbackUI : MonoBehaviour
         killFeed.anchoredPosition = new Vector2(-20f, -20f);
         killFeed.sizeDelta = new Vector2(600f, 300f);
 
-        // Multi-kill and streak callouts: a big gold word high in the middle, a smaller line under it
+        // Multi-kill and streak callouts: a big gold word high in the middle, a smaller line under it.
+        // Hung from the top, under the timer, with the XP popup (Manager.Xp) a fixed gap below, so the
+        // two never meet whatever the screen's shape (the HUD is shorter on wide screens and phones)
         GameObject calloutObject = new GameObject("Callout", typeof(RectTransform), typeof(CanvasGroup));
         callout = (RectTransform)calloutObject.transform;
         callout.SetParent(root, false);
-        callout.anchorMin = callout.anchorMax = callout.pivot = new Vector2(0.5f, 0.8f);
-        callout.sizeDelta = new Vector2(900f, 90f);
+        callout.anchorMin = callout.anchorMax = callout.pivot = new Vector2(0.5f, 1f);
+        callout.anchoredPosition = new Vector2(0f, -CalloutTop);
+        callout.sizeDelta = new Vector2(900f, CalloutHeight);
         calloutGroup = calloutObject.GetComponent<CanvasGroup>();
         calloutGroup.interactable = calloutGroup.blocksRaycasts = false;
         calloutTitle = NewText("Title", callout, 46, TextAnchor.MiddleCenter);
@@ -282,6 +285,12 @@ public class FeedbackUI : MonoBehaviour
     // and in the XP popup. Null if it's missing, and then they show without it.
     private static Sprite capshotIcon;
     public static Sprite CapshotIcon => capshotIcon != null ? capshotIcon : (capshotIcon = Resources.Load<Sprite>("UI/CapshotIcon"));
+    // The callout's place, from the top of the screen: below the timer (and the touch SCORE and II
+    // buttons beside it). CalloutBottom is where the XP popup's space starts.
+    private const float CalloutTop = 128f;
+    private const float CalloutHeight = 90f;
+    public const float CalloutBottom = CalloutTop + CalloutHeight;
+
     private const float CapshotIconSize = 26f;
     private const float DeathIconSize = 30f;
     private const float IconGap = 6f;

@@ -76,6 +76,9 @@ public class Weapon : NetworkBehaviour
     private Graphic crosshairDot;
     private float crosshairAlpha = 1f;
     private readonly List<Image> arsenalImages = new List<Image>();
+    // The gun form icons' holder on the HUD; hidden while touch controls are showing, which cover it
+    private GameObject arsenalRoot;
+    private const float ArsenalIconStep = 120f;
     private Transform weaponAnchor, stateAds, stateHip;
     private Coroutine hitmarkRoutine;
 
@@ -160,12 +163,17 @@ public class Weapon : NetworkBehaviour
                 GameObject.Destroy(child.gameObject);
             }
 
+            arsenalRoot = arsenal;
             int ind = 0;
             foreach (Gun gun in loadout)
             {
-                Vector3 position = arsenal.transform.position + Vector3.up * (ind * 120f);
-                GameObject weaponimageObject = Instantiate(weaponImagePrefab, position, arsenal.transform.rotation, arsenal.transform);
+                GameObject weaponimageObject = Instantiate(weaponImagePrefab, arsenal.transform);
                 weaponimageObject.name = "WeaponImage" + ind.ToString();
+                // Stacked upwards in canvas units (not screen pixels), so the spacing is the same at
+                // any resolution: at 1440p and up, pixel spacing packed the icons into each other
+                RectTransform iconRect = (RectTransform)weaponimageObject.transform;
+                iconRect.anchorMin = iconRect.anchorMax = iconRect.pivot = Vector2.zero;
+                iconRect.anchoredPosition = new Vector2(0f, ind * ArsenalIconStep);
 
                 // Set the icon on the copy, not on the prefab asset
                 Image image = weaponimageObject.GetComponent<Image>();
@@ -951,7 +959,14 @@ public class Weapon : NetworkBehaviour
 
     void RefreshGrenadeIndicator()
     {
+        // The touch controls cover the bottom right of the screen: there the NADE button shows the
+        // grenade instead (TouchControls), and the gun form icons step aside too
+        bool touch = TouchControls.UsingTouch;
+        if (arsenalRoot != null && arsenalRoot.activeSelf == touch) arsenalRoot.SetActive(!touch);
         if (grenadeDot == null) return;
+        GameObject holder = grenadeDot.transform.parent.gameObject;
+        if (holder.activeSelf == touch) holder.SetActive(!touch);
+        if (touch) return;
         Color c = ShotColor();
         float cook = CookProgress;
         if (cook >= 0f)

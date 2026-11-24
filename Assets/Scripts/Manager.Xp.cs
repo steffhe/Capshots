@@ -112,11 +112,12 @@ public partial class Manager
         xpPopup.horizontalOverflow = HorizontalWrapMode.Overflow;
         xpPopup.verticalOverflow = VerticalWrapMode.Overflow;
 
+        // Under the kill streak callouts (FeedbackUI), hung from the top of the screen like them: the
+        // cap logo shown above a cap shot's message clears the callout by a small gap
         RectTransform rect = popupObject.GetComponent<RectTransform>();
-        rect.anchorMin = new Vector2(0.5f, 0.7f);
-        rect.anchorMax = new Vector2(0.5f, 0.7f);
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 1f);
         rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.anchoredPosition = Vector2.zero;
+        rect.anchoredPosition = new Vector2(0f, -(FeedbackUI.CalloutBottom + 14f + XpPopupIconSize + 4f + 20f));
         rect.sizeDelta = new Vector2(600f, 100f);
 
         // The cap logo, over the message on a cap shot. A child, so it fades with the message.
