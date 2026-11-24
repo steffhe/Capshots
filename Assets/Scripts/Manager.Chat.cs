@@ -9,7 +9,7 @@ public partial class Manager
     // Sent by the host when a player dies, so everyone can show it in the kill feed.
     // killer is -1 when nobody gets the kill.
     [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
-    private void RPC_KillFeed(int killer, int victim, string weapon, NetworkBool headshot)
+    private void RPC_KillFeed(int killer, int victim, string weapon, NetworkBool headshot, byte multiKill, byte streak, byte endedStreak)
     {
         int me = LocalActor;
         if (IsTeamMode)
@@ -22,22 +22,49 @@ public partial class Manager
             FeedbackUI.AddKillFeed(GetPlayerName(killer), GetPlayerName(victim), weapon, headshot, killer == me || victim == me);
         }
 
+        // Streaks: a milestone, or a long one ended, goes in everyone's kill feed
+        string streakName = KillStreaks.StreakName(streak);
+        if (streakName != null && killer >= 0 && killer != me)
+        {
+            FeedbackUI.AddKillFeedNote($"{GetPlayerName(killer)} IS ON A <color={FeedbackUI.CapshotColor}>{streakName}</color>  ({streak})");
+        }
+        bool shutdown = endedStreak >= KillStreaks.ShutdownStreak && killer >= 0 && killer != victim;
+        if (shutdown && killer != me && victim != me)
+        {
+            FeedbackUI.AddKillFeedNote($"{GetPlayerName(killer)} ENDED {GetPlayerName(victim)}'S STREAK OF {endedStreak}");
+        }
+
+        bool counts = state == GameState.Playing && !matchEnded;
         if (killer == me && victim != me)
         {
             FeedbackUI.Kill(headshot);
             // Kills during warmup and the countdown don't count
-            if (state == GameState.Playing && !matchEnded)
+            if (counts)
             {
-                // A cap shot (headshot) kill earns a bonus, shown with the cap logo
-                if (headshot) AwardXp(xpPerKill + xpCapshotBonus, "CAPSHOT", true);
-                else AwardXp(xpPerKill, "KILL");
+                Summary.Kill(weapon, headshot);
+                // The biggest thing that happened is called out in the middle of the screen
+                string multiName = KillStreaks.MultiKillName(multiKill);
+                string callout = streakName ?? multiName ?? (shutdown ? "SHUTDOWN" : null);
+                if (callout != null)
+                {
+                    string detail = streakName != null ? $"{streak} KILLS WITHOUT DYING" : shutdown && multiName == null ? $"ENDED {GetPlayerName(victim)}'S STREAK OF {endedStreak}" : null;
+                    FeedbackUI.Callout(callout, detail);
+                }
+
+                int bonus = KillStreaks.BonusXp(multiKill, streak) + (shutdown ? KillStreaks.ShutdownXp : 0);
+                string reason = callout ?? (headshot ? "CAPSHOT" : "KILL");
+                // A cap shot kill earns a bonus, shown with the cap logo
+                if (headshot) AwardXp(xpPerKill + xpCapshotBonus + bonus, callout != null ? "CAPSHOT + " + callout : "CAPSHOT", true);
+                else AwardXp(xpPerKill + bonus, reason);
             }
         }
 
         if (victim == me)
         {
+            if (counts) Summary.Died();
             FeedbackUI.Died();
             FeedbackUI.ShowDeath(GetPlayerName(killer), weapon, headshot, respawnTime);
+            if (endedStreak >= KillStreaks.ShutdownStreak) FeedbackUI.AddKillFeedNote($"YOUR STREAK OF {endedStreak} IS OVER");
         }
     }
 

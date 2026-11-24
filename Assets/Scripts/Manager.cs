@@ -64,6 +64,11 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
     public bool MatchOver => matchEnded;
 
+    // The local player's accuracy, cap shots and favourite gun, for the results screen
+    public static readonly MatchSummary Summary = new MatchSummary();
+    // Whether shots and kills count towards it now: only while the match is being played
+    public bool CountsForSummary => state == GameState.Playing && !matchEnded;
+
     #region Networked state
 
     [Networked, Capacity(MaxPlayers)] private NetworkDictionary<PlayerRef, PlayerStats> Stats => default;
@@ -94,6 +99,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
     public override void Spawned()
     {
+        Summary.Reset();
         ReadMatchSettings();
         RememberStartingXp();
 
@@ -456,7 +462,8 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
                 MatchTime -= 1;
                 if (MatchTime <= 0)
                 {
-                    // Warmup is over: everyone starts the match on 0 kills and 0 deaths
+                    // Warmup is over: everyone starts the match on 0 kills and 0 deaths (and no streaks)
+                    streaks.Clear();
                     foreach (PlayerRef player in StatsKeys())
                     {
                         PlayerStats stats = Stats[player];
@@ -500,16 +507,47 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         if (!HasStateAuthority) return;
 
         // Kills and deaths during warmup and the countdown don't count
+        int multiKill = 0, streak = 0, endedStreak = 0;
         if (State == GameState.Playing)
         {
             ChangeStats(victim, 0, 1);
             if (killer.IsRealPlayer && killer != victim) ChangeStats(killer, 1, 0);
+            CountStreaks(victim, killer, out multiKill, out streak, out endedStreak);
         }
 
-        RPC_KillFeed(killer.IsRealPlayer ? killer.PlayerId : -1, victim.PlayerId, weaponName, headshot);
+        RPC_KillFeed(killer.IsRealPlayer ? killer.PlayerId : -1, victim.PlayerId, weaponName, headshot,
+            (byte)Mathf.Min(multiKill, 255), (byte)Mathf.Min(streak, 255), (byte)Mathf.Min(endedStreak, 255));
 
         ScheduleSpawn(victim, true);
         ScoreCheck();
+    }
+
+    // Host only: kills in a row without dying, and kills in quick succession, for each player
+    private struct StreakCount
+    {
+        public int streak, multiKill;
+        public float lastKillAt;
+    }
+    private readonly Dictionary<PlayerRef, StreakCount> streaks = new Dictionary<PlayerRef, StreakCount>();
+
+    // The killer's multi-kill and streak after this kill (0 if there's no killer), and the streak the
+    // victim had, which this death ends
+    private void CountStreaks(PlayerRef victim, PlayerRef killer, out int multiKill, out int streak, out int endedStreak)
+    {
+        multiKill = streak = 0;
+        streaks.TryGetValue(victim, out StreakCount lost);
+        endedStreak = lost.streak;
+        streaks.Remove(victim);
+
+        if (!killer.IsRealPlayer || killer == victim) return;
+        float now = Runner.SimulationTime;
+        streaks.TryGetValue(killer, out StreakCount count);
+        count.multiKill = count.multiKill > 0 && now - count.lastKillAt <= KillStreaks.MultiKillWindow ? count.multiKill + 1 : 1;
+        count.streak++;
+        count.lastKillAt = now;
+        streaks[killer] = count;
+        multiKill = count.multiKill;
+        streak = count.streak;
     }
 
     private void ChangeStats(PlayerRef player, int kills, int deaths)
@@ -614,6 +652,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
                 break;
             case GameState.Playing:
                 if (previousState == GameState.Starting) ShowMessage("FIGHT!");
+                Summary.Reset();
                 break;
         }
     }
