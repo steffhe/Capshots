@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 // Two little floating hand-orbs that hold the player's gun: one on the grip, the other under the barrel
@@ -105,6 +106,68 @@ public class DroneHands : MonoBehaviour
             Material material = r.sharedMaterial;
             if (material != null && material.name == SightMaterialName) Paint(r, c, c * SightGlow);
         }
+
+        // The sniper scope's reticle glows like a red-dot sight: its fine lines and a dot where they
+        // cross, in the same colour; the thick posts round it stay dark
+        foreach (Renderer r in ReticleGlow(gun)) Paint(r, c, c * ReticleGlowStrength);
+    }
+
+    private const float ReticleGlowStrength = 3f;
+    private const string ReticleGlowName = "Reticle Glow";
+
+    // The glowing parts of a scope's reticle, made the first time: a glowing copy of each fine line
+    // (the line itself is hidden) and a dot in the middle. Copies rather than a change of material,
+    // so the see-through spawn protection, which swaps materials and puts them back, can't undo it.
+    private List<Renderer> ReticleGlow(GameObject gun)
+    {
+        List<Renderer> glow = new List<Renderer>();
+        Transform reticle = FindPart(gun.transform, "Reticle");
+        if (reticle == null) return glow;
+
+        foreach (Transform part in reticle)
+        {
+            if (part.name == ReticleGlowName) { Renderer r = part.GetComponent<Renderer>(); if (r != null) glow.Add(r); }
+        }
+        if (glow.Count > 0) return glow;
+
+        List<Transform> lines = new List<Transform>();
+        foreach (Transform part in reticle) if (part.name.StartsWith("Line")) lines.Add(part);
+        float thickness = 0.002f;
+        foreach (Transform line in lines)
+        {
+            Renderer original = line.GetComponent<Renderer>();
+            if (original == null) continue;
+            Renderer copy = GlowPart(reticle, PrimitiveType.Cube, line.localPosition, line.localRotation, line.localScale);
+            original.enabled = false;
+            glow.Add(copy);
+            thickness = Mathf.Min(line.localScale.x, line.localScale.y);
+        }
+        // The dot: a little round lamp where the lines cross, just in front of them
+        float dot = Mathf.Max(thickness * 4f, 0.004f);
+        glow.Add(GlowPart(reticle, PrimitiveType.Sphere, new Vector3(0f, 0f, -0.002f), Quaternion.identity, new Vector3(dot, dot, dot * 0.4f)));
+        return glow;
+    }
+
+    private Renderer GlowPart(Transform parent, PrimitiveType type, Vector3 position, Quaternion rotation, Vector3 scale)
+    {
+        GameObject part = GameObject.CreatePrimitive(type);
+        DestroyImmediate(part.GetComponent<Collider>());
+        part.name = ReticleGlowName;
+        part.layer = parent.gameObject.layer;
+        part.transform.SetParent(parent, false);
+        part.transform.localPosition = position;
+        part.transform.localRotation = rotation;
+        part.transform.localScale = scale;
+        Renderer renderer = part.GetComponent<Renderer>();
+        renderer.sharedMaterial = DroneBody.GlowMaterial;
+        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        return renderer;
+    }
+
+    private static Transform FindPart(Transform root, string name)
+    {
+        foreach (Transform t in root.GetComponentsInChildren<Transform>(true)) if (t.name == name) return t;
+        return null;
     }
 
     private void Paint(Renderer r, Color c, Color emission)
