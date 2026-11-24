@@ -4,7 +4,8 @@ using UnityEngine;
 // Purely cosmetic: every client spawns its own copy (see Manager.SpawnRagdoll_R) and simulates it
 // locally, so nothing is synced over the network and the body never gets pulled back to where the
 // player died. On death the head comes off and flies separately, harder on a headshot, which also
-// knocks the cap off the head.
+// knocks the cap off the head; the broken neck, on the body and on the head, sparks as it shorts out
+// (NeckSparks).
 public class DeadPlayer : MonoBehaviour
 {
     public float lifetime = 5f;
@@ -103,7 +104,17 @@ public class DeadPlayer : MonoBehaviour
 
         head = headCollider.transform;
         PlayerCap headCap = PlayerCap.Attach(head, capColor, true);
+
+        // Where the head joined the body: the bottom of the head, towards the body
+        Vector3 scale = head.lossyScale;
+        float headRadius = headCollider.radius * Mathf.Max(scale.x, Mathf.Max(scale.y, scale.z));
+        Vector3 neck = headCollider.bounds.center - transform.up * headRadius;
+
         head.SetParent(null, true);
+
+        // Both broken ends short out: the stump on the body sparks upwards, the head's underside downwards
+        NeckSparks.Attach(transform, transform.InverseTransformPoint(neck), Vector3.up, capColor);
+        NeckSparks.Attach(head, head.InverseTransformPoint(neck), head.InverseTransformDirection(-transform.up), capColor);
 
         Rigidbody headBody = head.gameObject.AddComponent<Rigidbody>();
         headBody.mass = 0.25f;
