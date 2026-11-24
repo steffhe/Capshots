@@ -40,7 +40,7 @@ public class DroneBody : MonoBehaviour
     private float blinkStart = -1f;
     private float flickerSeed;
 
-    private static Material shellMaterial, visorMaterial, glowMaterial;
+    private static Material shellMaterial, visorMaterial, glowMaterial, trimMaterial;
 
     // Dresses a capsule body and the sphere head on (or above) it. Safe to call twice: the second call
     // only recolours. dead: a ragdoll, with glowing X-es for eyes and its other lights off.
@@ -173,7 +173,7 @@ public class DroneBody : MonoBehaviour
         // Belt: a band round the bottom of the straight part
         float beltY = shellBottom + R + Mathf.Min(0.1f, (height - 2f * R) * 0.3f);
         float beltWidth = 2f * R + 0.02f;
-        Renderer belt = Part(root, "Belt", PrimitiveType.Cylinder, ShellMaterial, new Vector3(0f, beltY, 0f), new Vector3(beltWidth, 0.025f, beltWidth));
+        Renderer belt = Part(root, "Belt", PrimitiveType.Cylinder, TrimMaterial, new Vector3(0f, beltY, 0f), new Vector3(beltWidth, 0.025f, beltWidth));
 
         // Chest light: a flat round lamp on the front, between the belt and the head
         float chestY = beltY + Mathf.Min(0.16f, (headBottom - beltY) * 0.5f);
@@ -181,7 +181,7 @@ public class DroneBody : MonoBehaviour
         Renderer chest = Part(root, "Chest Light", PrimitiveType.Sphere, GlowMaterial, new Vector3(0f, chestY, chestZ - 0.01f), new Vector3(0.12f, 0.12f, 0.05f), false);
 
         // Thruster: a dark cap under the shell with a glowing nozzle
-        Renderer housing = Part(root, "Thruster", PrimitiveType.Cylinder, VisorMaterial, new Vector3(0f, shellBottom + 0.03f, 0f), new Vector3(0.3f, 0.035f, 0.3f));
+        Renderer housing = Part(root, "Thruster", PrimitiveType.Cylinder, TrimMaterial, new Vector3(0f, shellBottom + 0.03f, 0f), new Vector3(0.3f, 0.035f, 0.3f));
         thruster = Part(root, "Nozzle", PrimitiveType.Cylinder, GlowMaterial, new Vector3(0f, shellBottom - 0.005f, 0f), new Vector3(0.2f, 0.012f, 0.2f), false);
 
         // A glowing collar where the body meets the head
@@ -259,7 +259,7 @@ public class DroneBody : MonoBehaviour
 
             // Ear pods: round discs on the sides of the head, with a glowing dot in the middle
             Vector3 earPosition = new Vector3(side * 0.97f * r, -0.02f * r, 0f);
-            accentList.Add(Part(root, "Ear", PrimitiveType.Cylinder, ShellMaterial, earPosition, new Vector3(0.45f * r, 0.1f * r, 0.45f * r), true, new Vector3(0f, 0f, 90f)));
+            accentList.Add(Part(root, "Ear", PrimitiveType.Cylinder, TrimMaterial, earPosition, new Vector3(0.45f * r, 0.1f * r, 0.45f * r), true, new Vector3(0f, 0f, 90f)));
             lightList.Add(Part(root, "Ear Light", PrimitiveType.Cylinder, GlowMaterial, earPosition, new Vector3(0.2f * r, 0.11f * r, 0.2f * r), false, new Vector3(0f, 0f, 90f)));
         }
     }
@@ -364,7 +364,10 @@ public class DroneBody : MonoBehaviour
         return renderer;
     }
 
-    internal static Material ShellMaterial => shellMaterial != null ? shellMaterial : (shellMaterial = Lit("Drone Shell", 0.7f));
+    // Glossy, like lacquered plastic
+    internal static Material ShellMaterial => shellMaterial != null ? shellMaterial : (shellMaterial = Lit("Drone Shell", 0.82f));
+    // Satin metal, for the trim (belt, ear pods, thruster housing), in its own colours
+    internal static Material TrimMaterial => trimMaterial != null ? trimMaterial : (trimMaterial = Lit("Drone Trim", 0.6f, 0.75f));
     internal static Material VisorMaterial => visorMaterial != null ? visorMaterial : (visorMaterial = Lit("Drone Visor", 0.92f));
 
     // Glowing parts use a material asset with emission switched on, so builds keep the shader variant
@@ -380,7 +383,7 @@ public class DroneBody : MonoBehaviour
         }
     }
 
-    private static Material Lit(string name, float smoothness)
+    private static Material Lit(string name, float smoothness, float metallic = 0f)
     {
         Shader lit = Shader.Find("Universal Render Pipeline/Lit");
         // The same shader the cap and the original body use, which every build includes
@@ -388,6 +391,7 @@ public class DroneBody : MonoBehaviour
         material.name = name;
         if (material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", null);
         if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", smoothness);
+        if (material.HasProperty("_Metallic")) material.SetFloat("_Metallic", metallic);
         return material;
     }
 

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Generates the hats' tiling normal maps (Assets/Textures/Hats/*.png).
+"""Generates the tiling normal maps for the hats (Assets/Textures/Hats) and the gun
+(Assets/Textures/Gun).
 
-    python3 Tools/HatTextures/generate.py
+    python3 Tools/SurfaceTextures/generate.py
 
 Each map is drawn as a height pattern that wraps seamlessly, then turned into a tangent-space
 normal map (OpenGL style: green is up, as Unity expects). Only the Python standard library is
-needed. The hat materials that use them are in Assets/Resources/Hats.
+needed. The hat materials that use them are in Assets/Resources/Hats; the gun's is
+Assets/Materials/Gun Metal.mat.
 """
 import math
 import os
@@ -14,7 +16,7 @@ import struct
 import zlib
 
 SIZE = 256
-OUT = os.path.join(os.path.dirname(__file__), "..", "..", "Assets", "Textures", "Hats")
+TEXTURES = os.path.join(os.path.dirname(__file__), "..", "..", "Assets", "Textures")
 
 
 def wrap(v):
@@ -90,6 +92,23 @@ def brushed(rng):
     return height
 
 
+def machined(rng):
+    """Machined metal: very fine tool marks along the part, with the odd faint scratch across."""
+    rows = [rng.random() for _ in range(SIZE)]
+    scratches = [(rng.uniform(0, SIZE), rng.uniform(0, SIZE), rng.uniform(-0.4, 0.4)) for _ in range(6)]
+
+    def height(x, y):
+        h = rows[y % SIZE] * 0.6 + rows[(y + 1) % SIZE] * 0.2 + rows[(y - 1) % SIZE] * 0.2
+        for sx, sy, slope in scratches:
+            # A thin line across, wrapping round the tile
+            d = abs(((y - sy - (x - sx) * slope) + SIZE / 2) % SIZE - SIZE / 2)
+            if d < 1.0:
+                h -= 0.6 * (1.0 - d)
+        return h
+
+    return height
+
+
 def hammered(rng):
     """Hammered metal: overlapping shallow round dents."""
     dents = [(rng.uniform(0, SIZE), rng.uniform(0, SIZE), rng.uniform(16, 30), rng.uniform(0.6, 1.0))
@@ -108,14 +127,16 @@ def hammered(rng):
     return height
 
 
-# name: (pattern, strength): strength scales the slopes, so how bumpy the surface looks
+# name: (folder in Assets/Textures, pattern, strength): strength scales the slopes, so how bumpy
+# the surface looks
 MAPS = {
-    "HatTwill_Normal": (twill, 0.7),
-    "HatKnit_Normal": (knit, 2.0),
-    "HatFelt_Normal": (felt, 2.5),
-    "HatSatin_Normal": (satin, 0.6),
-    "HatBrushed_Normal": (brushed, 0.8),
-    "HatHammered_Normal": (hammered, 3.2),
+    "HatTwill_Normal": ("Hats", twill, 0.7),
+    "HatKnit_Normal": ("Hats", knit, 2.0),
+    "HatFelt_Normal": ("Hats", felt, 2.5),
+    "HatSatin_Normal": ("Hats", satin, 0.6),
+    "HatBrushed_Normal": ("Hats", brushed, 0.8),
+    "HatHammered_Normal": ("Hats", hammered, 3.2),
+    "GunMachined_Normal": ("Gun", machined, 0.5),
 }
 
 
@@ -150,10 +171,11 @@ def write_png(path, rgb):
 
 
 def main():
-    os.makedirs(OUT, exist_ok=True)
-    for i, (name, (pattern, strength)) in enumerate(MAPS.items()):
+    for i, (name, (folder, pattern, strength)) in enumerate(MAPS.items()):
         rng = random.Random(1000 + i)
-        path = os.path.join(OUT, name + ".png")
+        out = os.path.join(TEXTURES, folder)
+        os.makedirs(out, exist_ok=True)
+        path = os.path.join(out, name + ".png")
         write_png(path, normal_map(pattern(rng), strength))
         print("wrote", os.path.relpath(path))
 

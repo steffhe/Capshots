@@ -3,7 +3,7 @@ using UnityEngine;
 // The hat every player wears (see Hats for the list): the baseball cap to start with, and more as
 // they level up. Built from primitives and a few generated meshes. Each part is made of a surface
 // (Surface): cotton twill, knit, felt, satin, glossy plastic, metal or hammered metal, each a
-// material in Resources/Hats with its own shine and a tiling normal map (Tools/HatTextures), or a
+// material in Resources/Hats with its own shine and a tiling normal map (Tools/SurfaceTextures), or a
 // glow for the halo. It sits on
 // the head, so on a dead player's ragdoll it flies off together with the head (or on its own, on a
 // headshot). Every hat is drawn in shades of one colour: the team colour in Team Deathmatch,
