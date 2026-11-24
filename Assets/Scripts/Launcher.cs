@@ -59,12 +59,18 @@ public partial class Launcher : MonoBehaviour
         usernameField.text = myProfile.username;
         CreateModeButton();
         CreateBotsButton();
+        GameObject settingsButton = CreateSettingsButton();
         // The player model in the menu wears a cap too, in the logo's colour...
         PlayerCap.AttachToSceneHeads(PlayerCap.LogoColor);
         // ...and is the same little drone as in a match
         DroneBody.DressSceneModels(PlayerCap.LogoColor);
         ShowWordmark();
         ApplyStyle();
+        // The settings panel, built from the styled menu's own button, slider and label
+        if (settingsButton != null)
+        {
+            settingsMenu = SettingsMenu.CreateForMainMenu(tabMain.transform.parent, tabMain, settingsButton, maxPlayersSlider, maxPlayersValue);
+        }
         MenuScenery.Create();
         Connect();
         // Back from a match (or a join that failed): reveal the menu under the loading screen
@@ -203,6 +209,44 @@ public partial class Launcher : MonoBehaviour
 
             title.enabled = false;
         }
+    }
+
+    private SettingsMenu settingsMenu;
+
+    // Adds a "Settings" button to the main tab's column, above Quit (or at the end), by copying
+    // one of its buttons. Returns it, or null if the column isn't there.
+    private GameObject CreateSettingsButton()
+    {
+        Transform anchor = tabMain != null ? tabMain.transform.Find("Anchor") : null;
+        if (anchor == null) return null;
+
+        Button template = null;
+        Transform quit = null;
+        foreach (Transform child in anchor)
+        {
+            Button button = child.GetComponent<Button>();
+            Text label = button != null ? button.GetComponentInChildren<Text>(true) : null;
+            if (label == null) continue;
+            if (template == null) template = button;
+            if (label.text.ToUpperInvariant().Contains("QUIT")) quit = child;
+        }
+        if (template == null) return null;
+
+        GameObject copy = Instantiate(template.gameObject, anchor);
+        copy.name = "Settings";
+        copy.transform.SetSiblingIndex(quit != null ? quit.GetSiblingIndex() : anchor.childCount - 1);
+        Button settings = copy.GetComponent<Button>();
+        // The copy still opens whatever the original did: switch that off, keep anything else (like a click sound)
+        for (int i = 0; i < settings.onClick.GetPersistentEventCount(); i++)
+        {
+            if (settings.onClick.GetPersistentTarget(i) is Launcher)
+            {
+                settings.onClick.SetPersistentListenerState(i, UnityEngine.Events.UnityEventCallState.Off);
+            }
+        }
+        settings.onClick.AddListener(() => { if (settingsMenu != null) settingsMenu.Open(); });
+        copy.GetComponentInChildren<Text>(true).text = "SETTINGS";
+        return copy;
     }
 
     // Adds a "Mode" button under the "Map" button in the create-room tab by copying it,

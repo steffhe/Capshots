@@ -22,6 +22,7 @@ public class MenuScenery : MonoBehaviour
     private Vector2 lean;
 
     private Transform model;
+    private Player menuPlayer;
     private Quaternion modelRotation;
     private Vector3 modelPosition;
     private float modelYaw;
@@ -51,7 +52,10 @@ public class MenuScenery : MonoBehaviour
             model = player.transform;
             modelRotation = model.rotation;
             modelPosition = model.position;
+            menuPlayer = player;
             HoldStartingGun(player);
+            // Picking another starting gun in the menu's settings swaps it at once
+            GameSettings.StartingGunChanged += OnStartingGunChanged;
         }
 
         SetMood();
@@ -61,8 +65,17 @@ public class MenuScenery : MonoBehaviour
 
     // The menu scene's model holds a pistol placed in the scene. Swap it for the starting gun (the
     // same model a match would show) and give it hand-orbs and floating pieces, in the logo's colour.
+    private void OnStartingGunChanged()
+    {
+        if (menuPlayer != null) HoldStartingGun(menuPlayer);
+    }
+
     private static void HoldStartingGun(Player player)
     {
+        // Again after a change of starting gun: the old gun's hand-orbs and pieces go with it
+        foreach (DroneHands old in player.GetComponentsInChildren<DroneHands>(true)) Destroy(old.gameObject);
+        foreach (GunSatellites old in player.GetComponentsInChildren<GunSatellites>(true)) Destroy(old.gameObject);
+
         Weapon weapon = player.GetComponent<Weapon>();
         if (weapon == null || weapon.loadout == null || weapon.loadout.Length == 0 || weapon.weaponParent == null) return;
         Gun gun = weapon.loadout[weapon.PreferredStartingSlot];
@@ -199,6 +212,7 @@ public class MenuScenery : MonoBehaviour
 
     private void OnDestroy()
     {
+        GameSettings.StartingGunChanged -= OnStartingGunChanged;
         if (volume != null)
         {
             if (volume.sharedProfile != null) Destroy(volume.sharedProfile);
