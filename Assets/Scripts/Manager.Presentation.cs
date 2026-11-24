@@ -150,8 +150,9 @@ public partial class Manager
         if (Player.Local != null && Player.Local.cameraParent != null) Player.Local.cameraParent.SetActive(false);
         mapcam.SetActive(true);
 
-        // 3. Results
-        float resultsTime = ResultsTime + (HasStateAuthority ? 1f : 0f);
+        // 3. Results (and the vote for the next map, when there is one)
+        bool voting = VotingAvailable;
+        float resultsTime = voting ? VoteTime : ResultsTime + (HasStateAuthority ? 1f : 0f);
         Text countdown = ShowResults(title, titleColor, kicker, subtitle);
         black.transform.SetAsLastSibling();
         yield return FadeImage(black, 1f, 0f, 0.5f);
@@ -161,11 +162,24 @@ public partial class Manager
         while (Time.unscaledTime < end)
         {
             int seconds = Mathf.CeilToInt(end - Time.unscaledTime);
-            if (countdown != null) countdown.text = $"BACK TO THE MENU IN {seconds}";
+            if (countdown != null) countdown.text = voting ? $"NEXT MAP IN {seconds}" : $"BACK TO THE MENU IN {seconds}";
             yield return null;
         }
 
-        // 4. Out to the menu (the loading screen fades in over the results)
+        // 4. The next map, loaded by the host for everyone (this coroutine ends with this scene)...
+        if (voting)
+        {
+            if (HasStateAuthority)
+            {
+                StartNextMap();
+                yield break;
+            }
+            if (countdown != null) countdown.text = "LOADING NEXT MAP";
+            // ...unless the host never does
+            yield return new WaitForSecondsRealtime(12f);
+        }
+
+        // ...or out to the menu (the loading screen fades in over the results)
         NetworkSession.Leave();
     }
 
@@ -284,6 +298,7 @@ public partial class Manager
         StartCoroutine(RevealRows(board));
 
         BuildXpPanel(endgame);
+        if (VotingAvailable) BuildVotePanel(endgame);
 
         Text countdown = UITheme.NewText("Countdown", endgame, 18, UITheme.MutedText, TextAnchor.MiddleCenter);
         UITheme.Place(countdown.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 22f), new Vector2(800f, 24f));

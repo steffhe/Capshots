@@ -115,6 +115,9 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
         if (HasStateAuthority)
         {
+            // Open again after the last map's results (a map voted for on the results screen)
+            Runner.SessionInfo.IsOpen = true;
+            Runner.SessionInfo.IsVisible = true;
             State = GameState.Waiting;
             MatchTime = matchlength;
             Heartbeat = TickTimer.CreateFromSeconds(Runner, 1f);
@@ -194,6 +197,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
                 case nameof(State): stateChanged = true; break;
                 case nameof(MatchTime): timeChanged = true; break;
                 case nameof(GlassPanes): glassChanged = true; break;
+                case nameof(VoteCounts): RefreshVotes(); break;
             }
         }
 
@@ -601,6 +605,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
         Runner.SessionInfo.IsOpen = false;
         Runner.SessionInfo.IsVisible = false;
+        ChooseVoteMaps();
 
         despawnTimer = TickTimer.CreateFromSeconds(Runner, DespawnDelay);
     }
@@ -669,6 +674,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
     private string CurrentMapName()
     {
+        if (!string.IsNullOrEmpty(NextMapName)) return NextMapName;
         SessionProperty mapName;
         if (Runner != null && Runner.SessionInfo.Properties != null && Runner.SessionInfo.Properties.TryGetValue("mapname", out mapName))
         {

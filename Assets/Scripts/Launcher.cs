@@ -38,6 +38,8 @@ public partial class Launcher : MonoBehaviour
     private bool starting;
 
     public MapData[] maps;
+    // The same list for the map scenes (the next-map vote), which have no Launcher
+    public static MapData[] Maps;
     private int currentmap = 0;
 
     private static readonly string[] modeNames = { "FREE FOR ALL", "TEAM DEATHMATCH" };
@@ -66,6 +68,8 @@ public partial class Launcher : MonoBehaviour
 
     public void Awake()
     {
+        Maps = maps;
+        Manager.NextMapName = null;
         myProfile = Data.LoadProfile();
         usernameField.text = myProfile.username;
         CreateModeButton();
