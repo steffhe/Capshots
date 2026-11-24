@@ -258,10 +258,10 @@ public partial class Launcher : MonoBehaviour
         Transform quit = null;
         foreach (Transform child in anchor)
         {
-            Button button = child.GetComponent<Button>();
-            Text label = button != null ? button.GetComponentInChildren<Text>(true) : null;
+            Button candidate = child.GetComponent<Button>();
+            Text label = candidate != null ? candidate.GetComponentInChildren<Text>(true) : null;
             if (label == null) continue;
-            if (template == null) template = button;
+            if (template == null) template = candidate;
             if (label.text.ToUpperInvariant().Contains("QUIT")) quit = child;
         }
         if (template == null) return null;
