@@ -306,6 +306,9 @@ public partial class Manager
         BuildXpPanel(endgame);
         FitResultsBoard(board as RectTransform, endgame.Find("XP") as RectTransform);
         if (VotingAvailable) BuildVotePanel(endgame);
+        // The match's awards along the top (they may also arrive a moment later)
+        resultsShown = true;
+        BuildAwards();
 
         Text countdown = UITheme.NewText("Countdown", endgame, 18, UITheme.MutedText, TextAnchor.MiddleCenter);
         UITheme.Place(countdown.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 22f), new Vector2(800f, 24f));

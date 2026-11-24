@@ -22,11 +22,28 @@ public class KillSpark : MonoBehaviour
 
     private static AudioClip zapClip;
 
+    // How many sparks, how bright the flash, and whether it zaps: the full kill, or a small hit
+    private int sparkCount = SparkCount;
+    private float flashIntensity = FlashIntensity;
+    private bool zap = true;
+
     public static void Spawn(Vector3 position, Vector3 push, Color color)
     {
         GameObject root = new GameObject("Kill Spark");
         root.transform.position = position;
         root.AddComponent<KillSpark>().Build(push, color);
+    }
+
+    // A few sparks and a dim flash, silent: a drone taking a hit, or one sparking when badly hurt
+    public static void SpawnSmall(Vector3 position, Vector3 push, Color color, int count = 5)
+    {
+        GameObject root = new GameObject("Hit Spark");
+        root.transform.position = position;
+        KillSpark spark = root.AddComponent<KillSpark>();
+        spark.sparkCount = Mathf.Clamp(count, 1, SparkCount);
+        spark.flashIntensity = FlashIntensity * 0.35f;
+        spark.zap = false;
+        spark.Build(push, color);
     }
 
     private void Build(Vector3 push, Color color)
@@ -37,7 +54,7 @@ public class KillSpark : MonoBehaviour
         flash.type = LightType.Point;
         flash.color = bright;
         flash.range = 4f;
-        flash.intensity = FlashIntensity;
+        flash.intensity = flashIntensity;
         flash.shadows = LightShadows.None;
 
         AudioSource source = gameObject.AddComponent<AudioSource>();
@@ -47,16 +64,16 @@ public class KillSpark : MonoBehaviour
         source.minDistance = 2f;
         source.maxDistance = 40f;
         source.dopplerLevel = 0f;
-        source.PlayOneShot(ZapClip(), ZapVolume);
+        if (zap) source.PlayOneShot(ZapClip(), ZapVolume);
 
         Vector3 away = push.sqrMagnitude > 0.001f ? push.normalized : Vector3.forward;
-        sparks = new Transform[SparkCount];
-        velocities = new Vector3[SparkCount];
-        lifetimes = new float[SparkCount];
-        scales = new Vector3[SparkCount];
+        sparks = new Transform[sparkCount];
+        velocities = new Vector3[sparkCount];
+        lifetimes = new float[sparkCount];
+        scales = new Vector3[sparkCount];
         MaterialPropertyBlock block = new MaterialPropertyBlock();
 
-        for (int i = 0; i < SparkCount; i++)
+        for (int i = 0; i < sparkCount; i++)
         {
             GameObject spark = GameObject.CreatePrimitive(PrimitiveType.Cube);
             DestroyImmediate(spark.GetComponent<Collider>());
@@ -94,7 +111,7 @@ public class KillSpark : MonoBehaviour
         {
             // Flickers as it dies, like a short circuit
             float flicker = Random.value < 0.3f ? 0.3f : 1f;
-            flash.intensity = Mathf.Lerp(FlashIntensity, 0f, age / FlashTime) * flicker;
+            flash.intensity = Mathf.Lerp(flashIntensity, 0f, age / FlashTime) * flicker;
             if (age >= FlashTime) { Destroy(flash); flash = null; }
         }
 
@@ -115,7 +132,7 @@ public class KillSpark : MonoBehaviour
             spark.localScale = scales[i] * Mathf.Clamp01(left / 0.15f);
         }
 
-        if (!anyLeft && flash == null && age > ZapClip().length) Destroy(gameObject);
+        if (!anyLeft && flash == null && (!zap || age > ZapClip().length)) Destroy(gameObject);
     }
 
     // A short electric zap: a buzzy crackle that drops in pitch, synthesized once. NeckSparks

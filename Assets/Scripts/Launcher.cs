@@ -80,7 +80,8 @@ public partial class Launcher : MonoBehaviour
         CreateBotsButton();
         CreateBotSkillButton();
         CreateWinByButton();
-        // Each goes in just above Quit, so they read in this order: Customize, Settings, Quit
+        // Each goes in just above Quit, so they read in this order: Practice, Customize, Settings, Quit
+        CreateColumnButton("PRACTICE", Practice);
         CreateColumnButton("CUSTOMIZE", () => { if (customizeMenu != null) customizeMenu.Open(); });
         GameObject settingsButton = CreateColumnButton("SETTINGS", () => { if (settingsMenu != null) settingsMenu.Open(); });
         // The player model in the menu wears your hat too, in the logo's colour...
@@ -150,6 +151,26 @@ public partial class Launcher : MonoBehaviour
         {
             Debug.LogWarning("Quick play failed: " + result.ShutdownReason);
             LoadingScreen.Fail("COULDN'T FIND A MATCH");
+        }
+    }
+
+    // Practice: an offline match against bots, with the create tab's settings (and 5 bots unless a
+    // number was picked there). Nothing to connect to, so it starts at once and works with nobody online.
+    public async void Practice()
+    {
+        if (starting) return;
+        starting = true;
+        PrepareProfile();
+        if (!maps[currentmap].enabled) currentmap = NextEnabledMap(0);
+        Dictionary<string, SessionProperty> properties = RoomProperties();
+        if (currentbots == 0) properties["bots"] = QuickPlayBots;
+        LoadingScreen.Show("STARTING PRACTICE", maps[currentmap].name, LoadingScreen.ModeName(currentmode));
+        StartGameResult result = await NetworkSession.Practice(properties, maps[currentmap].scene);
+        starting = false;
+        if (!result.Ok)
+        {
+            Debug.LogWarning("Couldn't start practice: " + result.ShutdownReason);
+            LoadingScreen.Fail("COULDN'T START PRACTICE");
         }
     }
 

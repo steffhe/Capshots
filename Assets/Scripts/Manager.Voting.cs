@@ -70,7 +70,7 @@ public partial class Manager
 
     private int CurrentMapIndex()
     {
-        var properties = Runner.SessionInfo.Properties;
+        var properties = NetworkSession.MatchProperties(Runner);
         if (properties != null && properties.TryGetValue("map", out SessionProperty map)) return (int)map;
         return -1;
     }
@@ -118,13 +118,14 @@ public partial class Manager
 
         // The room list and anyone joining see the new map
         Dictionary<string, SessionProperty> properties = new Dictionary<string, SessionProperty>();
-        if (Runner.SessionInfo.Properties != null)
+        var current = NetworkSession.MatchProperties(Runner);
+        if (current != null)
         {
-            foreach (KeyValuePair<string, SessionProperty> entry in Runner.SessionInfo.Properties) properties[entry.Key] = entry.Value;
+            foreach (KeyValuePair<string, SessionProperty> entry in current) properties[entry.Key] = entry.Value;
         }
         properties["map"] = map;
         properties["mapname"] = maps[map].name;
-        Runner.SessionInfo.UpdateCustomProperties(properties);
+        NetworkSession.UpdateMatchProperties(Runner, properties);
 
         StartCoroutine(LoadMapAfter(maps[map].scene, 0.6f));
     }

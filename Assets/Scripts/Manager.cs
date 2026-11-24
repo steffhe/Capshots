@@ -122,8 +122,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         if (HasStateAuthority)
         {
             // Open again after the last map's results (a map voted for on the results screen)
-            Runner.SessionInfo.IsOpen = true;
-            Runner.SessionInfo.IsVisible = true;
+            NetworkSession.SetOpen(Runner, true);
             State = GameState.Waiting;
             MatchTime = matchlength;
             Heartbeat = TickTimer.CreateFromSeconds(Runner, 1f);
@@ -158,7 +157,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
     private void ReadMatchSettings()
     {
-        var properties = Runner.SessionInfo.Properties;
+        var properties = NetworkSession.MatchProperties(Runner);
         if (properties == null) return;
 
         SessionProperty value;
@@ -479,6 +478,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
                 {
                     // Warmup is over: everyone starts the match on 0 kills and 0 deaths (and no streaks)
                     streaks.Clear();
+                    awardCounts.Clear();
                     foreach (PlayerRef player in StatsKeys())
                     {
                         PlayerStats stats = Stats[player];
@@ -528,6 +528,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
             ChangeStats(victim, 0, 1);
             if (killer.IsRealPlayer && killer != victim) ChangeStats(killer, 1, 0);
             CountStreaks(victim, killer, out multiKill, out streak, out endedStreak);
+            CountForAwards(killer, victim, weaponName, headshot, streak);
         }
 
         RPC_KillFeed(killer.IsRealPlayer ? killer.PlayerId : -1, victim.PlayerId, weaponName, headshot,
@@ -614,9 +615,9 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         State = GameState.Ending;
         pendingSpawns.Clear();
 
-        Runner.SessionInfo.IsOpen = false;
-        Runner.SessionInfo.IsVisible = false;
+        NetworkSession.SetOpen(Runner, false);
         ChooseVoteMaps();
+        SendAwards();
 
         despawnTimer = TickTimer.CreateFromSeconds(Runner, DespawnDelay);
     }
@@ -691,7 +692,8 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
     {
         if (!string.IsNullOrEmpty(NextMapName)) return NextMapName;
         SessionProperty mapName;
-        if (Runner != null && Runner.SessionInfo.Properties != null && Runner.SessionInfo.Properties.TryGetValue("mapname", out mapName))
+        var properties = NetworkSession.MatchProperties(Runner);
+        if (properties != null && properties.TryGetValue("mapname", out mapName))
         {
             return (string)mapName;
         }
