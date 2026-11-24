@@ -225,6 +225,7 @@ public class TouchControls : MonoBehaviour
         AddButton("CROUCH", new[] { GameInput.Crouch, GameInput.Slide }, new Vector2(1f, 0f), new Vector2(-310f, 140f), 60f);
         AddButton("RELOAD", new[] { GameInput.Reload }, new Vector2(1f, 0f), new Vector2(-120f, 510f), 55f);
         AddButton("SWAP", new[] { GameInput.WeaponNext }, new Vector2(1f, 0f), new Vector2(-440f, 480f), 55f);
+        AddButton("NADE", new[] { GameInput.Grenade }, new Vector2(1f, 0f), new Vector2(-280f, 560f), 50f);
 
         // Top middle, clear of the kill feed (top right) and the player card (top left)
         AddButton("II", null, new Vector2(0.5f, 1f), new Vector2(70f, -70f), 45f).onPress = OpenPauseMenu;

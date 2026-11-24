@@ -154,6 +154,21 @@ public class OfficeGlass : MonoBehaviour
         }
     }
 
+    // On the host, for a plasma grenade going off: every pane within 'radius' shatters
+    public static void Blast(Vector3 center, float radius)
+    {
+        if (Instance == null || Manager.Instance == null) return;
+        int count = Physics.OverlapSphereNonAlloc(center, radius, overlaps, Instance.glassMask, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < count; i++)
+        {
+            if (!Instance.paneOfCollider.TryGetValue(overlaps[i], out int pane)) continue;
+            // Two hits: intact panes crack, then break
+            Manager.Instance.HitGlass(pane);
+            Manager.Instance.HitGlass(pane);
+        }
+    }
+    private static readonly Collider[] overlaps = new Collider[32];
+
     public int PaneCount => panes.Count;
 
     // A pane's state from the Manager. With effects, a crack or shatter is seen and heard;

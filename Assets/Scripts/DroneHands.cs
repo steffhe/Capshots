@@ -328,6 +328,7 @@ public class DroneHands : MonoBehaviour
 
         float reload = weapon != null ? weapon.ReloadProgress : -1f;
         PoseGun(reload);
+        float throwing = weapon != null ? weapon.ThrowProgress : -1f;
 
         float time = Time.time;
         float dt = Time.deltaTime;
@@ -338,6 +339,7 @@ public class DroneHands : MonoBehaviour
             // In the gun's space, so the hands tip over with it
             Vector3 local = localGrips[i];
             if (i == 1 && reload >= 0f) local = ReloadHand(reload);
+            else if (i == 1 && throwing >= 0f) local = ThrowHand(throwing);
             Vector3 target = root.InverseTransformPoint(gunDesign.TransformPoint(local));
             // A gentle bob, each hand slightly out of step
             target += Vector3.up * (Mathf.Sin(time * 2.4f + phase + i * 1.3f) * 0.008f);
@@ -381,6 +383,16 @@ public class DroneHands : MonoBehaviour
         Vector3 pivot = localGrips[0];
         gunDesign.localRotation = rotation;
         gunDesign.localPosition = pivot - rotation * pivot + Vector3.down * (0.04f * tip);
+    }
+
+    // Where the free hand is while throwing a plasma grenade, in the gun's space: it was let go as the
+    // throw began, so the hand follows through: a lunge forward and up, then back to the gun
+    private Vector3 ThrowHand(float p)
+    {
+        Vector3 rest = localGrips[1];
+        Vector3 reach = rest + new Vector3(-0.12f, 0.12f, 0.45f);
+        if (p < 0.3f) return Vector3.Lerp(rest, reach, Ease(0f, 0.3f, p));
+        return Vector3.Lerp(reach, rest, Ease(0.35f, 1f, p));
     }
 
     // Where the free hand is during a reload, in the gun's space
