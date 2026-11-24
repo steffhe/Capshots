@@ -167,9 +167,15 @@ public class GunSatelliteLayoutTests
         }
         for (int i = 0; i < 2; i++)
         {
-            float rest = Layout.Arrange(Layout.Form.Tight, i, Pistol, Rest).position.z;
-            float shot = Layout.Arrange(Layout.Form.Tight, i, Pistol, Firing).position.z;
-            Assert.Less(shot, rest - 0.05f, "panel " + i);
+            Layout.Pose rest = Layout.Arrange(Layout.Form.Tight, i, Pistol, Rest);
+            Layout.Pose shot = Layout.Arrange(Layout.Form.Tight, i, Pistol, Firing);
+            Assert.Less(shot.position.z, rest.position.z - 0.05f, "panel " + i + " recoils");
+            // Standing off the side of the body, reaching out past the muzzle, and thrown out wide by a shot
+            float restGap = Mathf.Abs(rest.position.x - Pistol.body.center.x) - Pistol.body.extents.x;
+            float shotGap = Mathf.Abs(shot.position.x - Pistol.body.center.x) - Pistol.body.extents.x;
+            Assert.Greater(restGap, Pistol.body.size.x * 0.2f, "panel " + i + " off the body");
+            Assert.Greater(rest.position.z + rest.size.z * 0.5f, Pistol.body.max.z, "panel " + i + " past the muzzle");
+            Assert.Greater(shotGap, restGap + Pistol.body.size.x * 0.4f, "panel " + i + " out wide");
         }
     }
 

@@ -8,8 +8,8 @@ using UnityEngine;
 //    while firing and bursts wide apart with every shot.
 //  - Shotgun: a claw of petals flared round the muzzle, open at the top so the bead stays in view,
 //    that blooms wide on each shot; and two plates on the pump that rack back after each shot.
-//  - Pistol: panels down both sides that recoil like a slide, a cap in front of the muzzle and a
-//    plate under it. The other pieces tuck away inside the body.
+//  - Pistol: panels standing off both sides and reaching past the muzzle, that recoil like a slide
+//    and fly out wide on each shot, a cap in front of the muzzle and a plate under it. The other pieces tuck away inside the body.
 // Everything is in the gun model's space (+z out of the muzzle, +y up) and sized from the model's
 // own parts, so it fits any gun. Nothing reaches above the sights.
 public static class GunSatelliteLayout
@@ -220,15 +220,20 @@ public static class GunSatelliteLayout
 
         if (i < 2)
         {
-            // Down the sides: hover a little off the body, tighter while aiming, and recoil back
+            // Down the sides, standing well off the body and reaching out past the muzzle, their
+            // fronts turned slightly out; tighter while aiming. A shot throws them out wide, swings
+            // their fronts further out and recoils them back.
             float side = i == 0 ? -1f : 1f;
-            float gap = width * (0.1f + 0.03f * breathe) * (1f - 0.5f * m.aim) + kick * width * 0.28f;
+            float gap = width * (0.22f + 0.04f * breathe) * (1f - 0.4f * m.aim) + kick * width * 0.55f;
             float length = body.size.z * 0.7f;
+            float front = body.max.z + body.size.z * 0.15f;
+            float flare = (4f + 18f * kick) * side;
+            Vector3 along = Quaternion.AngleAxis(flare, Vector3.up) * Vector3.forward;
             return new Pose
             {
                 position = new Vector3(body.center.x + side * (body.extents.x + gap + width * 0.05f), body.center.y + height * 0.1f,
-                                       body.center.z + body.size.z * 0.05f - kick * body.size.z * 0.38f),
-                rotation = Quaternion.LookRotation(Vector3.forward, side < 0f ? Vector3.left : Vector3.right),
+                                       front - length * 0.5f - kick * body.size.z * 0.38f),
+                rotation = Quaternion.LookRotation(along, side < 0f ? Vector3.left : Vector3.right),
                 size = new Vector3(height * 0.55f, width * 0.1f, length),
             };
         }
