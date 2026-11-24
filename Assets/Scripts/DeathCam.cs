@@ -4,8 +4,10 @@ using UnityEngine.UI;
 
 // What you see right after dying: instead of cutting straight to the map view, a camera starts where
 // your eyes were, pulls back and follows your head as it flies off (or your cap, when a headshot
-// knocked it off) for a moment, then fades through black to the map view for the rest of the wait
-// to respawn. Purely local presentation; nothing here is networked.
+// knocked it off) for a moment. Then it fades through black to your killer: over their shoulder,
+// looking where they aim, until you respawn (SPECTATING and their name at the bottom). Without a
+// killer to watch (a fall, your own grenade, or they died too), it fades to the map view instead.
+// Purely local presentation; nothing here is networked.
 //
 // Two things start it, in either order (which one arrives first depends on the network): the local
 // player's body going away (Begin, from Player) and that player's ragdoll appearing (Follow, from
@@ -37,6 +39,17 @@ public class DeathCam : MonoBehaviour
     private bool fadingOut;
     private float fadeOutAge;
 
+    // Spectating the killer: who (actor id and name), and how far the fade back in has got
+    private const float SpectateDistance = 2.4f, SpectateHeight = 0.55f, SpectateSide = 0.45f;
+    private static int pendingKiller = -1;
+    private static string pendingKillerName;
+    private static float pendingKillerAt = -10f;
+    private int killer = -1;
+    private string killerName;
+    private bool spectating;
+    private float fadeInAge;
+    private Text spectateLabel;
+
     // The local player's body just went away. eyes: its camera, for where to start from.
     public static void Begin(Camera eyes)
     {
@@ -50,6 +63,28 @@ public class DeathCam : MonoBehaviour
 
         if (pendingTarget != null && Time.time - pendingAt < 1f) instance.SetTarget(pendingTarget);
         pendingTarget = null;
+        if (pendingKiller >= 0 && Time.time - pendingKillerAt < 2f)
+        {
+            instance.killer = pendingKiller;
+            instance.killerName = pendingKillerName;
+        }
+        pendingKiller = -1;
+    }
+
+    // Who killed the local player (from the kill feed), to watch after the body. -1: nobody to watch.
+    public static void SetKiller(int actor, string name)
+    {
+        if (instance != null)
+        {
+            instance.killer = actor;
+            instance.killerName = name;
+        }
+        else
+        {
+            pendingKiller = actor;
+            pendingKillerName = name;
+            pendingKillerAt = Time.time;
+        }
     }
 
     // The local player's ragdoll: focus is the head, or the cap if it came off
@@ -103,6 +138,28 @@ public class DeathCam : MonoBehaviour
         fade = fadeObject.GetComponent<Image>();
         fade.color = new Color(0f, 0f, 0f, 0f);
         fade.raycastTarget = false;
+
+        // SPECTATING and the killer's name, low in the middle, shown while watching them
+        spectateLabel = UITheme.NewText("Spectating", canvasObject.transform, 30, Color.white, TextAnchor.MiddleCenter);
+        RectTransform label = spectateLabel.rectTransform;
+        label.anchorMin = label.anchorMax = label.pivot = new Vector2(0.5f, 0f);
+        label.anchoredPosition = new Vector2(0f, 120f);
+        label.sizeDelta = new Vector2(900f, 50f);
+        spectateLabel.supportRichText = true;
+        spectateLabel.gameObject.SetActive(false);
+        // Under the fade, so it goes black with the picture
+        spectateLabel.transform.SetAsFirstSibling();
+    }
+
+    // The killer's body, if they're still alive to watch
+    private Player KillerBody()
+    {
+        if (killer < 0) return null;
+        foreach (Player p in Player.All)
+        {
+            if (p != null && p.Object != null && p.Object.IsValid && !p.IsDead && p.ActorId == killer) return p;
+        }
+        return null;
     }
 
     private void SetTarget(Transform focus)
@@ -123,6 +180,12 @@ public class DeathCam : MonoBehaviour
         float dt = Time.deltaTime;
         age += dt;
 
+        if (spectating)
+        {
+            Spectate(dt);
+            return;
+        }
+
         if (target == null)
         {
             targetWaited += dt;
@@ -130,7 +193,8 @@ public class DeathCam : MonoBehaviour
             return;
         }
 
-        // Fade to black, then hand over to the map view (which shows once this camera is gone)
+        // Fade to black, then cut to the killer, or hand over to the map view (which shows once this
+        // camera is gone)
         if (!fadingOut && age >= LingerTime) fadingOut = true;
         if (fadingOut)
         {
@@ -138,7 +202,13 @@ public class DeathCam : MonoBehaviour
             fade.color = new Color(0f, 0f, 0f, Mathf.Clamp01(fadeOutAge / FadeTime));
             if (fadeOutAge >= FadeTime)
             {
-                End();
+                Player body = KillerBody();
+                if (body == null)
+                {
+                    End();
+                    return;
+                }
+                StartSpectating(body);
                 return;
             }
         }
@@ -161,6 +231,73 @@ public class DeathCam : MonoBehaviour
             Quaternion lookRotation = Quaternion.LookRotation(look, Vector3.up);
             transform.rotation = Quaternion.Slerp(transform.rotation, lookRotation, 1f - Mathf.Exp(-6f * dt));
         }
+    }
+
+    private void StartSpectating(Player body)
+    {
+        spectating = true;
+        fadingOut = false;
+        fadeOutAge = 0f;
+        fadeInAge = 0f;
+        spectateLabel.text = "SPECTATING  <color=#ff5a4a>" + (string.IsNullOrEmpty(killerName) ? "KILLER" : killerName.ToUpper()) + "</color>";
+        spectateLabel.gameObject.SetActive(true);
+        // Straight to the spot behind them, under cover of the black
+        Vector3 position, aimAt;
+        SpectatePose(body, out position, out aimAt);
+        transform.position = position;
+        transform.rotation = Quaternion.LookRotation(aimAt - position, Vector3.up);
+    }
+
+    // Over the killer's shoulder, looking where they aim. When they die or leave: fade to the map view.
+    private void Spectate(float dt)
+    {
+        Player body = KillerBody();
+        if (body == null && !fadingOut) fadingOut = true;
+
+        if (fadingOut)
+        {
+            fadeOutAge += dt;
+            fade.color = new Color(0f, 0f, 0f, Mathf.Clamp01(fadeOutAge / FadeTime));
+            if (fadeOutAge >= FadeTime) End();
+            return;
+        }
+
+        fadeInAge += dt;
+        fade.color = new Color(0f, 0f, 0f, 1f - Mathf.Clamp01(fadeInAge / FadeTime));
+
+        SpectatePose(body, out Vector3 wanted, out Vector3 aimAt);
+        float follow = 1f - Mathf.Exp(-10f * dt);
+        transform.position = Vector3.Lerp(transform.position, wanted, follow);
+        Vector3 look = aimAt - transform.position;
+        if (look.sqrMagnitude > 0.0001f)
+        {
+            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(look, Vector3.up), 1f - Mathf.Exp(-12f * dt));
+        }
+    }
+
+    // Where the spectator camera wants to be, and the point it looks at, for this body
+    private static void SpectatePose(Player body, out Vector3 position, out Vector3 aimAt)
+    {
+        Transform t = body.transform;
+        // Their aim: the body's turn, and the pitch they look up (+) or down (-)
+        Quaternion aim = Quaternion.Euler(-body.Pitch, t.eulerAngles.y, 0f);
+        Vector3 eye = t.position + Vector3.up * SpectateHeight;
+        Vector3 forward = aim * Vector3.forward;
+        aimAt = eye + forward * 25f;
+
+        Vector3 flatForward = t.forward;
+        flatForward.y = 0f;
+        flatForward = flatForward.sqrMagnitude > 0.001f ? flatForward.normalized : Vector3.forward;
+        Vector3 offset = -flatForward * SpectateDistance + t.right * SpectateSide + Vector3.up * 0.35f;
+
+        // Not through walls: pulled in towards them if something is behind
+        int mask = ~((1 << Layers.LocalPlayer) | (1 << Layers.RemotePlayer) | (1 << Layers.Gun) | (1 << Layers.LocalGun) | (1 << Layers.Hitbox) | (1 << Layers.Glass) | (1 << 2));
+        float length = offset.magnitude;
+        if (Physics.SphereCast(eye, 0.2f, offset / length, out RaycastHit hit, length, mask, QueryTriggerInteraction.Ignore))
+        {
+            offset = offset / length * Mathf.Max(0.4f, hit.distance - 0.1f);
+        }
+        position = eye + offset;
     }
 
     private void OnDestroy()

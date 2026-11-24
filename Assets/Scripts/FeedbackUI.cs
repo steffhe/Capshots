@@ -31,6 +31,14 @@ public class FeedbackUI : MonoBehaviour
     private Image damageFlash;
     private float flashAlpha;
 
+    // A red glow round the screen's edges while badly hurt, beating like a pulse that quickens as
+    // health drops. Fed every frame by the local player; gone when it isn't (dead, or no body).
+    private const float LowHealthThreshold = 0.35f;
+    private Image lowHealthEdge;
+    private float lowHealthAmount, lowHealthShown;
+    private int lowHealthFrame = -1;
+    private float pulsePhase;
+
     private RectTransform indicatorPivot;
     private Image indicator;
     private float indicatorTimeLeft;
@@ -85,6 +93,11 @@ public class FeedbackUI : MonoBehaviour
     {
         root = (RectTransform)transform;
         Stretch(root);
+
+        // Red edges while badly hurt, under the damage flash
+        lowHealthEdge = NewImage("Low Health", root, new Color(0.75f, 0f, 0f, 0f));
+        lowHealthEdge.sprite = EdgeSprite();
+        Stretch(lowHealthEdge.rectTransform);
 
         // Full screen red flash when taking damage
         damageFlash = NewImage("Damage Flash", root, new Color(0.8f, 0f, 0f, 0f));
@@ -190,6 +203,14 @@ public class FeedbackUI : MonoBehaviour
         }
 
         ui.Play(ui.hurtClip, 0.43f);
+    }
+
+    // The local player's health, 0 to 1, every frame while they're alive
+    public static void LowHealth(float fraction)
+    {
+        if (Instance == null) return;
+        Instance.lowHealthAmount = fraction > 0f && fraction < LowHealthThreshold ? 1f - fraction / LowHealthThreshold : 0f;
+        Instance.lowHealthFrame = Time.frameCount;
     }
 
     // Local player hit someone else
@@ -394,6 +415,24 @@ public class FeedbackUI : MonoBehaviour
         flash.a = flashAlpha;
         damageFlash.color = flash;
 
+        // Low health: a pulse from about 70 to 140 beats a minute as health drops
+        float lowTarget = lowHealthFrame >= Time.frameCount - 1 ? lowHealthAmount : 0f;
+        lowHealthShown = Mathf.MoveTowards(lowHealthShown, lowTarget, Time.deltaTime * 2f);
+        if (lowHealthShown > 0f)
+        {
+            pulsePhase += Time.deltaTime * Mathf.Lerp(1.2f, 2.3f, lowHealthShown);
+            float beat = Mathf.Pow(Mathf.Abs(Mathf.Sin(pulsePhase * Mathf.PI)), 4f);
+            Color edge = lowHealthEdge.color;
+            edge.a = lowHealthShown * (0.35f + 0.3f * beat);
+            lowHealthEdge.color = edge;
+        }
+        else if (lowHealthEdge.color.a > 0f)
+        {
+            Color edge = lowHealthEdge.color;
+            edge.a = 0f;
+            lowHealthEdge.color = edge;
+        }
+
         // Damage direction, kept pointing at where the shot came from as the player turns
         if (indicatorTimeLeft > 0f && viewer != null)
         {
@@ -473,6 +512,34 @@ public class FeedbackUI : MonoBehaviour
     private void Play(AudioClip clip, float clipVolume)
     {
         if (clip != null) audioSource.PlayOneShot(clip, clipVolume * volume);
+    }
+
+    // Clear in the middle, solid towards the edges and corners: tinted by the image's colour
+    private static Sprite edgeSprite;
+
+    private static Sprite EdgeSprite()
+    {
+        if (edgeSprite != null) return edgeSprite;
+        const int size = 128;
+        Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        texture.name = "Low Health Edge";
+        texture.wrapMode = TextureWrapMode.Clamp;
+        Color[] pixels = new Color[size * size];
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                Vector2 p = new Vector2(x / (size - 1f) * 2f - 1f, y / (size - 1f) * 2f - 1f);
+                // A rounded square, so the glow hugs the sides instead of a circle
+                float d = Mathf.Pow(Mathf.Pow(Mathf.Abs(p.x), 4f) + Mathf.Pow(Mathf.Abs(p.y), 4f), 0.25f);
+                float a = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.55f, 1.05f, d));
+                pixels[y * size + x] = new Color(1f, 1f, 1f, a);
+            }
+        }
+        texture.SetPixels(pixels);
+        texture.Apply();
+        edgeSprite = Sprite.Create(texture, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
+        return edgeSprite;
     }
 
     private Image NewImage(string name, Transform parent, Color color)

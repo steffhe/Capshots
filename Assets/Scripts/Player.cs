@@ -319,6 +319,8 @@ public class Player : NetworkBehaviour
             DroneBody.Dress(standingCollider != null ? standingCollider.transform : null, standingColliderHead != null ? standingColliderHead.transform : null, capColor, teamMode),
             DroneBody.Dress(crouchingCollider != null ? crouchingCollider.transform : null, crouchingColliderHead != null ? crouchingColliderHead.transform : null, capColor, teamMode),
         };
+        // You don't see your own body, so its damage sparks would only show in front of your eyes
+        foreach (DroneBody drone in drones) if (drone != null) drone.showSparks = !IsLocal;
         // Floating hand-orbs that hold the gun
         if (hands == null) hands = DroneHands.Attach(this, capColor);
         // Pieces floating round the gun, arranged for its form
@@ -546,6 +548,7 @@ public class Player : NetworkBehaviour
         ApplyCrouchVisuals(false);
         RefreshNameTag();
         RefreshHat();
+        RefreshDamageVisuals();
 
         if (!IsLocal)
         {
@@ -697,6 +700,29 @@ public class Player : NetworkBehaviour
         weaponParent.localRotation = Quaternion.Slerp(weaponParent.localRotation, Quaternion.Euler(0f, 0f, -hmove * 3f * aimAdjust), dt * 6f);
     }
 
+    // Everyone sees a drone get hit (its shell flashes white and sparks fly) and, when it's badly
+    // hurt, flicker and spark. Runs on every machine from the health the host syncs.
+    private int shownHealth = -1;
+
+    private void RefreshDamageVisuals()
+    {
+        int health = Health;
+        if (shownHealth >= 0 && health < shownHealth && !Dead)
+        {
+            foreach (DroneBody drone in drones) if (drone != null) drone.Hit();
+            if (!IsLocal)
+            {
+                Vector3 at = transform.position + Vector3.up * Random.Range(0f, 0.6f) + Random.insideUnitSphere * 0.2f;
+                KillSpark.SpawnSmall(at, Random.onUnitSphere, Color.white, 4);
+            }
+        }
+        shownHealth = health;
+
+        float fraction = maxHealth > 0 ? (float)health / maxHealth : 1f;
+        foreach (DroneBody drone in drones) if (drone != null) drone.SetHealth(fraction);
+        if (IsLocal) FeedbackUI.LowHealth(fraction);
+    }
+
     void RefreshHealthBar()
     {
         if (uiHealthBar == null) return;
@@ -757,6 +783,7 @@ public class Player : NetworkBehaviour
         {
             manager.SpawnRagdoll(transform.position, transform.rotation, Velocity, hitDirection.normalized, hitOffset, knockback, headshot, ActorId);
             manager.DropAmmo(GroundPosition());
+            manager.DropCap(GroundPosition(), ActorId);
             manager.PlayerKilled(Owner, attacker, weaponName, headshot);
         }
 

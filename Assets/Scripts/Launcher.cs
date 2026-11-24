@@ -42,8 +42,9 @@ public partial class Launcher : MonoBehaviour
     public static MapData[] Maps;
     private int currentmap = 0;
 
-    private static readonly string[] modeNames = { "FREE FOR ALL", "TEAM DEATHMATCH" };
-    private static readonly string[] modeShortNames = { "FFA", "TDM" };
+    // In MatchMode's order
+    private static readonly string[] modeNames = { "FREE FOR ALL", "TEAM DEATHMATCH", "CAP GRAB" };
+    private static readonly string[] modeShortNames = { "FFA", "TDM", "CAP" };
     private int currentmode = 0;
     private Text modeValue;
 
@@ -80,7 +81,8 @@ public partial class Launcher : MonoBehaviour
         CreateBotsButton();
         CreateBotSkillButton();
         CreateWinByButton();
-        // Each goes in just above Quit, so they read in this order: Customize, Settings, Quit
+        // Each goes in just above Quit, so they read in this order: Practice, Customize, Settings, Quit
+        CreateColumnButton("PRACTICE", Practice);
         CreateColumnButton("CUSTOMIZE", () => { if (customizeMenu != null) customizeMenu.Open(); });
         GameObject settingsButton = CreateColumnButton("SETTINGS", () => { if (settingsMenu != null) settingsMenu.Open(); });
         // The player model in the menu wears your hat too, in the logo's colour...
@@ -150,6 +152,26 @@ public partial class Launcher : MonoBehaviour
         {
             Debug.LogWarning("Quick play failed: " + result.ShutdownReason);
             LoadingScreen.Fail("COULDN'T FIND A MATCH");
+        }
+    }
+
+    // Practice: an offline match against bots, with the create tab's settings (and 5 bots unless a
+    // number was picked there). Nothing to connect to, so it starts at once and works with nobody online.
+    public async void Practice()
+    {
+        if (starting) return;
+        starting = true;
+        PrepareProfile();
+        if (!maps[currentmap].enabled) currentmap = NextEnabledMap(0);
+        Dictionary<string, SessionProperty> properties = RoomProperties();
+        if (currentbots == 0) properties["bots"] = QuickPlayBots;
+        LoadingScreen.Show("STARTING PRACTICE", maps[currentmap].name, LoadingScreen.ModeName(currentmode));
+        StartGameResult result = await NetworkSession.Practice(properties, maps[currentmap].scene);
+        starting = false;
+        if (!result.Ok)
+        {
+            Debug.LogWarning("Couldn't start practice: " + result.ShutdownReason);
+            LoadingScreen.Fail("COULDN'T START PRACTICE");
         }
     }
 
@@ -542,7 +564,8 @@ public partial class Launcher : MonoBehaviour
     private static string MatchGoal(SessionInfo session)
     {
         var properties = session.Properties;
-        if (properties.TryGetValue("killcount", out SessionProperty kills) && (int)kills > 0) return (int)kills + " KILLS";
+        bool caps = properties.TryGetValue("mode", out SessionProperty mode) && (int)mode == (int)MatchMode.CapGrab;
+        if (properties.TryGetValue("killcount", out SessionProperty kills) && (int)kills > 0) return (int)kills + (caps ? " CAPS" : " KILLS");
         if (properties.TryGetValue("matchlength", out SessionProperty length) && (int)length > 0) return Mathf.Max(1, (int)length / 60) + " MIN";
         return null;
     }

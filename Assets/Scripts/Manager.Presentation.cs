@@ -72,8 +72,8 @@ public partial class Manager
         Text rules = UITheme.NewText("Rules", root, 20, UITheme.AccentText, TextAnchor.MiddleCenter);
         UITheme.Row(rules.rectTransform, 104f, 28f);
         string goal;
-        if (HasKillLimit) goal = IsTeamMode ? $"FIRST TEAM TO {killcount} KILLS" : $"FIRST TO {killcount} KILLS";
-        else goal = $"MOST KILLS IN {Mathf.Max(1, matchlength / 60)} MIN";
+        if (HasKillLimit) goal = IsTeamMode ? $"FIRST TEAM TO {killcount} KILLS" : $"FIRST TO {killcount} {ScoreWord}";
+        else goal = $"MOST {ScoreWord} IN {Mathf.Max(1, matchlength / 60)} MIN";
         if (HasKillLimit && HasTimeLimit) goal += $"   ·   {Mathf.Max(1, matchlength / 60)} MIN";
         rules.text = $"{LoadingScreen.ModeName((int)mode)}   ·   {goal}";
         UITheme.AddShadow(rules);
@@ -192,7 +192,7 @@ public partial class Manager
     // The banner's words for the local player
     private void DescribeResult(bool timeUp, out string kicker, out string title, out Color color, out string subtitle)
     {
-        kicker = timeUp ? "TIME'S UP" : "KILL LIMIT REACHED";
+        kicker = timeUp ? "TIME'S UP" : IsCapGrab ? "CAP LIMIT REACHED" : "KILL LIMIT REACHED";
         Color win = UITheme.AccentText;
         Color lose = new Color(1f, 0.42f, 0.38f);
 
@@ -225,12 +225,12 @@ public partial class Manager
         else if (myKills == top.kills)
         {
             title = "VICTORY"; color = win;
-            subtitle = $"TOP OF THE BOARD WITH {myKills} KILLS";
+            subtitle = $"TOP OF THE BOARD WITH {myKills} {ScoreWord}";
         }
         else
         {
             title = top.profile.username.ToUpperInvariant() + " WINS"; color = UITheme.TextColor;
-            subtitle = $"YOU PLACED {Ordinal(place)} WITH {myKills} KILLS";
+            subtitle = $"YOU PLACED {Ordinal(place)} WITH {myKills} {ScoreWord}";
         }
     }
 
@@ -306,6 +306,9 @@ public partial class Manager
         BuildXpPanel(endgame);
         FitResultsBoard(board as RectTransform, endgame.Find("XP") as RectTransform);
         if (VotingAvailable) BuildVotePanel(endgame);
+        // The match's awards along the top (they may also arrive a moment later)
+        resultsShown = true;
+        BuildAwards();
 
         Text countdown = UITheme.NewText("Countdown", endgame, 18, UITheme.MutedText, TextAnchor.MiddleCenter);
         UITheme.Place(countdown.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 22f), new Vector2(800f, 24f));

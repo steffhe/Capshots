@@ -70,8 +70,8 @@ public class LoadingScreen : MonoBehaviour
     // Fills in the map and mode from the session's properties (set by whoever created the match)
     public static void SetMatch(NetworkRunner runner)
     {
-        if (instance == null || runner == null || !runner.SessionInfo.IsValid) return;
-        var properties = runner.SessionInfo.Properties;
+        if (instance == null || runner == null) return;
+        var properties = NetworkSession.MatchProperties(runner);
         if (properties == null) return;
         string map = properties.TryGetValue("mapname", out SessionProperty m) ? (string)m : null;
         string mode = properties.TryGetValue("mode", out SessionProperty md) ? ModeName((int)md) : null;
@@ -92,7 +92,7 @@ public class LoadingScreen : MonoBehaviour
         instance.FadeTo(0f, FadeOutTime, 2f);
     }
 
-    public static string ModeName(int mode) => mode == (int)MatchMode.TeamDeathmatch ? "TEAM DEATHMATCH" : "FREE FOR ALL";
+    public static string ModeName(int mode) => mode == (int)MatchMode.TeamDeathmatch ? "TEAM DEATHMATCH" : mode == (int)MatchMode.CapGrab ? "CAP GRAB" : "FREE FOR ALL";
 
     private static LoadingScreen Instance
     {

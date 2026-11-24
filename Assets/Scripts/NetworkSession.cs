@@ -99,12 +99,53 @@ public class NetworkSession : MonoBehaviour, INetworkRunnerCallbacks
         return Start(GameMode.Client, sessionName, 0, null, -1);
     }
 
+    // A practice match against bots, offline: Fusion's single-player mode, with no connection to
+    // Photon at all, so it works with nobody else online (or no internet)
+    public static Task<StartGameResult> Practice(Dictionary<string, SessionProperty> properties, int sceneIndex)
+    {
+        practiceProperties = new Dictionary<string, SessionProperty>(properties);
+        // Room for the player and up to 7 bots (bots fill up to the room size)
+        return Start(GameMode.Single, "Practice", 8, properties, sceneIndex);
+    }
+
+    // A practice match's settings. A single-player session isn't in Photon's cloud, so its
+    // properties are kept here instead of trusting SessionInfo to have them.
+    private static Dictionary<string, SessionProperty> practiceProperties;
+
+    public static bool IsPractice(NetworkRunner r) => r != null && r.IsRunning && r.IsSinglePlayer;
+
+    // The match's settings (map, mode, bots and how it's won): the session's properties, or a practice
+    // match's. Null if there are none.
+    public static IReadOnlyDictionary<string, SessionProperty> MatchProperties(NetworkRunner r)
+    {
+        if (r == null) return null;
+        if (r.IsSinglePlayer) return practiceProperties;
+        return r.SessionInfo.IsValid ? r.SessionInfo.Properties : null;
+    }
+
+    // Changes the match's settings (the next map after a vote)
+    public static void UpdateMatchProperties(NetworkRunner r, Dictionary<string, SessionProperty> properties)
+    {
+        if (r == null) return;
+        if (r.IsSinglePlayer) practiceProperties = new Dictionary<string, SessionProperty>(properties);
+        else r.SessionInfo.UpdateCustomProperties(properties);
+    }
+
+    // Whether the room shows in the room list and lets people in. Nothing to do in practice.
+    public static void SetOpen(NetworkRunner r, bool open)
+    {
+        if (r == null || r.IsSinglePlayer || !r.SessionInfo.IsValid) return;
+        r.SessionInfo.IsOpen = open;
+        r.SessionInfo.IsVisible = open;
+    }
+
     private static async Task<StartGameResult> Start(GameMode mode, string sessionName, int maxPlayers, Dictionary<string, SessionProperty> properties, int sceneIndex)
     {
         NetworkSession session = Instance;
         // The runner that joined the lobby starts the match too; make a new one only if there is none
-        // or the old one is on its way out
-        NetworkRunner startRunner = session.runner != null && !session.leaving && !session.runner.SessionInfo.IsValid
+        // or the old one is on its way out. A practice match never touches the lobby: always a new one.
+        if (mode != GameMode.Single) practiceProperties = null;
+        NetworkRunner startRunner = mode != GameMode.Single && session.runner != null && !session.leaving && !session.runner.SessionInfo.IsValid
             ? session.runner
             : session.CreateRunner();
 
@@ -117,6 +158,8 @@ public class NetworkSession : MonoBehaviour, INetworkRunnerCallbacks
             CustomPhotonAppSettings = AppSettings(),
         };
         if (maxPlayers > 0) args.PlayerCount = maxPlayers;
+        // Single-player mode makes no connection, so it needs no app settings or session name
+        if (mode == GameMode.Single) args.CustomPhotonAppSettings = null;
         // Only the host loads the map; clients follow the host's scene
         if (sceneIndex >= 0)
         {

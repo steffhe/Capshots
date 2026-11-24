@@ -42,6 +42,20 @@ public class DroneBody : MonoBehaviour
 
     private static Material shellMaterial, visorMaterial, glowMaterial, trimMaterial;
 
+    // Hit feedback and damage, set by Player from its health on every machine: the shell flashes
+    // white for a moment when hit, and below LowHealth the lights and eyes flicker and the collar
+    // spits sparks now and then, more as it gets worse
+    private const float LowHealth = 0.35f;
+    private const float HitFlashTime = 0.15f;
+    private float hitFlash;
+    private float health = 1f;
+    private bool flickering;
+    private float nextDamageSpark;
+    private Color shellColorNow = ShellColor, eyeColor = Color.white;
+    private Transform collar;
+    // Off for the local player's own body, which they don't see (sparks would show in front of their eyes)
+    public bool showSparks = true;
+
     // Dresses a capsule body and the sphere head on (or above) it. Safe to call twice: the second call
     // only recolours. dead: a ragdoll, with glowing X-es for eyes and its other lights off.
     public static DroneBody Dress(Transform body, Transform head, Color accent, bool teamMode = false, bool dead = false)
@@ -75,10 +89,12 @@ public class DroneBody : MonoBehaviour
         if (block == null) block = new MaterialPropertyBlock();
 
         Color shellColor = teamMode ? Color.Lerp(ShellColor, color, TeamShellTint) : ShellColor;
+        shellColorNow = shellColor;
         Paint(shell, shellColor, Color.black);
         Paint(accents, Color.Lerp(color, Color.black, 0.1f), Color.black);
         Paint(lights, color, dead ? Color.black : color * LightGlow);
         Color eye = Color.Lerp(color, Color.white, 0.65f);
+        eyeColor = eye;
         // A ragdoll's X-eyes glow just like living eyes
         Paint(eyes, eye, eye * EyeGlow);
         Paint(blush, BlushColor, dead ? Color.black : BlushColor * 0.6f);
@@ -100,10 +116,24 @@ public class DroneBody : MonoBehaviour
         r.SetPropertyBlock(block);
     }
 
+    // Taking a hit: a quick white flash of the shell
+    public void Hit()
+    {
+        if (dead) return;
+        hitFlash = 1f;
+    }
+
+    // Health from 0 to 1. Below LowHealth the drone flickers and sparks.
+    public void SetHealth(float fraction)
+    {
+        health = Mathf.Clamp01(fraction);
+    }
+
     private void Update()
     {
         if (dead) return;
         float time = Time.time;
+        UpdateDamage(time);
 
         // Blink every few seconds: the eyes squash shut and open again over about a tenth of a second
         if (eyeTransforms != null)
@@ -125,11 +155,51 @@ public class DroneBody : MonoBehaviour
                 if (eyeTransform != null) eyeTransform.localScale = new Vector3(eyeScale.x, eyeScale.y * squash, eyeScale.z);
         }
 
-        // The thruster flickers gently
+        // The thruster flickers gently (and cuts out now and then when badly hurt)
         if (thruster != null && block != null)
         {
             float flicker = 0.75f + 0.25f * Mathf.PerlinNoise(flickerSeed, time * 6f);
+            if (flickering) flicker *= damageFlicker;
             Paint(thruster, accent, accent * (LightGlow * flicker));
+        }
+    }
+
+    private float damageFlicker = 1f;
+
+    private void UpdateDamage(float time)
+    {
+        if (block == null) return;
+
+        if (hitFlash > 0f)
+        {
+            hitFlash = Mathf.Max(0f, hitFlash - Time.deltaTime / HitFlashTime);
+            Paint(shell, shellColorNow, Color.white * (1.6f * hitFlash));
+        }
+
+        bool low = health > 0f && health < LowHealth;
+        if (low)
+        {
+            // How bad it is: 0 at the threshold, 1 at no health left
+            float hurt = 1f - health / LowHealth;
+            // Lights mostly on, cutting out for a frame or two more often the worse it gets
+            damageFlicker = Random.value < 0.05f + 0.2f * hurt ? Random.Range(0.05f, 0.3f) : 1f;
+            Paint(lights, accent, accent * (LightGlow * damageFlicker));
+            Paint(eyes, eyeColor, eyeColor * (EyeGlow * Mathf.Max(0.25f, damageFlicker)));
+            flickering = true;
+
+            if (showSparks && collar != null && collar.gameObject.activeInHierarchy && time >= nextDamageSpark)
+            {
+                KillSpark.SpawnSmall(collar.position + Random.insideUnitSphere * 0.08f, Random.onUnitSphere + Vector3.up, Color.Lerp(accent, Color.white, 0.4f), Random.Range(2, 4));
+                nextDamageSpark = time + Random.Range(0.5f, 1.4f) * Mathf.Lerp(1.2f, 0.4f, hurt);
+            }
+        }
+        else if (flickering)
+        {
+            // Healed back up: steady lights again
+            flickering = false;
+            damageFlicker = 1f;
+            Paint(lights, accent, accent * LightGlow);
+            Paint(eyes, eyeColor, eyeColor * EyeGlow);
         }
     }
 
@@ -188,6 +258,7 @@ public class DroneBody : MonoBehaviour
         float collarY = headBottom + 0.02f;
         float collarWidth = 2f * BodyRadiusAt(collarY, R, cylinderTop, shellBottom + R) + 0.03f;
         Renderer neck = Part(root, "Collar", PrimitiveType.Cylinder, GlowMaterial, new Vector3(0f, collarY, 0f), new Vector3(collarWidth, 0.01f, collarWidth), false);
+        collar = neck.transform;
 
         var shellList = new List<Renderer> { egg };
         var accentList = new List<Renderer> { belt };

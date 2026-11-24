@@ -64,6 +64,8 @@ public partial class Manager
             if (counts) Summary.Died();
             FeedbackUI.Died();
             FeedbackUI.ShowDeath(GetPlayerName(killer), weapon, headshot, respawnTime);
+            // Watch whoever it was until respawning (not after a fall or your own grenade)
+            DeathCam.SetKiller(killer >= 0 && killer != me ? killer : -1, GetPlayerName(killer));
             if (endedStreak >= KillStreaks.ShutdownStreak) FeedbackUI.AddKillFeedNote($"YOUR STREAK OF {endedStreak} IS OVER");
         }
     }
