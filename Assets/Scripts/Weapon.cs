@@ -4,8 +4,11 @@ using UnityEngine;
 using UnityEngine.UI;
 using Fusion;
 
-// A player's gun: one sidearm that transforms between forms (pistol, machine gun, shotgun, sniper),
-// each with its own stats (the Gun assets in loadout). All forms draw on one shared pool of energy,
+// A player's gun: one sidearm that transforms between forms, with small pieces floating round it
+// that rearrange for each form (GunSatellites) (shotgun, machine gun, pistol, sniper
+// rifle: shortest range first, so "next" always reaches further), each with its own stats (the Gun
+// assets in loadout). Everyone spawns holding defaultStartingGun, or the form they picked in the
+// settings (GameSettings.StartingGun). All forms draw on one shared pool of energy,
 // which refills by itself shortly after the last shot; each shot costs its form's energyPerShot.
 // Trying to fire without enough energy swaps the energy cell (a full refill, which the reload key
 // also does). Changing form takes a moment, during which the gun can't fire or aim (GunMorph
@@ -18,6 +21,8 @@ public class Weapon : NetworkBehaviour
 {
     #region Variables
     public Gun[] loadout;
+    // The form a player spawns holding unless they picked another in the settings (bots always do)
+    public Gun defaultStartingGun;
     public Transform weaponParent;
     public GameObject bulletholePrefab;
     public GameObject hitmark;
@@ -50,11 +55,18 @@ public class Weapon : NetworkBehaviour
     public float morphTime = 0.5f;
 
     private const int MaxGuns = 4;
+    // How long after spawning the starting form can still be picked up instantly (room for the
+    // first input to arrive on a slow connection)
+    private const float StartingFormSeconds = 1f;
 
     private GameObject currentWeapon;
     // The gun model being shown, for the drone's hand-orbs
     public GameObject GunModel => currentWeapon;
     private int shownIndex = -1;
+    // The form whose model is showing, and when (Time.time) the last shot's effects played: for the
+    // pieces floating round the gun (GunSatellites)
+    public Gun ShownGun => loadout != null && shownIndex >= 0 && shownIndex < loadout.Length ? loadout[shownIndex] : null;
+    public float LastShotTime { get; private set; } = -1f;
 
     // Looked up once instead of every shot or frame
     private Player player;
@@ -102,6 +114,10 @@ public class Weapon : NetworkBehaviour
     [Networked] private NetworkButtons PreviousButtons { get; set; }
     // Counts every shot, so each one gets its own (but on every machine the same) random spread
     [Networked] private int ShotCount { get; set; }
+    // Running for a moment after spawning. A first change of form in that time, before any shot,
+    // is the starting form picked in the settings, and happens instantly.
+    [Networked] private TickTimer StartingFormWindow { get; set; }
+    [Networked] private NetworkBool HasChangedForm { get; set; }
 
     #endregion
 
@@ -119,7 +135,8 @@ public class Weapon : NetworkBehaviour
         if (HasStateAuthority)
         {
             Energy = maxEnergy;
-            Equipped = 0;
+            Equipped = DefaultSlot;
+            StartingFormWindow = TickTimer.CreateFromSeconds(Runner, StartingFormSeconds);
         }
 
         if (HasInputAuthority)
@@ -159,6 +176,13 @@ public class Weapon : NetworkBehaviour
         ShowGun(Equipped);
     }
 
+    // The slot of defaultStartingGun (the first form if it isn't in the loadout)
+    public int DefaultSlot => defaultStartingGun != null ? GunForms.IndexOf(loadout, defaultStartingGun.gunName, 0) : 0;
+
+    // The form picked in the settings, which the player's first input after spawning asks for
+    // (see InputCollector)
+    public int PreferredStartingSlot => GunForms.IndexOf(loadout, GameSettings.StartingGun, DefaultSlot);
+
     public override void Despawned(NetworkRunner runner, bool hasState)
     {
         // Dying mid-marker stops the coroutine before it can hide the marker
@@ -185,14 +209,17 @@ public class Weapon : NetworkBehaviour
 
         Aiming = input.Buttons.IsSet(InputButton.Aim);
 
-        // Changing form cancels a cell swap or burst in progress, and takes a moment
+        // Changing form cancels a cell swap or burst in progress, and takes a moment. The starting
+        // form (the first change, before any shot) is picked up instantly instead.
         int slot = input.WeaponSlot - 1;
         if (slot >= 0 && slot < loadout.Length && slot != Equipped)
         {
+            bool startingForm = !HasChangedForm && ShotCount == 0 && StartingFormWindow.IsRunning && !StartingFormWindow.Expired(Runner);
+            HasChangedForm = true;
             Equipped = slot;
             ReloadTimer = TickTimer.None;
             BurstLeft = 0;
-            MorphTimer = TickTimer.CreateFromSeconds(Runner, morphTime);
+            MorphTimer = startingForm ? TickTimer.None : TickTimer.CreateFromSeconds(Runner, morphTime);
         }
         if (MorphTimer.Expired(Runner)) MorphTimer = TickTimer.None;
 
@@ -633,12 +660,13 @@ public class Weapon : NetworkBehaviour
 
     void OnEquippedChanged()
     {
-        ShowGun(Equipped);
+        // Picking up the starting form doesn't run the morph timer, and isn't animated either
+        ShowGun(Equipped, MorphTimer.IsRunning);
     }
 
-    // Shows the equipped form. After the first, each change transforms the old model into the new
-    // one (GunMorph) instead of just swapping it.
-    void ShowGun(int ind)
+    // Shows the equipped form. A change of form transforms the old model into the new one
+    // (GunMorph) when animate is set, and otherwise just swaps it.
+    void ShowGun(int ind, bool animate = false)
     {
         if (ind == shownIndex && currentWeapon != null) return;
 
@@ -663,7 +691,7 @@ public class Weapon : NetworkBehaviour
         currentWeapon = newWeapon;
         if (oldWeapon != null)
         {
-            GunMorph.Begin(newWeapon, oldWeapon, morphTime);
+            if (animate) GunMorph.Begin(newWeapon, oldWeapon, morphTime);
             Destroy(oldWeapon);
         }
         // The gun's own line is only a template for the laser beams (see ShotLine)
@@ -753,6 +781,7 @@ public class Weapon : NetworkBehaviour
         PlayerSounds sounds = GetComponent<PlayerSounds>();
         if (sounds != null) sounds.PlayShot(gun);
         MuzzleFlash();
+        LastShotTime = Time.time;
 
         //gun fx
         if (currentWeapon != null)

@@ -24,18 +24,18 @@ To play together, each player runs the game, picks a username and either creates
 - Two game modes: Free For All, and Team Deathmatch (blue vs red, automatic team balancing, no friendly fire, first team to the kill limit wins)
 - Several maps to choose from, including Office: a real office floor with glass-walled offices and meeting rooms around a courtyard garden. Its glass walls crack when shot and shatter on the second hit, leaving a gap to walk and shoot through
 - Warmup until enough players have joined, then a countdown before the match starts
-- One transforming energy gun with four forms (pistol, machine gun, sniper rifle and an 8-pellet shotgun): changing form reshapes the gun in half a second, during which it can't fire. All forms share one energy cell that refills by itself shortly after you stop firing; `R` (or firing on empty) swaps in a fresh cell. Iron sights, a scope on the sniper form, and weapon sway; laser beams and muzzle flashes glow in the shooter's colour (the team colour in Team Deathmatch)
+- One transforming energy gun with four forms, shortest range first: an 8-pellet shotgun, machine gun, pistol and sniper rifle. You spawn holding the machine gun, or whichever form you pick in **Pause → Settings → Starting gun**. Changing form reshapes the gun in half a second, during which it can't fire. All forms share one energy cell that refills by itself shortly after you stop firing; `R` (or firing on empty) swaps in a fresh cell. The gun is dark, satin gunmetal. Small cast-stone plates, each with a glowing strip in the player's colour, float round it and take up a different arrangement for each form: tucked along the pistol's sides, a ring circling the machine gun's barrel that spins faster as you fire, a fan round the shotgun's muzzle and a line strung out under the sniper's barrel. They kick out with each shot, dim as the energy runs down and drift loose while the cell is swapped, so you can tell anyone's form at a glance. Iron sights, a scope on the sniper form, and weapon sway; laser beams and muzzle flashes glow in the shooter's colour (the team colour in Team Deathmatch)
 - Hovering players: every player is a little drone with a capsule body, a round head with a glowing face screen and blinking eyes, a thruster and two floating hand-orbs that hold the gun, in their own (or their team's) colour; it floats, bobs and leans into its movement over a glowing disc, and the gun drifts instead of bobbing with footsteps
 - Weapon balance: damage falls off over distance, per-weapon headshot multipliers, heavier guns and aiming slow you down, and shots spread more while moving or jumping
 - Sprinting, jumping, crouching and sliding
-- Smarter spawns (away from enemies and out of their sight) and 3 seconds of spawn protection, which ends early if you shoot
+- Smarter spawns (away from enemies and out of their sight) and 3 seconds of spawn protection (other players see you semi-transparent), which ends early if you shoot
 - Health regeneration after 5 seconds without taking damage
 - Every player wears a cap: the team colour in Team Deathmatch, otherwise a colour of their own
 - Physics ragdolls: the body is thrown along the killing bullet's path, and the head (cap and all) comes off and flies separately, harder on a headshot
 - Players drop an ammo box when they die; walk over it to refill your gun's energy
 - Scoreboard with kills, deaths and ping
 - Text chat
-- Settings menu: field of view, aim sensitivity, volume, graphics quality and key rebinding
+- Settings menu: field of view, aim sensitivity, volume, graphics quality, starting gun and key rebinding
 - Gamepad support (Unity Input System)
 - Graphics: colour grading, bloom, vignette, soft shadows, anti-aliasing (SMAA) and light fog on every map
 - Sound: a distinct sci-fi shot for each gun, a hovering hum and woosh while moving (silent while crouching), a soft landing puff and energy-cell reload sounds, all heard in 3D from where they happen
@@ -54,7 +54,7 @@ Keyboard and mouse controls can be changed in **Pause → Settings**. A gamepad 
 | Shoot | Left mouse button | Right trigger |
 | Aim | Right mouse button | Left trigger |
 | Swap energy cell | `R` | X / Square |
-| Change gun form | `1` `2` `3` `4` / mouse wheel | Bumpers |
+| Change gun form | `1` shotgun, `2` machine gun, `3` pistol, `4` sniper / mouse wheel (wraps round) | Bumpers (wrap round) |
 | Sprint | `Shift` | Left stick press |
 | Jump | `Space` | A / Cross |
 | Crouch | `Left Ctrl` (`Z` in the browser) | B / Circle |
@@ -71,7 +71,7 @@ Hold the device sideways. On phones that allow it (Android), the game goes fulls
 - **Look:** drag anywhere else on the screen. Dragging on the **FIRE** button turns the view too, so you can shoot and aim with one thumb.
 - **AIM** is a toggle: tap to aim down sights, tap again to stop.
 - **CROUCH** crouches when standing, and slides when sprinting.
-- **JUMP**, **RELOAD** and **SWAP** (next weapon) are buttons on the right; **SCORE** (hold) and **II** (pause) are at the top.
+- **JUMP**, **RELOAD** and **SWAP** (next gun form; after the sniper it goes back to the shotgun) are buttons on the right; **SCORE** (hold) and **II** (pause) are at the top.
 - A keyboard, mouse or trackpad connected to a tablet works as on a computer. Using the mouse or trackpad hides the on-screen controls, and touching the screen brings them back. The keyboard works alongside them, including **Esc** to pause and **T** to chat.
 - Without a keyboard, chat isn't available.
 

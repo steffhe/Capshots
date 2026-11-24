@@ -23,6 +23,7 @@ public static class GameSettings
     private const string VolumeKey = "settings.volume";
     private const string QualityKey = "settings.quality";
     private const string AdsSensitivityKey = "settings.adsSensitivity";
+    private const string StartingGunKey = "settings.startingGun";
 
     public const float DefaultFov = 70f;
     public const float MinFov = 60f;
@@ -39,6 +40,13 @@ public static class GameSettings
     {
         get => PlayerPrefs.GetFloat(AdsSensitivityKey, 1f);
         set { PlayerPrefs.SetFloat(AdsSensitivityKey, Mathf.Clamp(value, 0.1f, 2f)); PlayerPrefs.Save(); }
+    }
+
+    // The gun form to spawn holding, by its gunName; empty for the game's default (Weapon.defaultStartingGun)
+    public static string StartingGun
+    {
+        get => PlayerPrefs.GetString(StartingGunKey, "");
+        set { PlayerPrefs.SetString(StartingGunKey, value ?? ""); PlayerPrefs.Save(); }
     }
 
     public static float Volume
