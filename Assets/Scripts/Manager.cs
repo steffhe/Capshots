@@ -92,6 +92,13 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         RememberStartingXp();
 
         InitializeUI();
+        // The map view directs itself around the map (see MapCamera)
+        if (mapcam != null)
+        {
+            MapCamera director = mapcam.GetComponent<MapCamera>();
+            if (director == null) director = mapcam.AddComponent<MapCamera>();
+            director.Init(spawnPoints);
+        }
         changes = GetChangeDetector(ChangeDetector.Source.SimulationState);
 
         if (HasStateAuthority)

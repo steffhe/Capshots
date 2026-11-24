@@ -40,6 +40,7 @@ To play together, each player runs the game, picks a username and either creates
 - Graphics: colour grading, bloom, vignette, soft shadows, anti-aliasing (SMAA) and light fog on every map
 - Sound: a distinct sci-fi shot for each gun, a hovering hum and woosh while moving (silent while crouching), a soft landing puff and energy-cell reload sounds, all heard in 3D from where they happen
 - Combat feedback: camera recoil, muzzle flash, hit and kill sounds (a grander one for a cap shot kill, a headshot, which also bursts into confetti and stars; an ordinary kill makes the drone short out in a spark and a zap), a red kill marker that pops out big, a little shake of your view on a kill, a damage flash with a direction indicator, a kill feed and a "killed by" screen. When you die you hear your drone power down, and the camera lingers on your body for a moment, following your head (or your cap, on a headshot) as it flies off, before fading to the map view. You respawn 5 seconds after dying
+- A directed map view while you wait to respawn and over the match results: the camera scouts each map for high vantage points, drifts slowly through each shot, keeps the players running around in frame and cuts to whichever angle shows the most action
 - Levels and XP: earn XP for kills, finishing matches and winning, saved to your profile between sessions
 
 ## Controls

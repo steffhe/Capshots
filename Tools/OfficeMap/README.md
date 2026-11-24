@@ -15,6 +15,17 @@ That file is generated. To change the map:
    ```
    It writes `Office.txt`, redraws `preview.png` (a top-down view, spawn points in red) and
    fails if a spawn point is off the floor or blocked.
+3. Optionally bake it in Unity: **Capshots → Bake Office Map** (`Assets/Editor/OfficeMapBaker.cs`).
+   It builds the floor's meshes, colliders and signs with the same code that runs at load and saves
+   them as a prefab (`Assets/Prefabs/Office Floor/`, with its meshes, materials and textures),
+   placed under the `Office` object in `Office.unity`. The scene then loads the floor instead of
+   building it, and Unity can bake lighting (Window → Rendering → Lighting → Generate Lighting) and
+   occlusion culling (Window → Rendering → Occlusion Culling → Bake) for it.
+
+   The glass panes, spawn points and map camera still come from `Office.txt` at load. A bake
+   remembers which `Office.txt` it was made from: after a layout change without baking again, the
+   game ignores the old bake and builds the floor at load (with a warning in the console), so it
+   can't go out of step. **Capshots → Remove Office Map Bake** goes back to no bake.
 
 What the generator works out by itself:
 

@@ -12,6 +12,12 @@ using UnityEngine.Rendering;
 // colliders: on the Ground layer, or on the Glass layer for glass, which blocks players but lets
 // shots through (Weapon.canBeShot leaves it out). Every player builds the same map from the same
 // file, so nothing here is networked. The spawn points and the map camera are set on the Manager.
+//
+// The floor can also be baked in the editor (Capshots > Bake Office Map, see OfficeMapBaker): the
+// meshes, colliders and signs are then saved as a prefab placed under this object, so the scene can
+// have baked lighting and occlusion culling and loads without building them. The glass panes, spawn
+// points and map camera still come from the layout when the scene loads. A bake made from an older
+// layout is ignored (and the floor built here as before), so a stale bake can't go out of step.
 public class OfficeMap : MonoBehaviour
 {
     [Tooltip("The generated map (Assets/Resources/Maps/Office.txt). Loaded from Resources if empty.")]
@@ -22,6 +28,8 @@ public class OfficeMap : MonoBehaviour
     public Material glowTemplate;
     [Tooltip("Gets the spawn points and the map camera position")]
     public Manager manager;
+    [Tooltip("The baked floor (set by Capshots > Bake Office Map). Empty: the floor is built when the scene loads.")]
+    public OfficeBake baked;
 
     private const float CellSize = 24f;
     private const int CollidersPerObject = 256;
@@ -36,24 +44,67 @@ public class OfficeMap : MonoBehaviour
             Debug.LogError("OfficeMap: no layout (Assets/Resources/Maps/Office.txt)");
             return;
         }
-        Build(OfficeMapData.Parse(layout.text));
+        Build(OfficeMapData.Parse(layout.text), LayoutHash(layout));
     }
 
-    private void Build(OfficeMapData data)
+    // Identifies a layout, so a bake can tell whether it was made from this one
+    public static string LayoutHash(TextAsset asset)
     {
-        Material[] materials = new Material[data.materials.Count];
-        for (int i = 0; i < materials.Length; i++) materials[i] = CreateMaterial(data.materials[i]);
+        return asset != null ? Hash128.Compute(asset.text).ToString() : "";
+    }
 
-        BuildMeshes(data, materials);
-        BuildColliders(data);
-        BuildGlass(data, materials);
-        BuildSigns(data);
+    private void Build(OfficeMapData data, string hash)
+    {
+        Material glass, frost;
+        if (baked != null && baked.layoutHash == hash)
+        {
+            glass = baked.glass;
+            frost = baked.frost;
+        }
+        else
+        {
+            if (baked != null)
+            {
+                Debug.LogWarning("OfficeMap: the baked floor is from an older layout, so it's built at load instead. Run Capshots > Bake Office Map again.");
+                // Gone at once, so its colliders don't linger until the end of the frame
+                baked.gameObject.SetActive(false);
+                Destroy(baked.gameObject);
+                baked = null;
+            }
+            Material[] materials = BuildStatic(data, transform, false);
+            glass = MaterialNamed(data, materials, "glass");
+            frost = MaterialNamed(data, materials, "frost");
+        }
+
+        BuildGlass(data, glass, frost);
         BuildSpawns(data);
 
         if (data.hasCamera && manager != null && manager.mapcam != null)
         {
             manager.mapcam.transform.SetPositionAndRotation(data.cameraPosition, Quaternion.Euler(data.cameraPitch, data.cameraYaw, 0f));
         }
+    }
+
+    // The parts of the floor that never change: meshes, colliders and signs, under root. Returns the
+    // materials, one per layout material. forAssets: they'll be saved as assets in the editor, so
+    // meshes stay readable (for lightmap UVs) and the pattern textures aren't shared with the game.
+    public Material[] BuildStatic(OfficeMapData data, Transform root, bool forAssets)
+    {
+        if (forAssets) textures.Clear();
+        Material[] materials = new Material[data.materials.Count];
+        for (int i = 0; i < materials.Length; i++) materials[i] = CreateMaterial(data.materials[i]);
+
+        BuildMeshes(data, materials, root, !forAssets);
+        BuildColliders(data, root);
+        BuildSigns(data, root);
+        if (forAssets) textures.Clear();
+        return materials;
+    }
+
+    private static Material MaterialNamed(OfficeMapData data, Material[] materials, string name)
+    {
+        int index = data.materials.FindIndex(m => m.name == name);
+        return index >= 0 ? materials[index] : null;
     }
 
     #region Materials
@@ -204,7 +255,7 @@ public class OfficeMap : MonoBehaviour
         }
     }
 
-    private void BuildMeshes(OfficeMapData data, Material[] materials)
+    private void BuildMeshes(OfficeMapData data, Material[] materials, Transform root, bool upload)
     {
         // Merge boxes by material, shadow casting and 24 m square
         var groups = new Dictionary<(int material, bool shadows, int cx, int cz), MeshBuilder>();
@@ -217,7 +268,7 @@ public class OfficeMap : MonoBehaviour
         }
 
         Transform parent = new GameObject("Meshes").transform;
-        parent.SetParent(transform, false);
+        parent.SetParent(root, false);
         foreach (var entry in groups)
         {
             MeshBuilder b = entry.Value;
@@ -229,7 +280,7 @@ public class OfficeMap : MonoBehaviour
             mesh.SetTriangles(b.triangles, 0);
             mesh.RecalculateBounds();
             mesh.RecalculateTangents();
-            mesh.UploadMeshData(true);
+            if (upload) mesh.UploadMeshData(true);
 
             var go = new GameObject(mesh.name);
             go.layer = gameObject.layer;
@@ -292,12 +343,12 @@ public class OfficeMap : MonoBehaviour
 
     #region Colliders, signs and spawns
 
-    private void BuildColliders(OfficeMapData data)
+    private void BuildColliders(OfficeMapData data, Transform root)
     {
         int glassLayer = LayerMask.NameToLayer("Glass");
         if (glassLayer < 0) glassLayer = Layers.Glass;
         Transform parent = new GameObject("Colliders").transform;
-        parent.SetParent(transform, false);
+        parent.SetParent(root, false);
 
         GameObject solid = null, glass = null;
         int solidCount = 0, glassCount = 0;
@@ -329,25 +380,23 @@ public class OfficeMap : MonoBehaviour
     }
 
     // The breakable glass panes: OfficeGlass draws them and breaks them as the Manager says
-    private void BuildGlass(OfficeMapData data, Material[] materials)
+    private void BuildGlass(OfficeMapData data, Material glass, Material frost)
     {
         if (data.panes.Count == 0) return;
-        int glass = data.materials.FindIndex(m => m.name == "glass");
-        int frost = data.materials.FindIndex(m => m.name == "frost");
-        if (glass < 0 || frost < 0)
+        if (glass == null || frost == null)
         {
             Debug.LogError("OfficeMap: the layout has glass panes but no glass or frost material");
             return;
         }
         int glassLayer = LayerMask.NameToLayer("Glass");
         if (glassLayer < 0) glassLayer = Layers.Glass;
-        gameObject.AddComponent<OfficeGlass>().Build(data.panes, materials[glass], materials[frost], glassLayer);
+        gameObject.AddComponent<OfficeGlass>().Build(data.panes, glass, frost, glassLayer);
     }
 
-    private void BuildSigns(OfficeMapData data)
+    private void BuildSigns(OfficeMapData data, Transform root)
     {
         Transform parent = new GameObject("Signs").transform;
-        parent.SetParent(transform, false);
+        parent.SetParent(root, false);
         foreach (OfficeMapData.Sign sign in data.signs)
         {
             var go = new GameObject("Sign " + sign.text);
