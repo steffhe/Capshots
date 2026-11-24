@@ -5,7 +5,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 // Settings panel inside the pause menu: look sensitivity, ADS sensitivity, field of view, volume,
-// graphics quality and key bindings. Built at runtime from copies of the pause menu's own button,
+// graphics quality, starting gun and key bindings. Built at runtime from copies of the pause menu's own button,
 // slider and label (styled by UITheme.StylePause), so the Pause prefab doesn't need editing.
 public class SettingsMenu : MonoBehaviour
 {
@@ -21,6 +21,9 @@ public class SettingsMenu : MonoBehaviour
     private Text xSensValue, ySensValue, fovValue, adsValue, volumeValue;
     private Slider xSensSlider, ySensSlider, fovSlider, adsSlider, volumeSlider;
     private Text qualityText;
+    private Text startingGunText;
+    // The player body's gun, for the forms the starting gun can be
+    private Weapon playerWeapon;
 
     private class BindingRow
     {
@@ -148,12 +151,17 @@ public class SettingsMenu : MonoBehaviour
         Place(quality, new Vector2(LeftColumn, y - 72f), new Vector2(ColumnWidth, 48f));
         qualityText = quality.GetComponentInChildren<Text>();
 
+        GameObject startingGun = NewButton(rect, "", NextStartingGun);
+        UITheme.StyleSelector(startingGun.GetComponent<Button>());
+        Place(startingGun, new Vector2(LeftColumn, y - 128f), new Vector2(ColumnWidth, 48f));
+        startingGunText = startingGun.GetComponentInChildren<Text>();
+
         GameObject reset = NewButton(rect, "RESET CONTROLS", () =>
         {
             GameInput.ResetBindings();
             RefreshBindings();
         });
-        Place(reset, new Vector2(LeftColumn, y - 132f), new Vector2(ColumnWidth, 48f));
+        Place(reset, new Vector2(LeftColumn, y - 184f), new Vector2(ColumnWidth, 48f));
 
         GameObject done = NewButton(rect, "DONE", CloseSettings);
         UITheme.StyleButton(done.GetComponent<Button>(), UITheme.ButtonStyle.Primary);
@@ -242,6 +250,29 @@ public class SettingsMenu : MonoBehaviour
         adsValue.text = GameSettings.AdsSensitivity.ToString("0.00") + "x";
         volumeValue.text = Mathf.RoundToInt(GameSettings.Volume * 100f) + "%";
         qualityText.text = UITheme.Option("GRAPHICS", GameSettings.QualityName.ToUpperInvariant());
+        Weapon weapon = PlayerWeapon();
+        string gun = weapon != null ? weapon.loadout[weapon.PreferredStartingSlot].gunName : "-";
+        startingGunText.text = UITheme.Option("STARTING GUN", gun.ToUpperInvariant());
+    }
+
+    // Steps the starting gun to the next form, in loadout order, wrapping round
+    private void NextStartingGun()
+    {
+        Weapon weapon = PlayerWeapon();
+        if (weapon == null || weapon.loadout.Length == 0) return;
+        int next = GunForms.Step(weapon.PreferredStartingSlot, 1, weapon.loadout.Length);
+        GameSettings.StartingGun = weapon.loadout[next].gunName;
+        RefreshLabels();
+    }
+
+    private Weapon PlayerWeapon()
+    {
+        if (playerWeapon == null)
+        {
+            GameObject prefab = Resources.Load<GameObject>("Player");
+            playerWeapon = prefab != null ? prefab.GetComponent<Weapon>() : null;
+        }
+        return playerWeapon != null && playerWeapon.loadout != null && playerWeapon.loadout.Length > 0 ? playerWeapon : null;
     }
 
     private void OpenSettings()

@@ -44,13 +44,13 @@ public class BotLogicTests
         return gun;
     }
 
-    // The game's loadout order: pistol, machine gun, shotgun, sniper rifle
+    // The game's loadout order: shotgun, machine gun, pistol, sniper rifle
     private static Gun[] Loadout()
     {
-        return new[] { MakeGun(0), MakeGun(1), MakeGun(0, 8), MakeGun(0, 1, 20f) };
+        return new[] { MakeGun(0, 8), MakeGun(1), MakeGun(0), MakeGun(0, 1, 20f) };
     }
 
-    [TestCase(3f, 2)]
+    [TestCase(3f, 0)]
     [TestCase(20f, 1)]
     [TestCase(80f, 3)]
     [TestCase(-1f, 1)]
