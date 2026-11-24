@@ -58,6 +58,14 @@ public class MenuScenery : MonoBehaviour
 
         // The model holds the starting gun. Picking another in the menu's settings swaps it at once.
         FindHeldGun();
+        // The menu scene's model has no Player script: it's the one holding the gun. It breathes and
+        // glances towards the cursor (see Update).
+        if (model == null && gunOwner != null)
+        {
+            model = gunOwner;
+            modelRotation = model.rotation;
+            modelPosition = model.position;
+        }
         HoldStartingGun();
         GameSettings.StartingGunChanged += HoldStartingGun;
 

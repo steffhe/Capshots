@@ -31,7 +31,7 @@ To play together, each player runs the game, picks a username and either creates
 - Smarter spawns (away from enemies and out of their sight) and 3 seconds of spawn protection (other players see you semi-transparent), which ends early if you shoot
 - Health regeneration after 5 seconds without taking damage
 - Every player wears a cap: the team colour in Team Deathmatch, otherwise a colour of their own
-- Physics ragdolls: the body is thrown along the killing bullet's path, and the head (cap and all) comes off and flies separately, harder on a headshot
+- Physics ragdolls, with X-es for eyes: the body is thrown along the killing bullet's path, and the head (cap and all) comes off and flies separately, harder on a headshot
 - Players drop an ammo box when they die; walk over it to refill your gun's energy
 - Scoreboard with kills, deaths and ping
 - Text chat

@@ -34,7 +34,7 @@ public class GunSatellites : MonoBehaviour
     private const float MaxTrail = 0.3f;
     // The machine gun's rotary barrel: turns this fast at rest (radians a second), faster with
     // every shot up to MaxSpin, and slows back down after
-    private const float RestSpin = 1f, SpinPerShot = 4f, MaxSpin = 28f, SpinDown = 1.2f;
+    private const float RestSpin = 1f, SpinPerShot = 6f, MaxSpin = 36f, SpinDown = 1.2f;
 
     private Player player;
     private Weapon weapon;

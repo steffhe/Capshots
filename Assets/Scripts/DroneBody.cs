@@ -17,6 +17,9 @@ public class DroneBody : MonoBehaviour
     private const float TeamShellTint = 0.3f;
     private static readonly Color VisorColor = new Color(0.04f, 0.05f, 0.08f);
     private static readonly Color TrimColor = new Color(0.22f, 0.24f, 0.28f);
+    // A ragdoll's eyes are X-es, pale and barely lit, so they read on the dark face screen
+    private static readonly Color DeadEyeColor = new Color(0.72f, 0.74f, 0.78f);
+    private const float DeadEyeGlow = 0.35f;
     private static readonly Color BlushColor = new Color(1f, 0.45f, 0.6f);
     // How bright the glowing parts are (above 1 so the bloom picks them up)
     private const float EyeGlow = 2.2f;
@@ -43,7 +46,7 @@ public class DroneBody : MonoBehaviour
     private static Material shellMaterial, visorMaterial, glowMaterial;
 
     // Dresses a capsule body and the sphere head on (or above) it. Safe to call twice: the second call
-    // only recolours. dead: a ragdoll, with closed eyes and the lights off.
+    // only recolours. dead: a ragdoll, with X-es for eyes and the lights off.
     public static DroneBody Dress(Transform body, Transform head, Color accent, bool teamMode = false, bool dead = false)
     {
         if (body == null) return null;
@@ -79,7 +82,7 @@ public class DroneBody : MonoBehaviour
         Paint(accents, Color.Lerp(color, Color.black, 0.1f), Color.black);
         Paint(lights, color, dead ? Color.black : color * LightGlow);
         Color eye = Color.Lerp(color, Color.white, 0.65f);
-        Paint(eyes, dead ? TrimColor : eye, dead ? Color.black : eye * EyeGlow);
+        Paint(eyes, dead ? DeadEyeColor : eye, dead ? DeadEyeColor * DeadEyeGlow : eye * EyeGlow);
         Paint(blush, BlushColor, dead ? Color.black : BlushColor * 0.6f);
     }
 
@@ -226,15 +229,31 @@ public class DroneBody : MonoBehaviour
         // Two big oval eyes and a little blush, sitting on the face screen's surface
         eyeScale = new Vector3(0.2f * r, 0.3f * r, 0.08f * r);
         eyeTransforms = new Transform[2];
-        eyes = new Renderer[2];
+        // Alive: two ovals. Dead: an X of two crossed bars for each eye.
+        eyes = new Renderer[dead ? 4 : 2];
         blush = new Renderer[2];
         for (int i = 0; i < 2; i++)
         {
             float side = i == 0 ? -1f : 1f;
             Vector3 eyePosition = OnVisor(new Vector2(side * 0.24f * r, -0.06f * r), visorCentre, visorRadii, 0.02f * r);
-            Vector3 eyeSize = dead ? new Vector3(eyeScale.x, eyeScale.y * 0.12f, eyeScale.z) : eyeScale;
-            eyes[i] = Part(root, i == 0 ? "Left Eye" : "Right Eye", PrimitiveType.Sphere, GlowMaterial, eyePosition, eyeSize, false);
-            eyeTransforms[i] = eyes[i].transform;
+            if (dead)
+            {
+                // Lying flat on the face screen: turned to its surface there, then crossed at 45 degrees
+                Vector3 normal = Vector3.Scale(eyePosition - visorCentre, new Vector3(1f / (visorRadii.x * visorRadii.x), 1f / (visorRadii.y * visorRadii.y), 1f / (visorRadii.z * visorRadii.z))).normalized;
+                Vector3 barSize = new Vector3(0.3f * r, 0.055f * r, 0.03f * r);
+                for (int b = 0; b < 2; b++)
+                {
+                    Renderer bar = Part(root, (i == 0 ? "Left Eye X" : "Right Eye X"), PrimitiveType.Cube, GlowMaterial, eyePosition, barSize, false);
+                    bar.transform.localRotation = Quaternion.LookRotation(normal) * Quaternion.Euler(0f, 0f, b == 0 ? 45f : -45f);
+                    eyes[i * 2 + b] = bar;
+                }
+                eyeTransforms[i] = eyes[i * 2].transform;
+            }
+            else
+            {
+                eyes[i] = Part(root, i == 0 ? "Left Eye" : "Right Eye", PrimitiveType.Sphere, GlowMaterial, eyePosition, eyeScale, false);
+                eyeTransforms[i] = eyes[i].transform;
+            }
 
             Vector3 blushPosition = OnVisor(new Vector2(side * 0.44f * r, -0.3f * r), visorCentre, visorRadii, 0.01f * r);
             blush[i] = Part(root, "Blush", PrimitiveType.Sphere, GlowMaterial, blushPosition, new Vector3(0.14f * r, 0.07f * r, 0.04f * r), false);
