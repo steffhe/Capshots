@@ -7,7 +7,7 @@ public static class BotLogic
 {
     #region Skill
 
-    // How a bot plays. One set of values for now; tune here.
+    // How a bot plays at Normal, the default. Easy and Hard (Skill below) are tuned from these.
     // Seconds between first seeing an enemy and the first shot
     public const float ReactionTimeMin = 0.35f;
     public const float ReactionTimeMax = 0.65f;
@@ -23,6 +23,49 @@ public static class BotLogic
     public const float NoticeRange = 10f;
     public const float SightRange = 110f;
     public const float SightHalfAngle = 75f;
+
+    // The bot difficulty setting ("botskill" room property)
+    public const int Easy = 0, Normal = 1, Hard = 2;
+    public static readonly string[] SkillNames = { "EASY", "NORMAL", "HARD" };
+
+    // Everything that differs between difficulties
+    public struct Skill
+    {
+        public float reactionMin, reactionMax;
+        public float turnSpeed, aimSharpness;
+        public float aimErrorStart, aimErrorSettled, aimSettleTime;
+        public float sightRange;
+        // Whether it backs off to heal when hurt and grabs ammo boxes (Hard and Normal)
+        public bool tactical;
+    }
+
+    public static Skill SkillFor(int difficulty)
+    {
+        switch (difficulty)
+        {
+            case Easy:
+                return new Skill
+                {
+                    reactionMin = 0.6f, reactionMax = 1.0f, turnSpeed = 320f, aimSharpness = 5f,
+                    aimErrorStart = 9f, aimErrorSettled = 3.2f, aimSettleTime = 2.5f, sightRange = 70f,
+                    tactical = false,
+                };
+            case Hard:
+                return new Skill
+                {
+                    reactionMin = 0.2f, reactionMax = 0.38f, turnSpeed = 720f, aimSharpness = 13f,
+                    aimErrorStart = 3f, aimErrorSettled = 0.7f, aimSettleTime = 1f, sightRange = SightRange,
+                    tactical = true,
+                };
+            default:
+                return new Skill
+                {
+                    reactionMin = ReactionTimeMin, reactionMax = ReactionTimeMax, turnSpeed = MaxTurnSpeed, aimSharpness = AimSharpness,
+                    aimErrorStart = AimErrorStart, aimErrorSettled = AimErrorSettled, aimSettleTime = AimSettleTime, sightRange = SightRange,
+                    tactical = true,
+                };
+        }
+    }
 
     #endregion
 
@@ -103,9 +146,14 @@ public static class BotLogic
     // when close, never faster than MaxTurnSpeed. Works across the -180/180 wrap.
     public static float TurnTowards(float current, float target, float deltaTime)
     {
+        return TurnTowards(current, target, deltaTime, MaxTurnSpeed, AimSharpness);
+    }
+
+    public static float TurnTowards(float current, float target, float deltaTime, float maxTurnSpeed, float sharpness)
+    {
         float difference = Mathf.DeltaAngle(current, target);
-        float step = difference * (1f - Mathf.Exp(-AimSharpness * deltaTime));
-        float maxStep = MaxTurnSpeed * deltaTime;
+        float step = difference * (1f - Mathf.Exp(-sharpness * deltaTime));
+        float maxStep = maxTurnSpeed * deltaTime;
         step = Mathf.Clamp(step, -maxStep, maxStep);
         // Snap the last tiny bit, so the bot can actually settle on its target
         if (Mathf.Abs(difference) < 0.05f) step = difference;
@@ -115,7 +163,12 @@ public static class BotLogic
     // The aim error, in degrees, after keeping aim on one target for this many seconds
     public static float AimError(float trackingTime)
     {
-        return Mathf.Lerp(AimErrorStart, AimErrorSettled, Mathf.Clamp01(trackingTime / AimSettleTime));
+        return AimError(trackingTime, SkillFor(Normal));
+    }
+
+    public static float AimError(float trackingTime, Skill skill)
+    {
+        return Mathf.Lerp(skill.aimErrorStart, skill.aimErrorSettled, Mathf.Clamp01(trackingTime / skill.aimSettleTime));
     }
 
     // Whether the gun points close enough to the target to be worth firing: within the target's own

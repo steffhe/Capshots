@@ -65,8 +65,11 @@ public partial class Manager
 
         Text rules = UITheme.NewText("Rules", root, 20, UITheme.AccentText, TextAnchor.MiddleCenter);
         UITheme.Row(rules.rectTransform, 104f, 28f);
-        string goal = IsTeamMode ? $"FIRST TEAM TO {killcount} KILLS" : $"FIRST TO {killcount} KILLS";
-        rules.text = $"{LoadingScreen.ModeName((int)mode)}   ·   {goal}   ·   {Mathf.Max(1, matchlength / 60)} MIN";
+        string goal;
+        if (HasKillLimit) goal = IsTeamMode ? $"FIRST TEAM TO {killcount} KILLS" : $"FIRST TO {killcount} KILLS";
+        else goal = $"MOST KILLS IN {Mathf.Max(1, matchlength / 60)} MIN";
+        if (HasKillLimit && HasTimeLimit) goal += $"   ·   {Mathf.Max(1, matchlength / 60)} MIN";
+        rules.text = $"{LoadingScreen.ModeName((int)mode)}   ·   {goal}";
         UITheme.AddShadow(rules);
 
         // Rise and fade in, hold, fade out
@@ -147,8 +150,9 @@ public partial class Manager
         if (Player.Local != null && Player.Local.cameraParent != null) Player.Local.cameraParent.SetActive(false);
         mapcam.SetActive(true);
 
-        // 3. Results
-        float resultsTime = ResultsTime + (HasStateAuthority ? 1f : 0f);
+        // 3. Results (and the vote for the next map, when there is one)
+        bool voting = VotingAvailable;
+        float resultsTime = voting ? VoteTime : ResultsTime + (HasStateAuthority ? 1f : 0f);
         Text countdown = ShowResults(title, titleColor, kicker, subtitle);
         black.transform.SetAsLastSibling();
         yield return FadeImage(black, 1f, 0f, 0.5f);
@@ -158,11 +162,24 @@ public partial class Manager
         while (Time.unscaledTime < end)
         {
             int seconds = Mathf.CeilToInt(end - Time.unscaledTime);
-            if (countdown != null) countdown.text = $"BACK TO THE MENU IN {seconds}";
+            if (countdown != null) countdown.text = voting ? $"NEXT MAP IN {seconds}" : $"BACK TO THE MENU IN {seconds}";
             yield return null;
         }
 
-        // 4. Out to the menu (the loading screen fades in over the results)
+        // 4. The next map, loaded by the host for everyone (this coroutine ends with this scene)...
+        if (voting)
+        {
+            if (HasStateAuthority)
+            {
+                StartNextMap();
+                yield break;
+            }
+            if (countdown != null) countdown.text = "LOADING NEXT MAP";
+            // ...unless the host never does
+            yield return new WaitForSecondsRealtime(12f);
+        }
+
+        // ...or out to the menu (the loading screen fades in over the results)
         NetworkSession.Leave();
     }
 
@@ -281,9 +298,10 @@ public partial class Manager
         StartCoroutine(RevealRows(board));
 
         BuildXpPanel(endgame);
+        if (VotingAvailable) BuildVotePanel(endgame);
 
         Text countdown = UITheme.NewText("Countdown", endgame, 18, UITheme.MutedText, TextAnchor.MiddleCenter);
-        UITheme.Place(countdown.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 40f), new Vector2(800f, 24f));
+        UITheme.Place(countdown.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 22f), new Vector2(800f, 24f));
         return countdown;
     }
 
@@ -305,42 +323,62 @@ public partial class Manager
         }
     }
 
-    // XP earned this match, with the level bar filling up (and rolling over on a level up), and any
-    // hats the new level unlocked
+    // The player's own match: accuracy, cap shots, best streak and favourite gun form, in one line
+    private static string SummaryText()
+    {
+        MatchSummary s = Summary;
+        string muted = UITheme.Hex(UITheme.MutedText);
+        string line = $"<color={muted}>ACCURACY</color> {s.AccuracyPercent}%" +
+                      $"    <color={muted}>CAPSHOTS</color> {s.capshots}" + (s.kills > 0 ? $" ({s.CapshotPercent}%)" : "") +
+                      $"    <color={muted}>BEST STREAK</color> {s.bestStreak}";
+        string gun = s.FavouriteGun;
+        if (gun != null) line += $"    <color={muted}>FAVOURITE</color> {gun.ToUpperInvariant()}";
+        return line;
+    }
+
+    // Your match in numbers (SummaryText), then the XP earned this match, with the level bar filling
+    // up (and rolling over on a level up), and any hats the new level unlocked
     private void BuildXpPanel(Transform parent)
     {
         string newHats = Manager.NewHatsText(xpStartLevel, Launcher.myProfile.level);
-        RectTransform panel = NewLayer("XP", new Vector2(0.5f, 0f), new Vector2(560f, newHats != null ? 124f : 92f), parent);
+        const float summaryRow = 30f;
+        RectTransform panel = NewLayer("XP", new Vector2(0.5f, 0f), new Vector2(620f, (newHats != null ? 124f : 92f) + summaryRow), parent);
         // A row taller for the new hats, grown downwards (towards the countdown) to keep clear of the leaderboard
-        panel.anchoredPosition = new Vector2(0f, newHats != null ? 56f : 84f);
+        panel.anchoredPosition = new Vector2(0f, newHats != null ? 40f : 56f);
         Image bg = UITheme.NewImage("Background", panel, UITheme.Panel, 10f);
         UITheme.Stretch(bg.rectTransform);
 
+        Text summary = UITheme.NewText("Summary", panel, 16, UITheme.TextColor, TextAnchor.MiddleCenter);
+        UITheme.Row(summary.rectTransform, 12f, 24f);
+        summary.horizontalOverflow = HorizontalWrapMode.Overflow;
+        summary.supportRichText = true;
+        summary.text = SummaryText();
+
         Text gained = UITheme.NewText("Gained", panel, 22, UITheme.AccentText, TextAnchor.MiddleLeft);
-        UITheme.Row(gained.rectTransform, 14f, 30f, 0f, 0.7f);
+        UITheme.Row(gained.rectTransform, 14f + summaryRow, 30f, 0f, 0.7f);
         gained.rectTransform.offsetMin = new Vector2(22f, gained.rectTransform.offsetMin.y);
         gained.text = xpGained > 0 ? $"+{xpGained} XP   <color={UITheme.Hex(UITheme.MutedText)}>{xpReason}</color>" : "";
 
         Text level = UITheme.NewText("Level", panel, 20, UITheme.TextColor, TextAnchor.MiddleRight);
-        UITheme.Row(level.rectTransform, 14f, 30f, 0.6f, 1f);
+        UITheme.Row(level.rectTransform, 14f + summaryRow, 30f, 0.6f, 1f);
         level.rectTransform.offsetMax = new Vector2(-22f, level.rectTransform.offsetMax.y);
 
         Image track = UITheme.NewImage("Track", panel, UITheme.Track, 4f);
-        UITheme.Row(track.rectTransform, 56f, 8f);
+        UITheme.Row(track.rectTransform, 56f + summaryRow, 8f);
         track.rectTransform.offsetMin = new Vector2(22f, track.rectTransform.offsetMin.y);
         track.rectTransform.offsetMax = new Vector2(-22f, track.rectTransform.offsetMax.y);
         Image fill = UITheme.NewImage("Fill", track.transform, UITheme.AccentText, 4f);
         UITheme.Stretch(fill.rectTransform);
 
         Text progress = UITheme.NewText("Progress", panel, 14, UITheme.MutedText, TextAnchor.MiddleRight);
-        UITheme.Row(progress.rectTransform, 66f, 22f);
+        UITheme.Row(progress.rectTransform, 66f + summaryRow, 22f);
         progress.rectTransform.offsetMax = new Vector2(-22f, progress.rectTransform.offsetMax.y);
 
         Text hats = null;
         if (newHats != null)
         {
             hats = UITheme.NewText("New Hats", panel, 18, UITheme.AccentText, TextAnchor.MiddleLeft);
-            UITheme.Row(hats.rectTransform, 92f, 24f);
+            UITheme.Row(hats.rectTransform, 92f + summaryRow, 24f);
             hats.rectTransform.offsetMin = new Vector2(22f, hats.rectTransform.offsetMin.y);
             hats.horizontalOverflow = HorizontalWrapMode.Overflow;
             hats.text = newHats;

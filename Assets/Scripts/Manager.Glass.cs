@@ -1,4 +1,5 @@
 using Fusion;
+using UnityEngine;
 
 // Breakable glass (the Office map, see OfficeGlass): the host counts the hits on each pane and
 // every player shows the panes as the host has them. Two bits per pane, 16 panes to a word:
@@ -23,6 +24,11 @@ public partial class Manager
         if (state >= OfficeGlass.Broken) return;
         value = (value & ~(3 << shift)) | ((state + 1) << shift);
         GlassPanes.Set(word, value);
+        // Shot out: bots can walk (and path) through the gap now, like people
+        if (state + 1 == OfficeGlass.Broken && OfficeGlass.Instance != null)
+        {
+            BotNavigation.RemoveObstacle(OfficeGlass.Instance.ColliderOf(pane));
+        }
     }
 
     // Shows any panes that changed. Without effects (when joining), they just appear as they are.

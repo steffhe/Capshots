@@ -21,12 +21,9 @@ public partial class Launcher : MonoBehaviour
     public Slider maxPlayersSlider;
     public Text maxPlayersValue;
 
+    // The kills to win, or the match length in minutes when the match is won on time (see Win By below)
     public Slider killsToWinSlider;
     public Text killsToWinValue;
-
-    // Optional: match length in minutes. If not assigned, the map's Manager default is used.
-    public Slider matchLengthSlider;
-    public Text matchLengthValue;
 
     public static ProfileData myProfile = new ProfileData();
 
@@ -41,6 +38,8 @@ public partial class Launcher : MonoBehaviour
     private bool starting;
 
     public MapData[] maps;
+    // The same list for the map scenes (the next-map vote), which have no Launcher
+    public static MapData[] Maps;
     private int currentmap = 0;
 
     private static readonly string[] modeNames = { "FREE FOR ALL", "TEAM DEATHMATCH" };
@@ -52,13 +51,31 @@ public partial class Launcher : MonoBehaviour
     private const int MaxBots = 7;
     private int currentbots = 0;
     private Text botsValue;
+    // How well the bots play (BotLogic.Easy to Hard)
+    private int currentBotSkill = BotLogic.Normal;
+    private Text botSkillValue;
+
+    // How the match is won: the first to a number of kills, or the most kills when the time runs out.
+    // The kills slider row sets whichever it is, and each keeps its own value.
+    private static readonly string[] winByNames = { "KILLS", "TIME" };
+    private const int WinByKills = 0, WinByTime = 1;
+    private const int MaxKillsToWin = 50, DefaultKillsToWin = 20;
+    private const int MaxMatchMinutes = 20, DefaultMatchMinutes = 5;
+    private int currentWinBy = WinByKills;
+    private int killsToWin = DefaultKillsToWin;
+    private int matchMinutes = DefaultMatchMinutes;
+    private Text winByValue;
 
     public void Awake()
     {
+        Maps = maps;
+        Manager.NextMapName = null;
         myProfile = Data.LoadProfile();
         usernameField.text = myProfile.username;
         CreateModeButton();
         CreateBotsButton();
+        CreateBotSkillButton();
+        CreateWinByButton();
         // Each goes in just above Quit, so they read in this order: Customize, Settings, Quit
         CreateColumnButton("CUSTOMIZE", () => { if (customizeMenu != null) customizeMenu.Open(); });
         GameObject settingsButton = CreateColumnButton("SETTINGS", () => { if (settingsMenu != null) settingsMenu.Open(); });
@@ -149,11 +166,13 @@ public partial class Launcher : MonoBehaviour
     {
         Dictionary<string, SessionProperty> properties = new Dictionary<string, SessionProperty>();
         properties.Add("map", currentmap);
-        properties.Add("killcount", (int)killsToWinSlider.value);
+        // 0 means no limit: a match won on kills has no clock, one won on time no kill limit
+        properties.Add("killcount", currentWinBy == WinByKills ? killsToWin : 0);
+        properties.Add("matchlength", currentWinBy == WinByTime ? matchMinutes * 60 : 0);
         properties.Add("mapname", maps[currentmap].name);
         properties.Add("mode", currentmode);
-        if (matchLengthSlider != null) properties.Add("matchlength", Mathf.RoundToInt(matchLengthSlider.value) * 60);
         properties.Add("bots", currentbots);
+        properties.Add("botskill", currentBotSkill);
         return properties;
     }
 
@@ -213,6 +232,51 @@ public partial class Launcher : MonoBehaviour
     private void RefreshBotsText()
     {
         if (botsValue != null) botsValue.text = UITheme.Option("BOTS", currentbots == 0 ? "OFF" : currentbots.ToString());
+    }
+
+    public void ChangeBotSkill()
+    {
+        OptionPicker.Open(ButtonOf(botSkillValue), BotLogic.SkillNames, currentBotSkill, i =>
+        {
+            currentBotSkill = i;
+            RefreshBotSkillText();
+        });
+    }
+
+    private void RefreshBotSkillText()
+    {
+        if (botSkillValue != null) botSkillValue.text = UITheme.Option("BOT SKILL", BotLogic.SkillNames[currentBotSkill]);
+    }
+
+    public void ChangeWinBy()
+    {
+        OptionPicker.Open(ButtonOf(winByValue), winByNames, currentWinBy, i =>
+        {
+            currentWinBy = i;
+            RefreshWinBy();
+        });
+    }
+
+    // The Win By button, and the slider row under it showing the kills to win or the match length
+    private void RefreshWinBy()
+    {
+        if (winByValue != null) winByValue.text = UITheme.Option("WIN BY", winByNames[currentWinBy]);
+        if (killsToWinSlider == null) return;
+
+        bool time = currentWinBy == WinByTime;
+        Text label = killsToWinSlider.transform.parent != null ? killsToWinSlider.transform.parent.Find("Text")?.GetComponent<Text>() : null;
+        if (label != null) label.text = time ? "MATCH LENGTH" : "KILLS TO WIN";
+        // Without calling ChangeKillsToWinSlider, which would save the value under the other setting
+        killsToWinSlider.minValue = 1;
+        killsToWinSlider.maxValue = time ? MaxMatchMinutes : MaxKillsToWin;
+        killsToWinSlider.SetValueWithoutNotify(time ? matchMinutes : killsToWin);
+        RefreshKillsToWinText();
+    }
+
+    private void RefreshKillsToWinText()
+    {
+        if (killsToWinValue == null) return;
+        killsToWinValue.text = currentWinBy == WinByTime ? matchMinutes + " MIN" : killsToWin.ToString();
     }
 
     // Replaces the "Capshots" title text on each menu tab with the wordmark logo
@@ -299,6 +363,21 @@ public partial class Launcher : MonoBehaviour
         RefreshBotsText();
     }
 
+    // And a "Bot Skill" button under that
+    private void CreateBotSkillButton()
+    {
+        botSkillValue = CopyMapRow(botsValue != null ? botsValue : mapValue, "Bot Skill", ChangeBotSkill);
+        RefreshBotSkillText();
+    }
+
+    // And a "Win By" button under that
+    private void CreateWinByButton()
+    {
+        Text above = botSkillValue != null ? botSkillValue : botsValue;
+        winByValue = CopyMapRow(above != null ? above : mapValue, "Win By", ChangeWinBy);
+        RefreshWinBy();
+    }
+
     // A copy of the "Map" button placed under the row holding 'above', calling onClick instead of
     // ChangeMap. Returns its label.
     private Text CopyMapRow(Text above, string rowName, UnityEngine.Events.UnityAction onClick)
@@ -348,14 +427,12 @@ public partial class Launcher : MonoBehaviour
         maxPlayersValue.text = Mathf.RoundToInt(value).ToString();
     }
 
+    // The kills slider row: the kills to win, or the match length in minutes
     public void ChangeKillsToWinSlider(float value)
     {
-        killsToWinValue.text = Mathf.RoundToInt(value).ToString();
-    }
-
-    public void ChangeMatchLengthSlider(float value)
-    {
-        if (matchLengthValue != null) matchLengthValue.text = Mathf.RoundToInt(value) + " MIN";
+        if (currentWinBy == WinByTime) matchMinutes = Mathf.RoundToInt(value);
+        else killsToWin = Mathf.RoundToInt(value);
+        RefreshKillsToWinText();
     }
 
     // The name typed in the menu is used for the match and saved. The host's StartGame loads the
@@ -399,7 +476,10 @@ public partial class Launcher : MonoBehaviour
         maxPlayersSlider.value = maxPlayersSlider.maxValue;
         maxPlayersValue.text = Mathf.RoundToInt(maxPlayersSlider.value).ToString(); 
 
-        if (matchLengthSlider != null) ChangeMatchLengthSlider(matchLengthSlider.value);
+        currentWinBy = WinByKills;
+        killsToWin = DefaultKillsToWin;
+        matchMinutes = DefaultMatchMinutes;
+        RefreshWinBy();
     }
 
     private void ClearRoomList()
@@ -440,6 +520,8 @@ public partial class Launcher : MonoBehaviour
             {
                 roomMap = maps[(int)map].name;
                 if (a.Properties.TryGetValue("mode", out mode)) roomMap += "  ·  " + modeShortNames[(int)mode % modeShortNames.Length];
+                string goal = MatchGoal(a);
+                if (goal != null) roomMap += "  ·  " + goal;
             }
 
             GameObject newRoomButton = CreateRoomRow(a.Name, a.PlayerCount + " / " + a.MaxPlayers, roomMap);
@@ -447,6 +529,15 @@ public partial class Launcher : MonoBehaviour
             shown++;
         }
         ShowRoomsEmptyState(shown == 0);
+    }
+
+    // How a listed match is won, short: "20 KILLS" or "5 MIN"
+    private static string MatchGoal(SessionInfo session)
+    {
+        var properties = session.Properties;
+        if (properties.TryGetValue("killcount", out SessionProperty kills) && (int)kills > 0) return (int)kills + " KILLS";
+        if (properties.TryGetValue("matchlength", out SessionProperty length) && (int)length > 0) return Mathf.Max(1, (int)length / 60) + " MIN";
+        return null;
     }
 
     // One row of the room list. JoinRoom reads the room's name back from the row's "Name" text.

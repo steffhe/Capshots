@@ -72,6 +72,24 @@ public partial class Manager
         }
     }
 
+    // Host only (bots): the nearest ammo box within reach, as the crow flies
+    public bool NearestPickup(Vector3 from, float maxDistance, out Vector3 position)
+    {
+        position = from;
+        float best = maxDistance;
+        bool found = false;
+        foreach (KeyValuePair<int, AmmoPickup> entry in pickups)
+        {
+            if (entry.Value == null) continue;
+            float d = Vector3.Distance(from, entry.Value.BasePosition);
+            if (d >= best) continue;
+            best = d;
+            position = entry.Value.BasePosition;
+            found = true;
+        }
+        return found;
+    }
+
     public void RemovePickup(int id, bool destroy = false)
     {
         AmmoPickup pickup;

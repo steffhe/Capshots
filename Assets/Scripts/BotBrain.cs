@@ -7,7 +7,9 @@ using UnityEngine.AI;
 //
 // What it does: heads for the nearest enemy along the map's walkable paths (BotNavigation), and once
 // it can see one, turns to aim (with a reaction delay and some aim error that settles the longer it
-// tracks), sidesteps, keeps a sensible distance for its gun form and fires when on target.
+// tracks), sidesteps, keeps a sensible distance for its gun form and fires when on target. On Normal
+// and Hard (BotLogic.Skill.tactical) it also backs off into cover to heal when badly hurt, and picks
+// up a nearby ammo box when its energy is low. With the scoped form it holds its ground.
 [DisallowMultipleComponent]
 public class BotBrain : MonoBehaviour
 {
@@ -36,9 +38,22 @@ public class BotBrain : MonoBehaviour
     private readonly NavMeshPath path = new NavMeshPath();
     private Vector3[] corners = new Vector3[0];
     private int cornerIndex;
+    // The path stops short of where it was going: there's no walkable way all the way there
+    private bool pathIncomplete;
+    // The path leads to the enemy being fought, not to the roaming goal
+    private bool pathForCombat;
     private Vector3 goal;
     private bool hasGoal;
     private float nextRepathAt;
+    // Got as close as it could to an enemy it can't reach: wander instead of hunting until then
+    private float wanderUntil;
+
+    // Backing off into cover to heal: where to, and until when at the latest
+    private bool retreating;
+    private Vector3 coverPoint;
+    private float retreatUntil;
+    private float nextCoverSearchAt;
+    private readonly NavMeshPath coverPath = new NavMeshPath();
 
     // Sidestepping while fighting
     private float strafeDirection = 1f;
@@ -58,6 +73,9 @@ public class BotBrain : MonoBehaviour
     private int lastHealth;
     private Player lastAttacker;
 
+    // How well it plays (the room's bot difficulty)
+    private BotLogic.Skill skill = BotLogic.SkillFor(BotLogic.Normal);
+
     // The layers a bot's view is blocked by: the same as a shot's (scenery), without player bodies
     private int sightMask;
 
@@ -66,6 +84,7 @@ public class BotBrain : MonoBehaviour
         player = body;
         weapon = body.GetComponent<Weapon>();
         manager = Manager.Instance;
+        skill = BotLogic.SkillFor(manager != null ? manager.BotSkill : BotLogic.Normal);
         yaw = body.transform.eulerAngles.y;
         pitch = 0f;
         lastHealth = body.currentHealth;
@@ -127,7 +146,14 @@ public class BotBrain : MonoBehaviour
         // Where to go and which way to move
         Vector3 moveDirection = Vector3.zero;
         bool sprint = false;
-        if (fighting)
+        UpdateRetreat(now);
+        if (retreating)
+        {
+            moveDirection = RetreatMovement(now);
+            hasGoal = false;
+            sprint = moveDirection != Vector3.zero && !fighting;
+        }
+        else if (fighting)
         {
             moveDirection = CombatMovement(now, targetDistance, gun);
             hasGoal = false;
@@ -144,7 +170,7 @@ public class BotBrain : MonoBehaviour
         {
             if (now >= nextAimOffsetAt)
             {
-                float error = BotLogic.AimError(now - targetSince);
+                float error = BotLogic.AimError(now - targetSince, skill);
                 float metres = Mathf.Tan(error * Mathf.Deg2Rad) * Mathf.Max(targetDistance, 1f);
                 aimOffset = Random.insideUnitSphere * metres;
                 nextAimOffsetAt = now + Random.Range(0.25f, 0.5f);
@@ -157,8 +183,8 @@ public class BotBrain : MonoBehaviour
         }
         else wantLook = new Vector2(yaw, 0f);
 
-        yaw = BotLogic.TurnTowards(yaw, wantLook.x, dt);
-        pitch = Mathf.Clamp(BotLogic.TurnTowards(pitch, wantLook.y, dt), -85f, 85f);
+        yaw = BotLogic.TurnTowards(yaw, wantLook.x, dt, skill.turnSpeed, skill.aimSharpness);
+        pitch = Mathf.Clamp(BotLogic.TurnTowards(pitch, wantLook.y, dt, skill.turnSpeed, skill.aimSharpness), -85f, 85f);
         data.Yaw = Mathf.Repeat(yaw + 180f, 360f) - 180f;
         data.Pitch = pitch;
 
@@ -260,7 +286,7 @@ public class BotBrain : MonoBehaviour
         {
             target = best;
             targetSince = now;
-            fireAllowedAt = now + Random.Range(BotLogic.ReactionTimeMin, BotLogic.ReactionTimeMax);
+            fireAllowedAt = now + Random.Range(skill.reactionMin, skill.reactionMax);
             nextAimOffsetAt = 0f;
             lastSeenPosition = best.transform.position;
             lastSeenAt = now;
@@ -280,7 +306,7 @@ public class BotBrain : MonoBehaviour
         Vector3 point = AimPoint(p);
         Vector3 toTarget = point - eye;
         float distance = toTarget.magnitude;
-        if (distance > BotLogic.SightRange) return false;
+        if (distance > skill.sightRange) return false;
 
         if (!anyDirection && distance > BotLogic.NoticeRange)
         {
@@ -311,41 +337,145 @@ public class BotBrain : MonoBehaviour
 
     #region Moving
 
-    // While fighting: sidestep, and close in or back off to suit the gun
+    // How close a bot gets to a corner of its path before heading for the next one
+    private const float CornerReach = 0.5f;
+    // How far ahead a sidestep or backing off is checked for walls and ledges
+    private const float StepCheck = 1.5f;
+
+    // While fighting: sidestep, and close in or back off to suit the gun. Closing in follows the
+    // walkable path to the target, not a straight line: it may be seen (and shot) through glass, or
+    // across a gap, that's in the way of walking straight there.
     private Vector3 CombatMovement(float now, float distance, Gun gun)
     {
+        Vector3 feet = player.transform.position + Vector3.up * player.bodyBottom;
         Vector3 toTarget = target.transform.position - player.transform.position;
         toTarget.y = 0f;
         Vector3 forward = toTarget.sqrMagnitude > 0.01f ? toTarget.normalized : player.transform.forward;
         Vector3 right = Vector3.Cross(Vector3.up, forward);
 
+        // With the scoped form it holds its ground: no closing in across open ground, and mostly
+        // standing still between sidesteps, for a steadier aim
+        bool scoped = gun != null && gun.scopeFov > 0f;
         if (now >= nextStrafeChangeAt)
         {
             strafeDirection = Random.value < 0.5f ? -1f : 1f;
+            if (scoped && Random.value < 0.6f) strafeDirection = 0f;
             nextStrafeChangeAt = now + Random.Range(0.6f, 1.6f);
         }
 
         float preferred = 18f;
         if (gun != null && gun.pellets > 1) preferred = 4f;
-        else if (gun != null && gun.scopeFov > 0f) preferred = 45f;
+        else if (scoped) preferred = 45f;
 
-        float approach = 0f;
-        if (distance > preferred * 1.3f) approach = 1f;
-        else if (distance < preferred * 0.6f) approach = -0.6f;
+        Vector3 travel = Vector3.zero;
+        bool closingIn = distance > preferred * 1.3f && !scoped;
+        if (closingIn)
+        {
+            if (!pathForCombat || now >= nextRepathAt)
+            {
+                PlanPath(feet, target.transform.position + Vector3.up * player.bodyBottom);
+                pathForCombat = true;
+                nextRepathAt = now + Random.Range(0.4f, 0.6f);
+            }
+            travel = FollowPath(feet);
+        }
+        else if (distance < preferred * 0.6f && CanStep(feet, -forward))
+        {
+            travel = -forward * 0.6f;
+        }
 
-        Vector3 move = right * strafeDirection + forward * approach;
-
-        // Don't sidestep off a ledge or into a wall: try the other way, then just stand
-        Vector3 feet = player.transform.position + Vector3.up * player.bodyBottom;
-        Vector3 ahead = feet + move.normalized * 1.5f;
-        if (!BotNavigation.CanWalkStraight(feet, ahead))
+        // Don't sidestep off a ledge or into a wall: try the other way, then don't
+        Vector3 strafe = right * strafeDirection;
+        if (strafeDirection != 0f && !CanStep(feet, strafe))
         {
             strafeDirection = -strafeDirection;
-            move = right * strafeDirection + forward * approach;
-            ahead = feet + move.normalized * 1.5f;
-            if (!BotNavigation.CanWalkStraight(feet, ahead)) move = forward * Mathf.Max(0f, approach);
+            strafe = -strafe;
+            if (!CanStep(feet, strafe)) strafe = Vector3.zero;
         }
+        // Going round something to get there: just go
+        if (closingIn && travel != Vector3.zero && Vector3.Dot(travel, forward) < 0.5f) strafe = Vector3.zero;
+
+        Vector3 move = strafe + travel;
+        // The path's own way is walkable; the two together might not be
+        if (move != Vector3.zero && !CanStep(feet, move)) move = travel;
         return move;
+    }
+
+    // Badly hurt (tactical bots): find somewhere close that the enemy can't see and wait there for
+    // health to come back. Ends once healed, or after a while (health only comes back after a few
+    // seconds without being hit, so a bot that keeps getting shot gives up and fights).
+    private void UpdateRetreat(float now)
+    {
+        float health = player.maxHealth > 0 ? (float)player.currentHealth / player.maxHealth : 1f;
+        if (retreating)
+        {
+            if (health >= 0.8f || now >= retreatUntil) retreating = false;
+            return;
+        }
+
+        if (!skill.tactical || health >= 0.35f || now < nextCoverSearchAt) return;
+        Player threat = target != null ? target : lastAttacker;
+        if (threat == null || threat.Object == null || !threat.Object.IsValid || threat.IsDead) return;
+        nextCoverSearchAt = now + 1f;
+
+        if (FindCover(threat, out coverPoint))
+        {
+            retreating = true;
+            retreatUntil = now + Random.Range(7f, 10f);
+            pathForCombat = false;
+            hasGoal = false;
+            PlanPath(player.transform.position + Vector3.up * player.bodyBottom, coverPoint);
+        }
+    }
+
+    // Following the path to cover, then staying put
+    private Vector3 RetreatMovement(float now)
+    {
+        Vector3 feet = player.transform.position + Vector3.up * player.bodyBottom;
+        if (FlatDistance(feet, coverPoint) < 0.8f) return Vector3.zero;
+        return FollowPath(feet);
+    }
+
+    // A walkable point a short way off, hidden from the threat's eye, with the shortest walk there
+    private bool FindCover(Player threat, out Vector3 cover)
+    {
+        cover = Vector3.zero;
+        Vector3 feet = player.transform.position + Vector3.up * player.bodyBottom;
+        Vector3 eyeHeight = Vector3.up * (player.EyePosition.y - feet.y);
+        Vector3 threatEye = threat.EyePosition;
+        float best = 20f;
+        bool found = false;
+        for (int i = 0; i < 10; i++)
+        {
+            Vector2 offset = Random.insideUnitCircle.normalized * Random.Range(3f, 12f);
+            if (!BotNavigation.Snap(feet + new Vector3(offset.x, 0f, offset.y), 2f, out Vector3 point)) continue;
+            // Hidden: the threat's eye can't see where this bot's eye would be (or its body)
+            if (!Physics.Linecast(threatEye, point + eyeHeight, sightMask, QueryTriggerInteraction.Ignore)) continue;
+            if (!Physics.Linecast(threatEye, point + eyeHeight * 0.5f, sightMask, QueryTriggerInteraction.Ignore)) continue;
+            if (!BotNavigation.FindPath(feet, point, coverPath, out bool complete) || !complete) continue;
+
+            float length = PathLength(coverPath.corners);
+            if (length < best)
+            {
+                best = length;
+                cover = point;
+                found = true;
+            }
+        }
+        return found;
+    }
+
+    private static float PathLength(Vector3[] points)
+    {
+        float length = 0f;
+        for (int i = 1; i < points.Length; i++) length += Vector3.Distance(points[i - 1], points[i]);
+        return length;
+    }
+
+    private static bool CanStep(Vector3 feet, Vector3 direction)
+    {
+        if (direction.sqrMagnitude < 0.0001f) return false;
+        return BotNavigation.CanWalkStraight(feet, feet + direction.normalized * StepCheck);
     }
 
     // Not fighting: follow a path to the last place an enemy was seen, or else to the nearest enemy,
@@ -357,51 +487,112 @@ public class BotBrain : MonoBehaviour
 
         CheckStuck(now, position);
 
-        if (!hasGoal || now >= nextRepathAt || ReachedGoal(feet))
+        // At the end of a path that couldn't get all the way: whoever it was heading for can't be
+        // reached from here, so it goes elsewhere for a while instead of waiting against the wall
+        if (hasGoal && pathIncomplete && AtPathEnd(feet))
+        {
+            wanderUntil = now + Random.Range(4f, 7f);
+            lastSeenAt = -100f;
+            hasGoal = false;
+        }
+
+        if (!hasGoal || pathForCombat || now >= nextRepathAt || ReachedGoal(feet))
         {
             ChooseGoal(now, feet);
             nextRepathAt = now + Random.Range(1.5f, 2.5f);
-            corners = BotNavigation.FindPath(feet, goal, path) ? path.corners : new[] { goal };
-            cornerIndex = 0;
+            PlanPath(feet, goal);
+            pathForCombat = false;
         }
 
-        // The next corner of the path that isn't right underfoot
-        while (cornerIndex < corners.Length - 1 && FlatDistance(feet, corners[cornerIndex]) < 0.8f) cornerIndex++;
+        return FollowPath(feet);
+    }
+
+    // A path from the bot's feet to a point. With no navigation mesh yet, straight there; with one
+    // but no way there, nowhere until the next repath (walking straight at it would only end
+    // against a wall).
+    private void PlanPath(Vector3 feet, Vector3 to)
+    {
+        cornerIndex = 0;
+        if (BotNavigation.FindPath(feet, to, path, out bool complete))
+        {
+            corners = path.corners;
+            pathIncomplete = !complete;
+        }
+        else if (BotNavigation.CanWalkStraight(feet, to))
+        {
+            corners = new[] { to };
+            pathIncomplete = false;
+        }
+        else
+        {
+            corners = new Vector3[0];
+            pathIncomplete = true;
+        }
+    }
+
+    // Which way to go along the path. A corner is passed once the bot is close to it, or as soon as
+    // the one after it can be walked to in a straight line, so the bot doesn't turn back for a corner
+    // it has cut or overshot.
+    private Vector3 FollowPath(Vector3 feet)
+    {
         if (corners.Length == 0) return Vector3.zero;
+        while (cornerIndex < corners.Length - 1 &&
+               (FlatDistance(feet, corners[cornerIndex]) < CornerReach ||
+                BotNavigation.CanWalkStraight(feet, corners[cornerIndex + 1])))
+        {
+            cornerIndex++;
+        }
 
         Vector3 toCorner = corners[cornerIndex] - feet;
         toCorner.y = 0f;
-        if (toCorner.sqrMagnitude < 0.25f) return Vector3.zero;
+        if (toCorner.sqrMagnitude < CornerReach * CornerReach) return Vector3.zero;
         return toCorner.normalized;
+    }
+
+    private bool AtPathEnd(Vector3 feet)
+    {
+        return corners.Length > 0 && cornerIndex >= corners.Length - 1 &&
+               FlatDistance(feet, corners[corners.Length - 1]) < 1f;
     }
 
     private void ChooseGoal(float now, Vector3 feet)
     {
         hasGoal = true;
 
-        // Go and check where an enemy was last seen
-        if (now - lastSeenAt < 6f && FlatDistance(feet, lastSeenPosition) > 2f)
+        // Low on energy with an ammo box close by: grab it first
+        if (skill.tactical && weapon != null && weapon.EnergyFraction < 0.5f &&
+            manager.NearestPickup(feet, 20f, out Vector3 box))
         {
-            goal = lastSeenPosition;
+            goal = box;
             return;
         }
 
-        // Hunt the nearest enemy, wherever they are
-        Player nearest = null;
-        float nearestDistance = float.MaxValue;
-        foreach (Player p in Player.All)
+        if (now >= wanderUntil)
         {
-            if (!IsEnemy(p)) continue;
-            float d = Vector3.Distance(feet, p.transform.position);
-            if (d < nearestDistance) { nearestDistance = d; nearest = p; }
-        }
-        if (nearest != null)
-        {
-            goal = nearest.transform.position + Vector3.up * player.bodyBottom;
-            return;
+            // Go and check where an enemy was last seen
+            if (now - lastSeenAt < 6f && FlatDistance(feet, lastSeenPosition) > 2f)
+            {
+                goal = lastSeenPosition;
+                return;
+            }
+
+            // Hunt the nearest enemy, wherever they are
+            Player nearest = null;
+            float nearestDistance = float.MaxValue;
+            foreach (Player p in Player.All)
+            {
+                if (!IsEnemy(p)) continue;
+                float d = Vector3.Distance(feet, p.transform.position);
+                if (d < nearestDistance) { nearestDistance = d; nearest = p; }
+            }
+            if (nearest != null)
+            {
+                goal = nearest.transform.position + Vector3.up * player.bodyBottom;
+                return;
+            }
         }
 
-        // Nobody to fight: wander to a spawn point or somewhere near by
+        // Nobody to fight (or nobody it can get to): wander to a spawn point or somewhere near by
         Transform[] spawns = manager.spawnPoints;
         if (spawns != null && spawns.Length > 0 && Random.value < 0.6f)
         {
@@ -442,9 +633,9 @@ public class BotBrain : MonoBehaviour
                 goal = away;
                 hasGoal = true;
                 nextRepathAt = now + 3f;
-                Vector3 feet = position + Vector3.up * player.bodyBottom;
-                corners = BotNavigation.FindPath(feet, goal, path) ? path.corners : new[] { goal };
-                cornerIndex = 0;
+                wanderUntil = now + 3f;
+                PlanPath(position + Vector3.up * player.bodyBottom, goal);
+                pathForCombat = false;
             }
         }
     }

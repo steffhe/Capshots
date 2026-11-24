@@ -8,8 +8,13 @@ using UnityEngine.AI;
 // until it's ready, bots just head straight for their goal.
 public static class BotNavigation
 {
-    // The map's agent: a little wider than the player's capsule, so paths keep clear of walls
-    private const float AgentRadius = 0.5f;
+    // The map's agent. The builder rounds the radius up to whole voxels and also rounds walls out to
+    // the voxels they touch, so a radius the size of the player's capsule (0.5 m) took 0.6 m off each
+    // side of a 1.5 m doorway, and up to another 0.2 m for the posts: about half the office doors
+    // closed up on the mesh, and bots walked to the nearest spot outside the room and stood against
+    // its wall. Two voxels clears them all and still keeps paths 0.4-0.6 m off the walls; the
+    // capsule's last few centimetres just slide along them.
+    private const float AgentRadius = 0.39f;
     private const float AgentHeight = 2f;
     private const float AgentClimb = 0.45f;
     private const float AgentSlope = 45f;
@@ -22,6 +27,16 @@ public static class BotNavigation
     private static string builtScene;
     private static int agentTypeId;
 
+    // What the mesh was built from, kept so it can be updated when scenery goes away (glass shot out)
+    private static NavMeshData data;
+    private static NavMeshBuildSettings builtSettings;
+    private static Bounds builtBounds;
+    private static List<NavMeshBuildSource> builtSources;
+    private static readonly HashSet<Component> removed = new HashSet<Component>();
+    private static AsyncOperation updating;
+
+    // Ready once the first build is done. An update afterwards doesn't stop bots using the mesh: the
+    // tiles it rebuilds swap in when they're finished.
     public static bool Ready => instance.valid && (building == null || building.isDone);
 
     // Starts building the map's navigation mesh, if it isn't built (or building) already
@@ -52,10 +67,32 @@ public static class BotNavigation
         settings.voxelSize = VoxelSize;
         agentTypeId = settings.agentTypeID;
 
-        NavMeshData data = new NavMeshData(settings.agentTypeID);
+        data = new NavMeshData(settings.agentTypeID);
         instance = NavMesh.AddNavMeshData(data);
         building = NavMeshBuilder.UpdateNavMeshDataAsync(data, settings, sources, bounds);
         builtScene = scene;
+        builtSettings = settings;
+        builtBounds = bounds;
+        builtSources = sources;
+    }
+
+    // Something solid is gone (a glass pane shot out): the mesh is updated to walk through where it
+    // was. Batched: Tick starts one update for everything removed since the last one.
+    public static void RemoveObstacle(Component solid)
+    {
+        if (builtSources == null || solid == null) return;
+        removed.Add(solid);
+    }
+
+    // Host, once a tick: starts an update for removed scenery, when no build or update is running.
+    // Only the tiles whose sources changed are rebuilt, so it's quick.
+    public static void Tick()
+    {
+        if (removed.Count == 0 || !instance.valid || data == null) return;
+        if ((building != null && !building.isDone) || (updating != null && !updating.isDone)) return;
+        builtSources.RemoveAll(s => s.component != null && removed.Contains(s.component));
+        removed.Clear();
+        updating = NavMeshBuilder.UpdateNavMeshDataAsync(data, builtSettings, builtSources, builtBounds);
     }
 
     // Outside the editor, the builder can't read a mesh collider's mesh unless the model was imported
@@ -84,7 +121,11 @@ public static class BotNavigation
         if (instance.valid) instance.Remove();
         instance = default;
         building = null;
+        updating = null;
         builtScene = null;
+        data = null;
+        builtSources = null;
+        removed.Clear();
     }
 
     // The spawn points' area, widened by a margin and cut down to the solid things actually there
@@ -133,16 +174,20 @@ public static class BotNavigation
     }
 
     // A walkable path between two points (each snapped onto the walkable area first), as corners.
-    // False if there's no navigation mesh yet or no way there.
-    public static bool FindPath(Vector3 from, Vector3 to, NavMeshPath path)
+    // False if there's no navigation mesh yet or no way there. complete is false when there's no way
+    // all the way there and the path only leads as close as the walkable area gets.
+    public static bool FindPath(Vector3 from, Vector3 to, NavMeshPath path, out bool complete)
     {
+        complete = false;
         if (!Ready) return false;
         if (!Snap(from, 3f, out Vector3 start)) return false;
         if (!Snap(to, 4f, out Vector3 end)) return false;
 
         NavMeshQueryFilter filter = new NavMeshQueryFilter { agentTypeID = agentTypeId, areaMask = NavMesh.AllAreas };
         if (!NavMesh.CalculatePath(start, end, filter, path)) return false;
-        return path.status != NavMeshPathStatus.PathInvalid && path.corners.Length > 0;
+        if (path.status == NavMeshPathStatus.PathInvalid || path.corners.Length == 0) return false;
+        complete = path.status == NavMeshPathStatus.PathComplete;
+        return true;
     }
 
     // Whether a bot can walk straight from one point to another without leaving the walkable area

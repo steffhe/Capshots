@@ -48,7 +48,13 @@ public class FeedbackUI : MonoBehaviour
     private readonly List<GameObject> killFeedEntries = new List<GameObject>();
 
     private AudioSource audioSource;
-    private AudioClip hitClip, headshotClip, killClip, capshotKillClip, hurtClip, pickupClip, deathClip;
+    private AudioClip hitClip, headshotClip, killClip, capshotKillClip, hurtClip, pickupClip, deathClip, shieldClip, calloutClip;
+
+    // Multi-kill and streak callouts, above the XP popup
+    private RectTransform callout;
+    private CanvasGroup calloutGroup;
+    private Text calloutTitle, calloutDetail;
+    private Coroutine calloutRoutine;
 
     #region Setup
 
@@ -122,6 +128,23 @@ public class FeedbackUI : MonoBehaviour
         killFeed.anchoredPosition = new Vector2(-20f, -20f);
         killFeed.sizeDelta = new Vector2(600f, 300f);
 
+        // Multi-kill and streak callouts: a big gold word high in the middle, a smaller line under it
+        GameObject calloutObject = new GameObject("Callout", typeof(RectTransform), typeof(CanvasGroup));
+        callout = (RectTransform)calloutObject.transform;
+        callout.SetParent(root, false);
+        callout.anchorMin = callout.anchorMax = callout.pivot = new Vector2(0.5f, 0.8f);
+        callout.sizeDelta = new Vector2(900f, 90f);
+        calloutGroup = calloutObject.GetComponent<CanvasGroup>();
+        calloutGroup.interactable = calloutGroup.blocksRaycasts = false;
+        calloutTitle = NewText("Title", callout, 46, TextAnchor.MiddleCenter);
+        Center(calloutTitle.rectTransform, new Vector2(900f, 56f));
+        calloutTitle.rectTransform.anchoredPosition = new Vector2(0f, 14f);
+        calloutTitle.color = new Color(1f, 0.8f, 0.3f);
+        calloutDetail = NewText("Detail", callout, 20, TextAnchor.MiddleCenter);
+        Center(calloutDetail.rectTransform, new Vector2(900f, 28f));
+        calloutDetail.rectTransform.anchoredPosition = new Vector2(0f, -28f);
+        calloutObject.SetActive(false);
+
         audioSource = gameObject.AddComponent<AudioSource>();
         audioSource.playOnAwake = false;
         audioSource.spatialBlend = 0f;
@@ -135,6 +158,12 @@ public class FeedbackUI : MonoBehaviour
             (Tone(t, 880f) + Tone(t, t > 0.07f ? 1320f : 0f) + Tone(t, t > 0.14f ? 1760f : 0f) * 0.9f) * 0.4f * Decay(t, 5.5f) +
             Tone(t, 3520f + 220f * Mathf.Sin(2f * Mathf.PI * 18f * t)) * 0.12f * Decay(Mathf.Max(0f, t - 0.14f), 6f) * (t > 0.14f ? 1f : 0f));
         deathClip = MakeDeathClip();
+        // A dull knock: a shot that hit a spawn shield and did nothing
+        shieldClip = MakeClip("Shield", 0.09f, t => (Tone(t, 420f) * 0.7f + Tone(t, 630f) * 0.3f) * Decay(t, 45f));
+        // A callout: three quick rising notes, then a held chord
+        calloutClip = MakeClip("Callout", 0.7f, t =>
+            (Tone(t, 660f) * (t < 0.08f ? 1f : 0f) + Tone(t, 880f) * (t >= 0.08f && t < 0.16f ? 1f : 0f) +
+             (Tone(t, 1100f) + Tone(t, 1320f) * 0.6f + Tone(t, 1650f) * 0.35f) * (t >= 0.16f ? Decay(t - 0.16f, 4.5f) : 0f)) * 0.45f);
         hurtClip = MakeClip("Hurt", 0.18f, t => (Tone(t, Mathf.Lerp(140f, 55f, t / 0.18f)) * 0.8f + Random.Range(-0.25f, 0.25f)) * Decay(t, 18f));
     }
 
@@ -165,6 +194,27 @@ public class FeedbackUI : MonoBehaviour
     {
         if (Instance == null) return;
         Instance.Play(headshot ? Instance.headshotClip : Instance.hitClip, headshot ? 0.142f : 0.136f);
+    }
+
+    // Local player's shot hit someone under spawn protection: it did nothing
+    public static void ShieldHit()
+    {
+        if (Instance == null) return;
+        Instance.Play(Instance.shieldClip, 0.14f);
+    }
+
+    // A multi-kill or streak for the local player: "DOUBLE KILL" big and gold, with an optional detail
+    // line under it. Pops in, holds and fades; a new one replaces the last.
+    public static void Callout(string title, string detail = null)
+    {
+        if (Instance == null) return;
+        FeedbackUI ui = Instance;
+        ui.calloutTitle.text = title;
+        ui.calloutDetail.text = detail ?? "";
+        ui.callout.gameObject.SetActive(true);
+        if (ui.calloutRoutine != null) ui.StopCoroutine(ui.calloutRoutine);
+        ui.calloutRoutine = ui.StartCoroutine(ui.ShowCallout());
+        ui.Play(ui.calloutClip, 0.3f);
     }
 
     // Local player picked up ammo
@@ -288,14 +338,36 @@ public class FeedbackUI : MonoBehaviour
             left.text = killerPart;
         }
 
-        ui.killFeedEntries.Insert(0, entry);
-        while (ui.killFeedEntries.Count > ui.maxKillFeedEntries)
+        ui.AddKillFeedEntry(entry);
+    }
+
+    // A line of its own in the kill feed, like "VOLT IS ON A KILLING SPREE", in light grey
+    public static void AddKillFeedNote(string text)
+    {
+        if (Instance == null) return;
+        FeedbackUI ui = Instance;
+        GameObject entry = new GameObject("Kill Feed Note", typeof(RectTransform));
+        RectTransform rect = (RectTransform)entry.transform;
+        rect.SetParent(ui.killFeed, false);
+        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(1f, 1f);
+        rect.sizeDelta = new Vector2(600f, 26f);
+        Text line = ui.NewText("Text", rect, 18, TextAnchor.MiddleRight);
+        UITheme.Stretch(line.rectTransform);
+        line.color = new Color(0.85f, 0.85f, 0.85f);
+        line.text = text;
+        ui.AddKillFeedEntry(entry);
+    }
+
+    private void AddKillFeedEntry(GameObject entry)
+    {
+        killFeedEntries.Insert(0, entry);
+        while (killFeedEntries.Count > maxKillFeedEntries)
         {
-            Destroy(ui.killFeedEntries[ui.killFeedEntries.Count - 1]);
-            ui.killFeedEntries.RemoveAt(ui.killFeedEntries.Count - 1);
+            Destroy(killFeedEntries[killFeedEntries.Count - 1]);
+            killFeedEntries.RemoveAt(killFeedEntries.Count - 1);
         }
-        ui.LayoutKillFeed();
-        ui.StartCoroutine(ui.ExpireKillFeedEntry(entry));
+        LayoutKillFeed();
+        StartCoroutine(ExpireKillFeedEntry(entry));
     }
 
     #endregion
@@ -333,6 +405,20 @@ public class FeedbackUI : MonoBehaviour
             c.a = 0f;
             indicator.color = c;
         }
+    }
+
+    private IEnumerator ShowCallout()
+    {
+        const float pop = 0.18f, hold = 1.4f, fade = 0.4f;
+        for (float t = 0f; t < pop + hold + fade; t += Time.deltaTime)
+        {
+            float scale = t < pop ? Mathf.Lerp(1.6f, 1f, 1f - Mathf.Pow(1f - t / pop, 3f)) : 1f;
+            callout.localScale = Vector3.one * scale;
+            calloutGroup.alpha = t < pop ? t / pop : t < pop + hold ? 1f : 1f - (t - pop - hold) / fade;
+            yield return null;
+        }
+        callout.gameObject.SetActive(false);
+        calloutRoutine = null;
     }
 
     private IEnumerator DeathText(string text, float duration)
