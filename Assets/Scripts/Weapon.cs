@@ -150,12 +150,21 @@ public class Weapon : NetworkBehaviour
 
             hitmark = GameObject.Find("HUD/Crosshair/Hitmark");
             if (hitmark != null) hitmarkImage = hitmark.GetComponent<Image>();
+            HideHitmark();
             GameObject dot = GameObject.Find("HUD/Crosshair/Dot");
             crosshairDot = dot != null ? dot.GetComponent<Graphic>() : null;
             SetCrosshairAlpha(1f);
         }
 
         ShowGun(Equipped);
+    }
+
+    public override void Despawned(NetworkRunner runner, bool hasState)
+    {
+        // Dying mid-marker stops the coroutine before it can hide the marker
+        StopAllCoroutines();
+        hitmarkRoutine = null;
+        HideHitmark();
     }
 
     public override void FixedUpdateNetwork()
@@ -571,9 +580,16 @@ public class Weapon : NetworkBehaviour
             }
         }
 
-        marker.localScale = Vector3.one;
-        hitmark.SetActive(false);
+        HideHitmark();
         hitmarkRoutine = null;
+    }
+
+    // The marker lives on the shared HUD, not on this body, so it must be put away explicitly
+    void HideHitmark()
+    {
+        if (hitmark == null) return;
+        hitmark.transform.localScale = Vector3.one;
+        hitmark.SetActive(false);
     }
 
     // A laser beam from the muzzle to where the shot landed, in the shooter's colour, that thins
@@ -634,11 +650,7 @@ public class Weapon : NetworkBehaviour
             if (sounds != null) sounds.StopReload();
             StopAllCoroutines();
             hitmarkRoutine = null;
-            if (hitmark != null && HasInputAuthority)
-            {
-                hitmark.SetActive(false);
-                hitmark.transform.localScale = Vector3.one;
-            }
+            if (HasInputAuthority) HideHitmark();
         }
         shownIndex = ind;
         GameObject newWeapon = Instantiate(loadout[ind].prefab, weaponParent.position, weaponParent.rotation, weaponParent) as GameObject;
@@ -709,6 +721,8 @@ public class Weapon : NetworkBehaviour
     private void OnDestroy()
     {
         if (crosshairDot != null) crosshairDot.canvasRenderer.SetAlpha(1f);
+        // Dying mid-marker stops the coroutine before it can hide it
+        HideHitmark();
     }
 
     void Aim(bool aiming)
