@@ -209,7 +209,7 @@ public static partial class UITheme
         if (!label.text.Contains("<")) label.text = label.text.ToUpperInvariant();
     }
 
-    // A button that cycles through options: label on the left, a chevron on the right
+    // A button that opens a list of options (OptionPicker): label on the left, a chevron pointing down on the right
     public static void StyleSelector(Button button, int fontSize = 20)
     {
         if (button == null) return;
@@ -221,10 +221,15 @@ public static partial class UITheme
         Inset(label.rectTransform, 18f, 40f);
 
         if (button.transform.Find("Chevron") != null) return;
-        Text chevron = NewText("Chevron", button.transform, 30, MutedText, TextAnchor.MiddleRight);
+        Text chevron = NewText("Chevron", button.transform, 30, MutedText, TextAnchor.MiddleCenter);
         chevron.text = "\u203A";
-        Inset(chevron.rectTransform, 0f, 16f);
-        chevron.rectTransform.anchoredPosition += new Vector2(0f, 2f);
+        // Turned to point down, like a dropdown's
+        RectTransform chevronRect = chevron.rectTransform;
+        chevronRect.anchorMin = chevronRect.anchorMax = new Vector2(1f, 0.5f);
+        chevronRect.pivot = new Vector2(0.5f, 0.5f);
+        chevronRect.anchoredPosition = new Vector2(-24f, 0f);
+        chevronRect.sizeDelta = new Vector2(24f, 24f);
+        chevronRect.localEulerAngles = new Vector3(0f, 0f, -90f);
     }
 
     public static void StyleInput(InputField input, string placeholder, int fontSize = 20)

@@ -136,7 +136,7 @@ public class SettingsMenu : MonoBehaviour
         // Unpausing hides the whole pause menu: go back to the main pause buttons for next time
         if (panel != null && panel.activeSelf && !anchor.gameObject.activeSelf) CloseSettings();
         // In the main menu, Esc closes the panel (in a match it unpauses, closing it as above)
-        if (inMainMenu && panel != null && panel.activeSelf && !GameInput.IsRebinding)
+        if (inMainMenu && panel != null && panel.activeSelf && !GameInput.IsRebinding && !OptionPicker.Showing)
         {
             Keyboard keyboard = Keyboard.current;
             if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame) CloseSettings();
@@ -195,16 +195,27 @@ public class SettingsMenu : MonoBehaviour
             RefreshLabels();
         });
 
+        Button qualityButton = null;
         GameObject quality = NewButton(rect, "", () =>
         {
-            if (QualitySettings.names.Length > 0) GameSettings.Quality = (GameSettings.Quality + 1) % QualitySettings.names.Length;
-            RefreshLabels();
+            string[] names = QualitySettings.names;
+            if (names.Length == 0) return;
+            string[] options = new string[names.Length];
+            for (int i = 0; i < names.Length; i++) options[i] = names[i].ToUpperInvariant();
+            OptionPicker.Open(qualityButton, options, GameSettings.Quality, i =>
+            {
+                GameSettings.Quality = i;
+                RefreshLabels();
+            });
         });
+        qualityButton = quality.GetComponent<Button>();
         UITheme.StyleSelector(quality.GetComponent<Button>());
         Place(quality, new Vector2(LeftColumn, y - 72f), new Vector2(ColumnWidth, 48f));
         qualityText = quality.GetComponentInChildren<Text>();
 
-        GameObject startingGun = NewButton(rect, "", NextStartingGun);
+        Button startingGunButton = null;
+        GameObject startingGun = NewButton(rect, "", () => PickStartingGun(startingGunButton));
+        startingGunButton = startingGun.GetComponent<Button>();
         UITheme.StyleSelector(startingGun.GetComponent<Button>());
         Place(startingGun, new Vector2(LeftColumn, y - 128f), new Vector2(ColumnWidth, 48f));
         startingGunText = startingGun.GetComponentInChildren<Text>();
@@ -308,14 +319,18 @@ public class SettingsMenu : MonoBehaviour
         startingGunText.text = UITheme.Option("STARTING GUN", gun.ToUpperInvariant());
     }
 
-    // Steps the starting gun to the next form, in loadout order, wrapping round
-    private void NextStartingGun()
+    // A list of the gun's forms, in loadout order
+    private void PickStartingGun(Button button)
     {
         Weapon weapon = PlayerWeapon();
-        if (weapon == null || weapon.loadout.Length == 0) return;
-        int next = GunForms.Step(weapon.PreferredStartingSlot, 1, weapon.loadout.Length);
-        GameSettings.StartingGun = weapon.loadout[next].gunName;
-        RefreshLabels();
+        if (weapon == null) return;
+        string[] options = new string[weapon.loadout.Length];
+        for (int i = 0; i < options.Length; i++) options[i] = weapon.loadout[i].gunName.ToUpperInvariant();
+        OptionPicker.Open(button, options, weapon.PreferredStartingSlot, i =>
+        {
+            GameSettings.StartingGun = weapon.loadout[i].gunName;
+            RefreshLabels();
+        });
     }
 
     private Weapon PlayerWeapon()
