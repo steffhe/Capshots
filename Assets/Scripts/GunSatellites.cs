@@ -77,6 +77,8 @@ public class GunSatellites : MonoBehaviour
     private Gun displayForm;
     private float displayShotTime = -1f, nextDemoAt;
     private int demoShotsLeft;
+    // Off when something else says when the display gun fires (the menu's background bots, MenuBattle)
+    public bool demoShots = true;
 
     // What drives the pieces: the player's gun in a match, or the display gun
     private GameObject CurrentGunModel => weapon != null ? weapon.GunModel : displayGun;
@@ -116,6 +118,12 @@ public class GunSatellites : MonoBehaviour
         displayShotTime = now;
         demoShotsLeft--;
         nextDemoAt = demoShotsLeft > 0 ? now + Mathf.Max(displayForm.fireRate, 0.07f) : now + Random.Range(3.5f, 5.5f);
+    }
+
+    // A display gun fired: the pieces react as to a real shot
+    public void PretendShot()
+    {
+        displayShotTime = Time.time;
     }
 
     public static GunSatellites Attach(Player owner, Color color)
@@ -334,7 +342,7 @@ public class GunSatellites : MonoBehaviour
     private void LateUpdate()
     {
         if ((player == null || weapon == null) && displayGun == null) return;
-        if (weapon == null) UpdateDemo(Time.time);
+        if (weapon == null && demoShots) UpdateDemo(Time.time);
         GameObject gun = CurrentGunModel;
         if (gun != shownGun) FitTo(gun);
 
