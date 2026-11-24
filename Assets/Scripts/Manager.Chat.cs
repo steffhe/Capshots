@@ -26,7 +26,12 @@ public partial class Manager
         {
             FeedbackUI.Kill(headshot);
             // Kills during warmup and the countdown don't count
-            if (state == GameState.Playing && !matchEnded) AwardXp(xpPerKill, "KILL");
+            if (state == GameState.Playing && !matchEnded)
+            {
+                // A cap shot (headshot) kill earns a bonus, shown with the cap logo
+                if (headshot) AwardXp(xpPerKill + xpCapshotBonus, "CAPSHOT", true);
+                else AwardXp(xpPerKill, "KILL");
+            }
         }
 
         if (victim == me)

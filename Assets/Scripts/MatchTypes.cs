@@ -12,6 +12,8 @@ public class PlayerInfo
     public short kills;
     public short deaths;
     public byte team;
+    // The hat they wear (see Hats)
+    public int hat;
     // Round trip time in milliseconds, measured by the host. -1 if not known yet.
     public int ping = -1;
 
@@ -33,6 +35,8 @@ public struct PlayerStats : INetworkStruct
     public short Deaths;
     public byte Team;
     public short Ping;
+    // The hat they wear (see Hats)
+    public byte Hat;
 }
 
 // The match's game mode. (Not "GameMode", which is Fusion's host/client mode.)

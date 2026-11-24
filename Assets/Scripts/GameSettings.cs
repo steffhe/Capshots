@@ -57,6 +57,23 @@ public static class GameSettings
     // The main menu's player model switches to the new starting gun at once
     public static event System.Action StartingGunChanged;
 
+    // The hat to wear (see Hats), saved in the profile. Reads as the cap while the hat picked is
+    // still locked at the player's level; setting a locked hat is ignored.
+    public static int Hat
+    {
+        get => Hats.Wearable(Launcher.myProfile.hat, Launcher.myProfile.level);
+        set
+        {
+            if (!Hats.IsUnlocked(value, Launcher.myProfile.level) || value == Launcher.myProfile.hat) return;
+            Launcher.myProfile.hat = value;
+            Data.SaveProfile(Launcher.myProfile);
+            HatChanged?.Invoke();
+        }
+    }
+
+    // The main menu's player model, or your drone in a match, puts the new hat on at once
+    public static event System.Action HatChanged;
+
     public static float Volume
     {
         get => PlayerPrefs.GetFloat(VolumeKey, 1f);

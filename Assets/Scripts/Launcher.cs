@@ -59,9 +59,11 @@ public partial class Launcher : MonoBehaviour
         usernameField.text = myProfile.username;
         CreateModeButton();
         CreateBotsButton();
-        GameObject settingsButton = CreateSettingsButton();
-        // The player model in the menu wears a cap too, in the logo's colour...
-        PlayerCap.AttachToSceneHeads(PlayerCap.LogoColor);
+        GameObject settingsButton = CreateColumnButton("SETTINGS", () => { if (settingsMenu != null) settingsMenu.Open(); });
+        CreateColumnButton("CUSTOMIZE", () => { if (customizeMenu != null) customizeMenu.Open(); });
+        // The player model in the menu wears your hat too, in the logo's colour...
+        DressMenuModel();
+        GameSettings.HatChanged += DressMenuModel;
         // ...and is the same little drone as in a match
         DroneBody.DressSceneModels(PlayerCap.LogoColor);
         ShowWordmark();
@@ -70,6 +72,7 @@ public partial class Launcher : MonoBehaviour
         if (settingsButton != null)
         {
             settingsMenu = SettingsMenu.CreateForMainMenu(tabMain.transform.parent, tabMain, settingsButton, maxPlayersSlider, maxPlayersValue);
+            customizeMenu = CustomizeMenu.CreateForMainMenu(tabMain.transform.parent, tabMain, settingsButton, maxPlayersValue);
         }
         MenuScenery.Create();
         Connect();
@@ -87,6 +90,17 @@ public partial class Launcher : MonoBehaviour
     private void OnDisable()
     {
         NetworkSession.SessionListUpdated -= OnRoomListUpdate;
+    }
+
+    private void OnDestroy()
+    {
+        GameSettings.HatChanged -= DressMenuModel;
+    }
+
+    // Puts the hat picked in Customize on the menu's player model
+    private void DressMenuModel()
+    {
+        PlayerCap.AttachToSceneHeads(PlayerCap.LogoColor, GameSettings.Hat);
     }
 
     // Joins the session lobby so the room list fills in. The app version (set from the release
@@ -231,10 +245,11 @@ public partial class Launcher : MonoBehaviour
     }
 
     private SettingsMenu settingsMenu;
+    private CustomizeMenu customizeMenu;
 
-    // Adds a "Settings" button to the main tab's column, above Quit (or at the end), by copying
-    // one of its buttons. Returns it, or null if the column isn't there.
-    private GameObject CreateSettingsButton()
+    // Adds a button (Settings, then Customize) to the main tab's column, above Quit (or at the end),
+    // by copying one of its buttons. Returns it, or null if the column isn't there.
+    private GameObject CreateColumnButton(string text, UnityEngine.Events.UnityAction onClick)
     {
         Transform anchor = tabMain != null ? tabMain.transform.Find("Anchor") : null;
         if (anchor == null) return null;
@@ -243,28 +258,28 @@ public partial class Launcher : MonoBehaviour
         Transform quit = null;
         foreach (Transform child in anchor)
         {
-            Button button = child.GetComponent<Button>();
-            Text label = button != null ? button.GetComponentInChildren<Text>(true) : null;
+            Button candidate = child.GetComponent<Button>();
+            Text label = candidate != null ? candidate.GetComponentInChildren<Text>(true) : null;
             if (label == null) continue;
-            if (template == null) template = button;
+            if (template == null) template = candidate;
             if (label.text.ToUpperInvariant().Contains("QUIT")) quit = child;
         }
         if (template == null) return null;
 
         GameObject copy = Instantiate(template.gameObject, anchor);
-        copy.name = "Settings";
+        copy.name = text.Substring(0, 1) + text.Substring(1).ToLowerInvariant();
         copy.transform.SetSiblingIndex(quit != null ? quit.GetSiblingIndex() : anchor.childCount - 1);
-        Button settings = copy.GetComponent<Button>();
+        Button button = copy.GetComponent<Button>();
         // The copy still opens whatever the original did: switch that off, keep anything else (like a click sound)
-        for (int i = 0; i < settings.onClick.GetPersistentEventCount(); i++)
+        for (int i = 0; i < button.onClick.GetPersistentEventCount(); i++)
         {
-            if (settings.onClick.GetPersistentTarget(i) is Launcher)
+            if (button.onClick.GetPersistentTarget(i) is Launcher)
             {
-                settings.onClick.SetPersistentListenerState(i, UnityEngine.Events.UnityEventCallState.Off);
+                button.onClick.SetPersistentListenerState(i, UnityEngine.Events.UnityEventCallState.Off);
             }
         }
-        settings.onClick.AddListener(() => { if (settingsMenu != null) settingsMenu.Open(); });
-        copy.GetComponentInChildren<Text>(true).text = "SETTINGS";
+        button.onClick.AddListener(onClick);
+        copy.GetComponentInChildren<Text>(true).text = text;
         return copy;
     }
 

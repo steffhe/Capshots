@@ -38,6 +38,9 @@ public class FeedbackUI : MonoBehaviour
     private Transform viewer;
 
     private Text deathText;
+    // The death screen's second line: the weapon, and on a cap shot the cap logo and CAPSHOT
+    private Text deathWeapon;
+    private Image deathIcon;
     private Text protectionText;
     private Coroutine deathRoutine;
 
@@ -92,8 +95,16 @@ public class FeedbackUI : MonoBehaviour
 
         // "Killed by" text in the middle of the screen while waiting to respawn
         deathText = NewText("Death Text", root, 32, TextAnchor.MiddleCenter);
-        Center(deathText.rectTransform, new Vector2(900f, 120f));
-        deathText.rectTransform.anchoredPosition = new Vector2(0f, 60f);
+        Center(deathText.rectTransform, new Vector2(900f, 44f));
+        deathText.rectTransform.anchoredPosition = new Vector2(0f, 76f);
+        // The weapon line under it, with room for the cap logo on its left
+        deathWeapon = NewText("Weapon", deathText.transform, 22, TextAnchor.MiddleCenter);
+        Center(deathWeapon.rectTransform, new Vector2(900f, 30f));
+        deathWeapon.rectTransform.anchoredPosition = new Vector2(0f, -36f);
+        deathIcon = NewImage("Capshot Icon", deathText.transform, Color.white);
+        deathIcon.preserveAspect = true;
+        Center(deathIcon.rectTransform, new Vector2(DeathIconSize, DeathIconSize));
+        deathIcon.gameObject.SetActive(false);
         deathText.gameObject.SetActive(false);
 
         // Spawn protection countdown under the crosshair
@@ -184,7 +195,23 @@ public class FeedbackUI : MonoBehaviour
         FeedbackUI ui = Instance;
 
         string text = string.IsNullOrEmpty(killerName) ? "YOU DIED" : "KILLED BY <color=#ff5a4a>" + killerName + "</color>";
-        if (!string.IsNullOrEmpty(weaponName)) text += "\n<size=22>" + weaponName.ToUpper() + (headshot ? "  ·  HEADSHOT" : "") + "</size>";
+        string weapon = string.IsNullOrEmpty(weaponName) ? "" : weaponName.ToUpper();
+        // A cap shot: "(cap logo) SNIPER · CAPSHOT", the CAPSHOT in the logo's gold
+        if (headshot) weapon = (weapon.Length > 0 ? weapon + "  ·  " : "") + $"<color={CapshotColor}>CAPSHOT</color>";
+        ui.deathWeapon.text = weapon;
+
+        Sprite icon = headshot ? CapshotIcon : null;
+        ui.deathIcon.gameObject.SetActive(icon != null);
+        ui.deathWeapon.rectTransform.anchoredPosition = new Vector2(0f, -36f);
+        if (icon != null)
+        {
+            // Logo and text centred together as one group
+            ui.deathIcon.sprite = icon;
+            float width = ui.deathWeapon.preferredWidth;
+            float group = DeathIconSize + IconGap + width;
+            ui.deathIcon.rectTransform.anchoredPosition = new Vector2(-group / 2f + DeathIconSize / 2f, -36f);
+            ui.deathWeapon.rectTransform.anchoredPosition = new Vector2(group / 2f - width / 2f, -36f);
+        }
 
         if (ui.deathRoutine != null) ui.StopCoroutine(ui.deathRoutine);
         ui.deathRoutine = ui.StartCoroutine(ui.DeathText(text, duration));
@@ -201,14 +228,26 @@ public class FeedbackUI : MonoBehaviour
         if (show) text.text = "SPAWN PROTECTION  " + secondsLeft.ToString("0.0");
     }
 
-    // In team mode, killerColor and victimColor give each name its team colour
+    // The cap logo (the game's icon), shown with a cap shot in the kill feed, on the death screen
+    // and in the XP popup. Null if it's missing, and then they show without it.
+    private static Sprite capshotIcon;
+    public static Sprite CapshotIcon => capshotIcon != null ? capshotIcon : (capshotIcon = Resources.Load<Sprite>("UI/CapshotIcon"));
+    private const float CapshotIconSize = 26f;
+    private const float DeathIconSize = 30f;
+    private const float IconGap = 6f;
+    // The gold of the logo's sparkle
+    public const string CapshotColor = "#ffcc4d";
+
+    // In team mode, killerColor and victimColor give each name its team colour.
+    // A headshot is a cap shot: "KILLER  (cap logo) [SNIPER · CAPSHOT]  VICTIM", in gold.
     public static void AddKillFeed(string killer, string victim, string weapon, bool headshot, bool involvesMe, string killerColor = null, string victimColor = null)
     {
         if (Instance == null) return;
         FeedbackUI ui = Instance;
 
-        Text entry = ui.NewText("Kill Feed Entry", ui.killFeed, 20, TextAnchor.MiddleRight);
-        RectTransform rect = entry.rectTransform;
+        GameObject entry = new GameObject("Kill Feed Entry", typeof(RectTransform));
+        RectTransform rect = (RectTransform)entry.transform;
+        rect.SetParent(ui.killFeed, false);
         rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(1f, 1f);
         rect.sizeDelta = new Vector2(600f, 26f);
 
@@ -216,9 +255,40 @@ public class FeedbackUI : MonoBehaviour
         if (victimColor == null) victimColor = involvesMe ? "#ffd84a" : "#ffffff";
         // In team mode the names are team coloured, so mark your own kills and deaths with an arrow
         string marker = involvesMe ? "<color=#ffd84a>></color> " : "";
-        entry.text = marker + $"<color={killerColor}>{killer}</color>  <color=#bbbbbb>[{weapon}{(headshot ? " · HS" : "")}]</color>  <color={victimColor}>{victim}</color>";
+        string killerPart = marker + $"<color={killerColor}>{killer}</color>";
+        string weaponPart = headshot ? $"<color={CapshotColor}>[{weapon} · CAPSHOT]</color>" : $"<color=#bbbbbb>[{weapon}]</color>";
+        string victimPart = $"<color={victimColor}>{victim}</color>";
 
-        ui.killFeedEntries.Insert(0, entry.gameObject);
+        Sprite iconSprite = headshot ? CapshotIcon : null;
+        if (iconSprite == null)
+        {
+            Text line = ui.NewText("Text", rect, 20, TextAnchor.MiddleRight);
+            UITheme.Stretch(line.rectTransform);
+            line.text = killerPart + "  " + weaponPart + "  " + victimPart;
+        }
+        else
+        {
+            // Right to left: weapon and victim, the cap logo, then the killer
+            Text right = ui.NewText("Text", rect, 20, TextAnchor.MiddleRight);
+            UITheme.Stretch(right.rectTransform);
+            right.text = weaponPart + "  " + victimPart;
+            float iconRight = right.preferredWidth + IconGap;
+
+            Image icon = ui.NewImage("Capshot Icon", rect, Color.white);
+            icon.sprite = iconSprite;
+            icon.preserveAspect = true;
+            RectTransform iconRect = icon.rectTransform;
+            iconRect.anchorMin = iconRect.anchorMax = iconRect.pivot = new Vector2(1f, 0.5f);
+            iconRect.anchoredPosition = new Vector2(-iconRight, 0f);
+            iconRect.sizeDelta = new Vector2(CapshotIconSize, CapshotIconSize);
+
+            Text left = ui.NewText("Killer", rect, 20, TextAnchor.MiddleRight);
+            UITheme.Stretch(left.rectTransform);
+            left.rectTransform.offsetMax = new Vector2(-(iconRight + CapshotIconSize + IconGap), 0f);
+            left.text = killerPart;
+        }
+
+        ui.killFeedEntries.Insert(0, entry);
         while (ui.killFeedEntries.Count > ui.maxKillFeedEntries)
         {
             Destroy(ui.killFeedEntries[ui.killFeedEntries.Count - 1]);
@@ -274,13 +344,13 @@ public class FeedbackUI : MonoBehaviour
         deathRoutine = null;
     }
 
-    private IEnumerator ExpireKillFeedEntry(Text entry)
+    private IEnumerator ExpireKillFeedEntry(GameObject entry)
     {
         yield return new WaitForSeconds(killFeedTime);
 
-        // Fade the whole entry, coloured names included
+        // Fade the whole entry, coloured names (and the cap shot logo) included
         const float fade = 0.5f;
-        CanvasGroup group = entry != null ? entry.gameObject.AddComponent<CanvasGroup>() : null;
+        CanvasGroup group = entry != null ? entry.AddComponent<CanvasGroup>() : null;
         for (float t = 0f; t < fade && entry != null; t += Time.deltaTime)
         {
             group.alpha = 1f - t / fade;
@@ -288,8 +358,8 @@ public class FeedbackUI : MonoBehaviour
         }
 
         if (entry == null) yield break;
-        killFeedEntries.Remove(entry.gameObject);
-        Destroy(entry.gameObject);
+        killFeedEntries.Remove(entry);
+        Destroy(entry);
         LayoutKillFeed();
     }
 

@@ -7,6 +7,8 @@ public class ProfileData
     public int xp;
     public float xsens;
     public float ysens;
+    // The hat picked to wear (see Hats). Worn only while unlocked at this level, otherwise the cap.
+    public int hat;
 
     public ProfileData()
     {

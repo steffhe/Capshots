@@ -9,10 +9,14 @@ public partial class Manager
 {
     [Header("XP")]
     public int xpPerKill = 100;
+    // On top of xpPerKill for a cap shot (headshot) kill
+    public int xpCapshotBonus = 50;
     public int xpMatchComplete = 150;
     public int xpWin = 300;
 
     private Text xpPopup;
+    private Image xpPopupIcon;
+    private const float XpPopupIconSize = 56f;
     private Coroutine xpPopupRoutine;
     private CanvasGroup xpPopupGroup;
 
@@ -44,26 +48,40 @@ public partial class Manager
         else AwardXp(xpMatchComplete, "MATCH COMPLETE");
     }
 
-    private void AwardXp(int amount, string reason)
+    // capshot: the reason is shown in the logo's gold, with the cap logo over the popup
+    private void AwardXp(int amount, string reason, bool capshot = false)
     {
         ProfileData profile = Launcher.myProfile;
         // Added up for the results screen, which fills the level bar with the whole match's XP
         xpGained += amount;
         xpReason = reason;
+        int oldLevel = profile.level;
         int levelsGained = profile.AddXp(amount);
         Data.SaveProfile(profile);
 
-        string message = $"+{amount} XP  {reason}";
+        string message = capshot ? $"+{amount} XP  <color={FeedbackUI.CapshotColor}>{reason}</color>" : $"+{amount} XP  {reason}";
         if (levelsGained > 0)
         {
             message += $"\nLEVEL UP!  LVL {profile.level}";
+            string hats = NewHatsText(oldLevel, profile.level);
+            if (hats != null) message += "\n" + hats;
             // Let everyone update this player's level on the scoreboard
             RPC_LevelUp(levelsGained);
         }
 
         if (uiUsername != null) uiUsername.text = UsernameWithLevel(profile);
         // At the end of the match the results screen shows the XP instead
-        if (!matchEnded) ShowMessage(message);
+        if (!matchEnded) ShowMessage(message, capshot);
+    }
+
+    // "NEW CAP UNLOCKED: BEANIE" for the hats unlocked between these levels, or null if none were
+    public static string NewHatsText(int oldLevel, int newLevel)
+    {
+        List<int> hats = Hats.UnlockedBetween(oldLevel, newLevel);
+        if (hats.Count == 0) return null;
+        string[] names = new string[hats.Count];
+        for (int i = 0; i < names.Length; i++) names[i] = Hats.Name(hats[i]);
+        return (hats.Count == 1 ? "NEW CAP UNLOCKED: " : "NEW CAPS UNLOCKED: ") + string.Join(", ", names);
     }
 
     // Lets the host update this player's level on everyone's scoreboard
@@ -101,22 +119,44 @@ public partial class Manager
         rect.anchoredPosition = Vector2.zero;
         rect.sizeDelta = new Vector2(600f, 100f);
 
+        // The cap logo, over the message on a cap shot. A child, so it fades with the message.
+        GameObject icon = new GameObject("Capshot Icon", typeof(RectTransform), typeof(Image));
+        RectTransform iconRect = (RectTransform)icon.transform;
+        iconRect.SetParent(rect, false);
+        iconRect.anchorMin = iconRect.anchorMax = iconRect.pivot = new Vector2(0.5f, 0.5f);
+        iconRect.sizeDelta = new Vector2(XpPopupIconSize, XpPopupIconSize);
+        xpPopupIcon = icon.GetComponent<Image>();
+        xpPopupIcon.preserveAspect = true;
+        xpPopupIcon.raycastTarget = false;
+        icon.SetActive(false);
+
         popupObject.SetActive(false);
     }
 
-    private void ShowMessage(string message)
+    private void ShowMessage(string message, bool capshotIcon = false)
     {
         if (xpPopup == null) return;
         if (xpPopupRoutine != null) StopCoroutine(xpPopupRoutine);
-        xpPopupRoutine = StartCoroutine(XpPopup(message));
+        xpPopupRoutine = StartCoroutine(XpPopup(message, capshotIcon));
     }
 
-    private IEnumerator XpPopup(string message)
+    private IEnumerator XpPopup(string message, bool capshotIcon)
     {
         const float holdTime = 1.5f;
         const float fadeTime = 0.5f;
 
         xpPopup.text = message;
+        Sprite icon = capshotIcon ? FeedbackUI.CapshotIcon : null;
+        if (xpPopupIcon != null)
+        {
+            xpPopupIcon.gameObject.SetActive(icon != null);
+            if (icon != null)
+            {
+                xpPopupIcon.sprite = icon;
+                // Just above the message's first line, however many lines it has
+                xpPopupIcon.rectTransform.anchoredPosition = new Vector2(0f, xpPopup.preferredHeight / 2f + XpPopupIconSize / 2f + 4f);
+            }
+        }
         xpPopup.transform.SetAsLastSibling();
         xpPopup.gameObject.SetActive(true);
 
