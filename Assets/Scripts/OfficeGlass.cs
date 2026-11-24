@@ -171,6 +171,9 @@ public class OfficeGlass : MonoBehaviour
 
     public int PaneCount => panes.Count;
 
+    // A pane's collider (the bots' map leaves it out once the pane is broken)
+    public Collider ColliderOf(int index) => index >= 0 && index < panes.Count ? panes[index].collider : null;
+
     // A pane's state from the Manager. With effects, a crack or shatter is seen and heard;
     // without (a player joining a match in progress), the pane just shows as it is.
     public void SetState(int index, int state, bool effects)

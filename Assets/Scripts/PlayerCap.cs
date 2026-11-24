@@ -351,19 +351,23 @@ public class PlayerCap : MonoBehaviour
             }
         }
 
-        if (capTop && topRadius > 0f)
+        // The top, like the side seen from inside too: from under the hat (a hat knocked off and
+        // landed upside down, or the camera inside the brim) it would otherwise be a hole
+        for (int side = 0; capTop && topRadius > 0f && side < 2; side++)
         {
+            Vector3 normal = side == 0 ? Vector3.up : Vector3.down;
             int centre = vertices.Count;
-            vertices.Add(Vector3.up); normals.Add(Vector3.up); uvs.Add(new Vector2(0.5f, 0.5f));
+            vertices.Add(Vector3.up); normals.Add(normal); uvs.Add(new Vector2(0.5f, 0.5f));
             for (int j = 0; j <= segments; j++)
             {
                 float a = 2f * Mathf.PI * j / segments;
-                vertices.Add(new Vector3(Mathf.Cos(a) * topRadius, 1f, Mathf.Sin(a) * topRadius)); normals.Add(Vector3.up);
+                vertices.Add(new Vector3(Mathf.Cos(a) * topRadius, 1f, Mathf.Sin(a) * topRadius)); normals.Add(normal);
                 uvs.Add(new Vector2(0.5f + 0.5f * Mathf.Cos(a), 0.5f + 0.5f * Mathf.Sin(a)));
             }
             for (int j = 0; j < segments; j++)
             {
-                triangles.Add(centre); triangles.Add(centre + j + 2); triangles.Add(centre + j + 1);
+                if (side == 0) { triangles.Add(centre); triangles.Add(centre + j + 2); triangles.Add(centre + j + 1); }
+                else { triangles.Add(centre); triangles.Add(centre + j + 1); triangles.Add(centre + j + 2); }
             }
         }
 

@@ -479,10 +479,12 @@ for r in L.GARDEN_PATHS:
 for i, (px, py) in enumerate(L.GARDEN_TREES):
     x, z = wx(px), wz(py)
     big = 1.0 + 0.25 * ((i * 7) % 3)
-    cbox("trunk", x, GARDEN_Y + 1.6 * big, z, 0.35, 3.2 * big, 0.35, "n")
+    # Solid, so the canopies hide players behind them from bots (and stop shots) the way they hide
+    # them from people. The crowns reach up past the office floor across the courtyard.
+    cbox("trunk", x, GARDEN_Y + 1.6 * big, z, 0.35, 3.2 * big, 0.35)
     leaves = "leaves" if i % 2 == 0 else "leaves2"
-    cbox(leaves, x, GARDEN_Y + 3.4 * big, z, 3.0 * big, 1.8 * big, 3.0 * big, "n")
-    cbox(leaves, x + 0.2, GARDEN_Y + 4.7 * big, z - 0.2, 2.0 * big, 1.4 * big, 2.0 * big, "n")
+    cbox(leaves, x, GARDEN_Y + 3.4 * big, z, 3.0 * big, 1.8 * big, 3.0 * big)
+    cbox(leaves, x + 0.2, GARDEN_Y + 4.7 * big, z - 0.2, 2.0 * big, 1.4 * big, 2.0 * big)
 for r in L.GARDEN_BENCHES:
     x0, x1, z0, z1 = wrect(r)
     box("trunk", x0, x1, GARDEN_Y + 0.4, GARDEN_Y + 0.48, z0, z1, "n")

@@ -462,6 +462,8 @@ public class Weapon : NetworkBehaviour
         HitOptions options = HitOptions.IncludePhysX | HitOptions.IgnoreInputAuthority | HitOptions.SubtickAccuracy;
 
         pelletHits.Clear();
+        // The shooter's own count for the results screen (once per shot, not on resimulation)
+        if (Runner.IsForward && HasInputAuthority && Manager.Instance != null && Manager.Instance.CountsForSummary) Manager.Summary.Shot();
         for (int p = 0; p < pellets; p++)
         {
             //bloom: the same random spread on every machine, from the shot and pellet number
@@ -520,8 +522,11 @@ public class Weapon : NetworkBehaviour
             if (h.target == null || h.target.IsDead) continue;
             bool wasProtected = h.target.IsProtected;
             bool killed = h.target.TakeDamage(h.damage, player.Owner, gun.gunName, h.headshot, h.direction, h.point - h.target.transform.position);
-            // No hit feedback on spawn-protected players, or for bots (they have no screen)
-            if (!wasProtected && !player.IsBot) RPC_HitConfirm(h.headshot, killed);
+            // Bots have no screen. A spawn-protected player gets a shield marker: the shot landed but
+            // did nothing, so it doesn't look like a miss.
+            if (player.IsBot) continue;
+            if (wasProtected) RPC_ShieldHit();
+            else RPC_HitConfirm(h.headshot, killed);
         }
         pelletHits.Clear();
 
@@ -632,13 +637,43 @@ public class Weapon : NetworkBehaviour
         if (hitmarkRoutine != null) StopCoroutine(hitmarkRoutine);
         hitmarkRoutine = StartCoroutine(HitPlayer(killed));
         FeedbackUI.Hit(headshot);
+        if (Manager.Instance != null && Manager.Instance.CountsForSummary) Manager.Summary.Hit();
         // A kill shakes the view a little, a cap shot more
         if (killed && look != null) look.Punch(headshot ? 2.2f : 1.3f);
+    }
+
+    // The host tells the shooter they hit a spawn-protected player: a small blue marker and a dull
+    // knock instead of the hit sound
+    [Rpc(RpcSources.StateAuthority, RpcTargets.InputAuthority)]
+    private void RPC_ShieldHit()
+    {
+        if (hitmarkRoutine != null) StopCoroutine(hitmarkRoutine);
+        hitmarkRoutine = StartCoroutine(ShieldMarker());
+        FeedbackUI.ShieldHit();
     }
 
     #endregion
 
     #region Presentation
+
+    IEnumerator ShieldMarker()
+    {
+        if (hitmark == null) yield break;
+        Transform marker = hitmark.transform;
+        // The spawn protection countdown's blue
+        Color color = new Color(0.55f, 0.85f, 1f, 1f);
+        hitmark.SetActive(true);
+        const float time = 0.35f;
+        for (float t = 0f; t < time; t += Time.deltaTime)
+        {
+            marker.localScale = Vector3.one * 0.7f;
+            color.a = 1f - t / time;
+            hitmarkImage.color = color;
+            yield return null;
+        }
+        HideHitmark();
+        hitmarkRoutine = null;
+    }
 
     void PlayReloadSound(float reloadTime)
     {

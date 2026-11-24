@@ -1505,7 +1505,7 @@ MonoBehaviour:
   m_HandleRect: {fileID: 785549705}
   m_Direction: 0
   m_MinValue: 1
-  m_MaxValue: 100
+  m_MaxValue: 50
   m_WholeNumbers: 1
   m_Value: 20
   m_OnValueChanged:
@@ -8599,8 +8599,6 @@ MonoBehaviour:
   maxPlayersValue: {fileID: 1853998552}
   killsToWinSlider: {fileID: 148892871}
   killsToWinValue: {fileID: 1247919675}
-  matchLengthSlider: {fileID: 0}
-  matchLengthValue: {fileID: 0}
   tabMain: {fileID: 54443133}
   tabRooms: {fileID: 2010584656}
   tabCreate: {fileID: 238817615}

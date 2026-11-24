@@ -17,8 +17,14 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
     public const int MaxPlayers = 16;
 
     public int mainmenu = 0;
+    // How the match is won, from the room's settings (these are the defaults for a map opened
+    // without them). 0 means no limit: a match is won either on kills, with the clock counting up,
+    // or on time, by whoever has the most kills when it runs out.
     public int killcount = 20;
     public int matchlength = 180;
+
+    public bool HasKillLimit => killcount > 0;
+    public bool HasTimeLimit => matchlength > 0;
 
     [Header("Match start")]
     public int minPlayersToStart = 2;
@@ -58,6 +64,11 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
     public bool MatchOver => matchEnded;
 
+    // The local player's accuracy, cap shots and favourite gun, for the results screen
+    public static readonly MatchSummary Summary = new MatchSummary();
+    // Whether shots and kills count towards it now: only while the match is being played
+    public bool CountsForSummary => state == GameState.Playing && !matchEnded;
+
     #region Networked state
 
     [Networked, Capacity(MaxPlayers)] private NetworkDictionary<PlayerRef, PlayerStats> Stats => default;
@@ -88,6 +99,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
     public override void Spawned()
     {
+        Summary.Reset();
         ReadMatchSettings();
         RememberStartingXp();
 
@@ -103,6 +115,9 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
         if (HasStateAuthority)
         {
+            // Open again after the last map's results (a map voted for on the results screen)
+            Runner.SessionInfo.IsOpen = true;
+            Runner.SessionInfo.IsVisible = true;
             State = GameState.Waiting;
             MatchTime = matchlength;
             Heartbeat = TickTimer.CreateFromSeconds(Runner, 1f);
@@ -142,6 +157,9 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         if (properties.TryGetValue("mode", out value)) mode = (MatchMode)(int)value;
         if (properties.TryGetValue("matchlength", out value)) matchlength = (int)value;
         if (properties.TryGetValue("bots", out value)) botSetting = (int)value;
+        if (properties.TryGetValue("botskill", out value)) BotSkill = Mathf.Clamp((int)value, BotLogic.Easy, BotLogic.Hard);
+        // A match needs some way to end
+        if (!HasKillLimit && !HasTimeLimit) killcount = 20;
     }
 
     private void Update()
@@ -179,6 +197,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
                 case nameof(State): stateChanged = true; break;
                 case nameof(MatchTime): timeChanged = true; break;
                 case nameof(GlassPanes): glassChanged = true; break;
+                case nameof(VoteCounts): RefreshVotes(); break;
             }
         }
 
@@ -411,6 +430,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         SpawnWaitingPlayers();
         CheckPickups();
         UpdateGrenades();
+        BotNavigation.Tick();
 
         // The match is over and everyone has cut away to the results: remove the bodies
         if (despawnTimer.Expired(Runner))
@@ -447,7 +467,8 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
                 MatchTime -= 1;
                 if (MatchTime <= 0)
                 {
-                    // Warmup is over: everyone starts the match on 0 kills and 0 deaths
+                    // Warmup is over: everyone starts the match on 0 kills and 0 deaths (and no streaks)
+                    streaks.Clear();
                     foreach (PlayerRef player in StatsKeys())
                     {
                         PlayerStats stats = Stats[player];
@@ -461,6 +482,12 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
                 break;
 
             case GameState.Playing:
+                // Won on kills only: the clock shows how long the match has been going
+                if (!HasTimeLimit)
+                {
+                    MatchTime += 1;
+                    break;
+                }
                 MatchTime -= 1;
                 if (MatchTime < 0)
                 {
@@ -485,16 +512,47 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         if (!HasStateAuthority) return;
 
         // Kills and deaths during warmup and the countdown don't count
+        int multiKill = 0, streak = 0, endedStreak = 0;
         if (State == GameState.Playing)
         {
             ChangeStats(victim, 0, 1);
             if (killer.IsRealPlayer && killer != victim) ChangeStats(killer, 1, 0);
+            CountStreaks(victim, killer, out multiKill, out streak, out endedStreak);
         }
 
-        RPC_KillFeed(killer.IsRealPlayer ? killer.PlayerId : -1, victim.PlayerId, weaponName, headshot);
+        RPC_KillFeed(killer.IsRealPlayer ? killer.PlayerId : -1, victim.PlayerId, weaponName, headshot,
+            (byte)Mathf.Min(multiKill, 255), (byte)Mathf.Min(streak, 255), (byte)Mathf.Min(endedStreak, 255));
 
         ScheduleSpawn(victim, true);
         ScoreCheck();
+    }
+
+    // Host only: kills in a row without dying, and kills in quick succession, for each player
+    private struct StreakCount
+    {
+        public int streak, multiKill;
+        public float lastKillAt;
+    }
+    private readonly Dictionary<PlayerRef, StreakCount> streaks = new Dictionary<PlayerRef, StreakCount>();
+
+    // The killer's multi-kill and streak after this kill (0 if there's no killer), and the streak the
+    // victim had, which this death ends
+    private void CountStreaks(PlayerRef victim, PlayerRef killer, out int multiKill, out int streak, out int endedStreak)
+    {
+        multiKill = streak = 0;
+        streaks.TryGetValue(victim, out StreakCount lost);
+        endedStreak = lost.streak;
+        streaks.Remove(victim);
+
+        if (!killer.IsRealPlayer || killer == victim) return;
+        float now = Runner.SimulationTime;
+        streaks.TryGetValue(killer, out StreakCount count);
+        count.multiKill = count.multiKill > 0 && now - count.lastKillAt <= KillStreaks.MultiKillWindow ? count.multiKill + 1 : 1;
+        count.streak++;
+        count.lastKillAt = now;
+        streaks[killer] = count;
+        multiKill = count.multiKill;
+        streak = count.streak;
     }
 
     private void ChangeStats(PlayerRef player, int kills, int deaths)
@@ -508,7 +566,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
     private void ScoreCheck()
     {
-        if (State != GameState.Playing) return;
+        if (State != GameState.Playing || !HasKillLimit) return;
 
         bool detectwin = false;
         if (IsTeamMode)
@@ -548,6 +606,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
         Runner.SessionInfo.IsOpen = false;
         Runner.SessionInfo.IsVisible = false;
+        ChooseVoteMaps();
 
         despawnTimer = TickTimer.CreateFromSeconds(Runner, DespawnDelay);
     }
@@ -572,11 +631,12 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         matchEnded = true;
 
         // The host only stops the clock at zero when time runs out; a kill limit ends it early
-        bool timeUp = MatchTime <= 0;
+        bool timeUp = HasTimeLimit && MatchTime <= 0;
 
         AwardMatchXp();
 
-        currentMatchTime = 0;
+        // A countdown stops at zero; a clock counting up stops where it is
+        if (HasTimeLimit) currentMatchTime = 0;
         RefreshTimerUI();
 
         // Banner, results, then back to the menu (Manager.Presentation.cs). The host stays on the
@@ -598,6 +658,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
                 break;
             case GameState.Playing:
                 if (previousState == GameState.Starting) ShowMessage("FIGHT!");
+                Summary.Reset();
                 break;
         }
     }
@@ -614,6 +675,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
     private string CurrentMapName()
     {
+        if (!string.IsNullOrEmpty(NextMapName)) return NextMapName;
         SessionProperty mapName;
         if (Runner != null && Runner.SessionInfo.Properties != null && Runner.SessionInfo.Properties.TryGetValue("mapname", out mapName))
         {
