@@ -29,13 +29,7 @@ public class GunSatellites : MonoBehaviour
     // The share of a cell swap at which the fresh cell clicks in (DroneHands' Inserted)
     private const float CellIn = 0.58f;
     // Seconds the pieces take to re-form into a new form's parts, and the stagger between pieces
-    private const float ReformTime = 0.55f, ReformStagger = 0.035f;
-    // While re-forming each piece flies out on an arc, up to this many body widths from its path,
-    // and tumbles a full turn on the way
-    private const float ReformFlight = 1.6f;
-    // Idle sway: each piece drifts by up to this share of the body's width, and tilts by up to
-    // IdleTilt degrees, slowly and out of step with the others (less while aiming)
-    private const float IdleSway = 0.1f, IdleTilt = 5f;
+    private const float ReformTime = 0.45f, ReformStagger = 0.025f;
     // How tightly the pieces follow the gun's own sway and kick (higher: less trailing). They trail
     // in the space of what holds the gun, which moves and turns with the view, so running and
     // looking around never leave them behind; and never by more than MaxTrail of the body's width.
@@ -399,16 +393,6 @@ public class GunSatellites : MonoBehaviour
             Quaternion rotation = pose.rotation;
             Vector3 size = pose.size;
 
-            // A gentle sway, each piece on its own slow rhythm
-            {
-                float t = now + phase;
-                float calm = 1f - 0.6f * aim;
-                float sway = shape.body.size.x * IdleSway * calm;
-                position += new Vector3(Mathf.Sin(t * 0.83f + i * 1.9f), Mathf.Sin(t * 1.07f + i * 2.6f), 0.5f * Mathf.Sin(t * 0.61f + i * 0.7f)) * sway;
-                float tilt = IdleTilt * calm;
-                rotation *= Quaternion.Euler(Mathf.Sin(t * 0.9f + i * 1.3f) * tilt, Mathf.Sin(t * 0.7f + i * 2.1f) * tilt, Mathf.Sin(t * 0.55f + i) * tilt);
-            }
-
             if (loose > 0f)
             {
                 // Drift away from the gun and tumble
@@ -424,17 +408,8 @@ public class GunSatellites : MonoBehaviour
                 float k = Ease(0f, 1f, (now - reformStart - i * ReformStagger) / ReformTime);
                 if (k < 1f)
                 {
-                    // Out and round on an arc, away from the gun and off to its own side, tumbling
-                    float arc = Mathf.Sin(Mathf.PI * k);
-                    float seed = reformStart * 7.13f;
-                    Vector3 scatter = new Vector3(Mathf.Sin(i * 12.9f + seed), Mathf.Sin(i * 7.3f + seed * 1.7f), Mathf.Sin(i * 3.1f + seed * 0.6f));
-                    Vector3 away = (fromPositions[i] + position) * 0.5f - shape.body.center;
-                    away = away.sqrMagnitude > 1e-6f ? away.normalized : Vector3.up;
-                    Vector3 flight = (away + scatter * 0.8f).normalized * (arc * shape.body.size.x * ReformFlight);
-                    Vector3 axis = scatter.sqrMagnitude > 1e-4f ? scatter.normalized : Vector3.forward;
-
-                    position = Vector3.Lerp(fromPositions[i], position, k) + flight;
-                    rotation = Quaternion.AngleAxis(360f * k * (i % 2 == 0 ? 1f : -1f), axis) * Quaternion.Slerp(fromRotations[i], rotation, k);
+                    position = Vector3.Lerp(fromPositions[i], position, k);
+                    rotation = Quaternion.Slerp(fromRotations[i], rotation, k);
                     size = Vector3.Lerp(fromSizes[i], size, k);
                 }
             }
