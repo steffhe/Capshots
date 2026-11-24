@@ -4,11 +4,12 @@ using UnityEngine;
 // apart so it can be tested. The pieces are built into the gun rather than hung round it:
 //  - Sniper rifle: the barrel itself, as a line of floating segments (the model's own Barrel is
 //    hidden). Idle, the segments breathe and turn; a shot runs a wave down them, back to front.
-//  - Machine gun: a rotary barrel of slats off the front of the body, which spins up while firing.
+//  - Machine gun: a rotary barrel of slats sleeved over the front of the body, which spins up
+//    while firing and bursts wide apart with every shot.
 //  - Shotgun: a claw of petals flared round the muzzle, open at the top so the bead stays in view,
 //    that blooms wide on each shot; and two plates on the pump that rack back after each shot.
-//  - Pistol: panels down both sides that recoil like a slide, a cap in front of the muzzle and a
-//    plate under it. The other pieces tuck away inside the body.
+//  - Pistol: panels standing off both sides and reaching past the muzzle, that recoil like a slide
+//    and fly out wide on each shot, a cap in front of the muzzle and a plate under it. The other pieces tuck away inside the body.
 // Everything is in the gun model's space (+z out of the muzzle, +y up) and sized from the model's
 // own parts, so it fits any gun. Nothing reaches above the sights.
 public static class GunSatelliteLayout
@@ -133,21 +134,25 @@ public static class GunSatelliteLayout
         };
     }
 
-    // Machine gun: slats round the line of fire, out of the front of the body
+    // Machine gun: slats round the line of fire, sleeved over the front of the body
     public static float RotaryRadius(Shape shape) => shape.body.size.x * 0.48f;
+    // How far a shot bursts the slats out, as a share of the body's width
+    public const float BurstWidth = 0.9f;
 
     private static Pose Rotary(int i, Shape shape, Motion m)
     {
         float width = shape.body.size.x;
-        float length = shape.body.size.z * 0.42f;
+        float length = shape.body.size.z * 0.35f;
         Vector3 muzzle = shape.Muzzle;
         float kick = Kick(m.shotAge);
 
         float angle = i * Mathf.PI * 2f / Count + m.spin;
         Vector3 outward = new Vector3(Mathf.Cos(angle), Mathf.Sin(angle), 0f);
-        float radius = RotaryRadius(shape) * (1f - 0.1f * m.aim) + kick * width * 0.15f;
-        // Every other slat sticks out a little further, so the barrel looks machined rather than a tube
-        float z = muzzle.z + width * 0.07f + length * 0.5f + (i % 2) * length * 0.08f + kick * length * 0.16f;
+        // Each shot bursts the slats wide apart (much less while aiming, so the sights stay clear)
+        float radius = RotaryRadius(shape) * (1f - 0.1f * m.aim) + kick * width * BurstWidth * (1f - 0.8f * m.aim);
+        // A sleeve over the front of the body, reaching on past it; every other slat sticks out a
+        // little further, so the barrel looks machined rather than a tube
+        float z = muzzle.z - length * 0.08f + (i % 2) * length * 0.08f;
         return new Pose
         {
             position = new Vector3(muzzle.x, muzzle.y, z) + outward * radius,
@@ -215,15 +220,20 @@ public static class GunSatelliteLayout
 
         if (i < 2)
         {
-            // Down the sides: hover a little off the body, tighter while aiming, and recoil back
+            // Down the sides, standing well off the body and reaching out past the muzzle, their
+            // fronts turned slightly out; tighter while aiming. A shot throws them out wide, swings
+            // their fronts further out and recoils them back.
             float side = i == 0 ? -1f : 1f;
-            float gap = width * (0.1f + 0.03f * breathe) * (1f - 0.5f * m.aim) + kick * width * 0.28f;
+            float gap = width * (0.22f + 0.04f * breathe) * (1f - 0.4f * m.aim) + kick * width * 0.55f;
             float length = body.size.z * 0.7f;
+            float front = body.max.z + body.size.z * 0.15f;
+            float flare = (4f + 18f * kick) * side;
+            Vector3 along = Quaternion.AngleAxis(flare, Vector3.up) * Vector3.forward;
             return new Pose
             {
                 position = new Vector3(body.center.x + side * (body.extents.x + gap + width * 0.05f), body.center.y + height * 0.1f,
-                                       body.center.z + body.size.z * 0.05f - kick * body.size.z * 0.38f),
-                rotation = Quaternion.LookRotation(Vector3.forward, side < 0f ? Vector3.left : Vector3.right),
+                                       front - length * 0.5f - kick * body.size.z * 0.38f),
+                rotation = Quaternion.LookRotation(along, side < 0f ? Vector3.left : Vector3.right),
                 size = new Vector3(height * 0.55f, width * 0.1f, length),
             };
         }

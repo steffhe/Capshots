@@ -59,8 +59,9 @@ public partial class Launcher : MonoBehaviour
         usernameField.text = myProfile.username;
         CreateModeButton();
         CreateBotsButton();
-        GameObject settingsButton = CreateColumnButton("SETTINGS", () => { if (settingsMenu != null) settingsMenu.Open(); });
+        // Each goes in just above Quit, so they read in this order: Customize, Settings, Quit
         CreateColumnButton("CUSTOMIZE", () => { if (customizeMenu != null) customizeMenu.Open(); });
+        GameObject settingsButton = CreateColumnButton("SETTINGS", () => { if (settingsMenu != null) settingsMenu.Open(); });
         // The player model in the menu wears your hat too, in the logo's colour...
         DressMenuModel();
         GameSettings.HatChanged += DressMenuModel;
@@ -247,7 +248,7 @@ public partial class Launcher : MonoBehaviour
     private SettingsMenu settingsMenu;
     private CustomizeMenu customizeMenu;
 
-    // Adds a button (Settings, then Customize) to the main tab's column, above Quit (or at the end),
+    // Adds a button (Customize, then Settings) to the main tab's column, above Quit (or at the end),
     // by copying one of its buttons. Returns it, or null if the column isn't there.
     private GameObject CreateColumnButton(string text, UnityEngine.Events.UnityAction onClick)
     {
