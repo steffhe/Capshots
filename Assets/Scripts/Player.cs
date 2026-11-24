@@ -77,6 +77,7 @@ public class Player : NetworkBehaviour
     private PlayerCap[] caps = new PlayerCap[0];
     private DroneBody[] drones = new DroneBody[0];
     private DroneHands hands;
+    private GunSatellites satellites;
     private HoverVisuals hoverVisuals;
     private bool appliedCrouch;
     private string shownName;
@@ -290,6 +291,8 @@ public class Player : NetworkBehaviour
         };
         // Floating hand-orbs that hold the gun
         if (hands == null) hands = DroneHands.Attach(this, capColor);
+        // Pieces floating round the gun, arranged for its form
+        if (satellites == null) satellites = GunSatellites.Attach(this, capColor);
         caps = new PlayerCap[]
         {
             PlayerCap.Attach(standingColliderHead != null ? standingColliderHead.transform : null, capColor),
@@ -778,7 +781,7 @@ public class Player : NetworkBehaviour
             // Body meshes only: not the name tag, the gun, effects or the cap (coloured below)
             if (!(body is MeshRenderer || body is SkinnedMeshRenderer)) continue;
             if (body.GetComponentInParent<PlayerCap>() != null) continue;
-            if (body.GetComponentInParent<DroneBody>() != null || body.GetComponentInParent<DroneHands>() != null) continue; // coloured below
+            if (body.GetComponentInParent<DroneBody>() != null || body.GetComponentInParent<DroneHands>() != null || body.GetComponentInParent<GunSatellites>() != null) continue; // coloured below
             if (hoverVisuals != null && hoverVisuals.IsGlow(body)) continue;
             if (body.GetComponent<TextMeshPro>() != null) continue;
             if (weaponParent != null && body.transform.IsChildOf(weaponParent)) continue;
@@ -792,6 +795,7 @@ public class Player : NetworkBehaviour
         foreach (PlayerCap cap in caps) if (cap != null) cap.SetColor(teamColor);
         foreach (DroneBody drone in drones) if (drone != null) drone.SetColor(teamColor, true);
         if (hands != null) hands.SetColor(teamColor);
+        if (satellites != null) satellites.SetColor(teamColor);
     }
 
     // Your own hands (the only part of your body you see) take your team's colour in team mode, like
@@ -803,7 +807,9 @@ public class Player : NetworkBehaviour
 
         Manager m = Manager.Instance;
         int team = m != null ? m.GetTeam(ActorId) : -1;
-        hands.SetColor(team >= 0 ? Manager.TeamColors[team % 2] : PlayerCap.ColorFor(ActorId));
+        Color own = team >= 0 ? Manager.TeamColors[team % 2] : PlayerCap.ColorFor(ActorId);
+        hands.SetColor(own);
+        if (satellites != null) satellites.SetColor(own);
     }
 
     private void OnDestroy()

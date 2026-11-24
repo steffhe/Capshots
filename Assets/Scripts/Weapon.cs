@@ -4,7 +4,8 @@ using UnityEngine;
 using UnityEngine.UI;
 using Fusion;
 
-// A player's gun: one sidearm that transforms between forms (shotgun, machine gun, pistol, sniper
+// A player's gun: one sidearm that transforms between forms, with small pieces floating round it
+// that rearrange for each form (GunSatellites) (shotgun, machine gun, pistol, sniper
 // rifle: shortest range first, so "next" always reaches further), each with its own stats (the Gun
 // assets in loadout). Everyone spawns holding defaultStartingGun, or the form they picked in the
 // settings (GameSettings.StartingGun). All forms draw on one shared pool of energy,
@@ -62,6 +63,10 @@ public class Weapon : NetworkBehaviour
     // The gun model being shown, for the drone's hand-orbs
     public GameObject GunModel => currentWeapon;
     private int shownIndex = -1;
+    // The form whose model is showing, and when (Time.time) the last shot's effects played: for the
+    // pieces floating round the gun (GunSatellites)
+    public Gun ShownGun => loadout != null && shownIndex >= 0 && shownIndex < loadout.Length ? loadout[shownIndex] : null;
+    public float LastShotTime { get; private set; } = -1f;
 
     // Looked up once instead of every shot or frame
     private Player player;
@@ -776,6 +781,7 @@ public class Weapon : NetworkBehaviour
         PlayerSounds sounds = GetComponent<PlayerSounds>();
         if (sounds != null) sounds.PlayShot(gun);
         MuzzleFlash();
+        LastShotTime = Time.time;
 
         //gun fx
         if (currentWeapon != null)
