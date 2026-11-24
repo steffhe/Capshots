@@ -23,27 +23,41 @@ public static class PlasmaGrenadeRules
     public const float Gravity = 13f;
 
     // A bounce keeps this much of the speed into the surface...
-    public const float Restitution = 0.35f;
+    public const float Restitution = 0.6f;
     // ...and this much of the speed along it
-    public const float Friction = 0.75f;
+    public const float Friction = 0.85f;
     // Slower than this into a surface and it doesn't bounce, it slides
-    public const float MinBounceSpeed = 1.5f;
+    public const float MinBounceSpeed = 1f;
 
-    // Goes off this long after the throw if it never found a player...
+    // The fuse starts when the button goes down, and the grenade is thrown when it's let go, so
+    // holding it "cooks" it: it goes off this long after the button went down if it never found a
+    // player (in the hand, if it's held that long)...
     public const float FreeFuse = 3f;
-    // ...or this long after sticking to one
+    // ...or this long after sticking to one, or sooner if it was cooked closer to going off
     public const float StuckFuse = 1.5f;
     // You can't fire for this long after throwing
     public const float ThrowTime = 0.45f;
 
     // Blast: full damage up to InnerRadius, falling to EdgeDamage at BlastRadius, nothing beyond.
     // Players have 1000 health, so the middle of the blast kills.
-    public const float BlastRadius = 4.5f;
-    public const float InnerRadius = 1f;
+    public const float BlastRadius = 6.5f;
+    public const float InnerRadius = 1.5f;
     public const int CentreDamage = 1000;
     public const int EdgeDamage = 150;
     // Whoever it's stuck to: always enough to kill
     public const int StuckDamage = 100000;
+
+    // The fuse left once it sticks to someone, given how much it had left before
+    public static float FuseAfterSticking(float fuseLeft)
+    {
+        return Mathf.Clamp(fuseLeft, 0f, StuckFuse);
+    }
+
+    // How far through its fuse it is, 0 (just armed) to 1 (going off), from the fuse left
+    public static float FuseProgress(float fuseLeft)
+    {
+        return 1f - Mathf.Clamp01(fuseLeft / FreeFuse);
+    }
 
     // The throw's starting velocity, from where the player looks and how they're moving
     public static Vector3 ThrowVelocity(Vector3 viewForward, Vector3 throwerVelocity)

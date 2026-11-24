@@ -218,7 +218,8 @@ public class SettingsMenu : MenuPanel
             GameInput.ResetBindings();
             RefreshBindings();
         });
-        Place(reset, new Vector2(LeftColumn, y - 128f), new Vector2(ColumnWidth, 48f));
+        // The same 12 gap under the graphics button as between the buttons elsewhere
+        Place(reset, new Vector2(LeftColumn, y - 132f), new Vector2(ColumnWidth, 48f));
 
         GameObject done = NewButton(rect, "DONE", CloseSettings);
         UITheme.StyleButton(done.GetComponent<Button>(), UITheme.ButtonStyle.Primary);

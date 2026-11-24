@@ -76,6 +76,9 @@ public class Weapon : NetworkBehaviour
     private Graphic crosshairDot;
     private float crosshairAlpha = 1f;
     private readonly List<Image> arsenalImages = new List<Image>();
+    // The gun form icons' holder on the HUD; hidden while touch controls are showing, which cover it
+    private GameObject arsenalRoot;
+    private const float ArsenalIconStep = 120f;
     private Transform weaponAnchor, stateAds, stateHip;
     private Coroutine hitmarkRoutine;
 
@@ -123,6 +126,8 @@ public class Weapon : NetworkBehaviour
     [Networked] private int Grenades { get; set; }
     [Networked] private int GrenadesThrown { get; set; }
     [Networked] private TickTimer ThrowTimer { get; set; }
+    // Running while a grenade is held with the button down ("cooking"): its fuse is already burning
+    [Networked] private TickTimer CookTimer { get; set; }
 
     #endregion
 
@@ -158,12 +163,17 @@ public class Weapon : NetworkBehaviour
                 GameObject.Destroy(child.gameObject);
             }
 
+            arsenalRoot = arsenal;
             int ind = 0;
             foreach (Gun gun in loadout)
             {
-                Vector3 position = arsenal.transform.position + Vector3.up * (ind * 120f);
-                GameObject weaponimageObject = Instantiate(weaponImagePrefab, position, arsenal.transform.rotation, arsenal.transform);
+                GameObject weaponimageObject = Instantiate(weaponImagePrefab, arsenal.transform);
                 weaponimageObject.name = "WeaponImage" + ind.ToString();
+                // Stacked upwards in canvas units (not screen pixels), so the spacing is the same at
+                // any resolution: at 1440p and up, pixel spacing packed the icons into each other
+                RectTransform iconRect = (RectTransform)weaponimageObject.transform;
+                iconRect.anchorMin = iconRect.anchorMax = iconRect.pivot = Vector2.zero;
+                iconRect.anchoredPosition = new Vector2(0f, ind * ArsenalIconStep);
 
                 // Set the icon on the copy, not on the prefab asset
                 Image image = weaponimageObject.GetComponent<Image>();
@@ -194,6 +204,13 @@ public class Weapon : NetworkBehaviour
 
     public override void Despawned(NetworkRunner runner, bool hasState)
     {
+        // Killed (or gone) with a grenade in the hand: it drops where they were, still counting down
+        if (hasState && HasStateAuthority && CookTimer.IsRunning && Manager.Instance != null && !Manager.Instance.Ending)
+        {
+            float left = CookTimer.RemainingTime(runner) ?? 0f;
+            Manager.Instance.ThrowGrenade(cookOwner, cookActor, cookBody, GrenadesThrown, transform.position + Vector3.up * 0.3f, Vector3.zero, left);
+        }
+
         // Dying mid-marker stops the coroutine before it can hide the marker
         StopAllCoroutines();
         hitmarkRoutine = null;
@@ -247,6 +264,24 @@ public class Weapon : NetworkBehaviour
             Energy = GunEnergy.Regenerate(Energy, maxEnergy, regenRate, Runner.DeltaTime);
         }
 
+        // A grenade in the hand: thrown when the button is let go, or it goes off in the hand if held
+        // for the whole fuse
+        if (CookTimer.IsRunning)
+        {
+            if (CookTimer.Expired(Runner))
+            {
+                CookTimer = TickTimer.None;
+                GrenadeGoesOffInHand(input);
+            }
+            else if (!input.Buttons.IsSet(InputButton.Grenade))
+            {
+                float left = CookTimer.RemainingTime(Runner) ?? PlasmaGrenadeRules.FreeFuse;
+                CookTimer = TickTimer.None;
+                ThrowGrenade(input, left);
+            }
+            return;
+        }
+
         if (BurstLeft > 0)
         {
             // The rest of a burst fires on its own, one shot every fireRate seconds
@@ -260,7 +295,7 @@ public class Weapon : NetworkBehaviour
         {
             if (pressed.IsSet(InputButton.Grenade) && Grenades > 0)
             {
-                ThrowGrenade(input);
+                StartCooking();
                 return;
             }
 
@@ -382,29 +417,77 @@ public class Weapon : NetworkBehaviour
         BurstTimer = BurstLeft > 0 ? TickTimer.CreateFromSeconds(Runner, gun.fireRate) : TickTimer.None;
     }
 
-    // Throws a plasma grenade from the left hand, in an arc along the view. The host flies it and
-    // decides what it sticks to (Manager.Grenades); the thrower's own game shows it straight away.
-    void ThrowGrenade(PlayerInputData input)
+    // Who's cooking the grenade in the hand, kept on the host for when the body is despawned mid-cook
+    // (its networked identity may already be gone by then)
+    PlayerRef cookOwner;
+    int cookActor, cookBody;
+
+    // The grenade button went down: a grenade comes out and its fuse starts burning. It's thrown when
+    // the button is let go, so holding it "cooks" it.
+    void StartCooking()
     {
         Grenades--;
         GrenadesThrown++;
-        ThrowTimer = TickTimer.CreateFromSeconds(Runner, PlasmaGrenadeRules.ThrowTime);
         BurstLeft = 0;
-        // Throwing gives up spawn protection, like shooting
+        CookTimer = TickTimer.CreateFromSeconds(Runner, PlasmaGrenadeRules.FreeFuse);
+        // Pulling a grenade gives up spawn protection, like shooting
         player.EndSpawnProtection();
+
+        if (HasStateAuthority)
+        {
+            cookOwner = player.Owner;
+            cookActor = player.ActorId;
+            cookBody = (int)Object.Id.Raw;
+        }
+    }
+
+    // Throws the plasma grenade in the hand, in an arc along the view, with 'fuse' seconds left. The
+    // host flies it and decides what it sticks to (Manager.Grenades); the thrower's own game shows it
+    // straight away.
+    void ThrowGrenade(PlayerInputData input, float fuse)
+    {
+        ThrowTimer = TickTimer.CreateFromSeconds(Runner, PlasmaGrenadeRules.ThrowTime);
 
         if (!Runner.IsForward || Manager.Instance == null) return;
 
         Quaternion view = Quaternion.Euler(-input.Pitch, input.Yaw, 0f);
-        Vector3 eye = player.EyePosition;
-        // Out of the left hand, a little below and in front of the eyes; from the eyes if that's in a wall
-        Vector3 hand = eye + view * new Vector3(-0.25f, -0.2f, 0.45f);
-        if (Physics.Linecast(eye, hand, PlasmaGrenade.WorldMask, QueryTriggerInteraction.Ignore)) hand = eye;
+        Vector3 hand = HandPosition(view);
         Vector3 velocity = PlasmaGrenadeRules.ThrowVelocity(view * Vector3.forward, player.CurrentVelocity);
         int body = (int)Object.Id.Raw;
 
-        if (HasStateAuthority) Manager.Instance.ThrowGrenade(player.Owner, player.ActorId, body, GrenadesThrown, hand, velocity);
-        else if (HasInputAuthority) Manager.Instance.PredictGrenade(body, GrenadesThrown, player.ActorId, hand, velocity);
+        if (HasStateAuthority) Manager.Instance.ThrowGrenade(player.Owner, player.ActorId, body, GrenadesThrown, hand, velocity, fuse);
+        else if (HasInputAuthority) Manager.Instance.PredictGrenade(body, GrenadesThrown, player.ActorId, hand, velocity, fuse);
+    }
+
+    // Held for the whole fuse: it goes off in the hand. Host only.
+    void GrenadeGoesOffInHand(PlayerInputData input)
+    {
+        if (!Runner.IsForward || !HasStateAuthority || Manager.Instance == null) return;
+        Vector3 hand = HandPosition(Quaternion.Euler(-input.Pitch, input.Yaw, 0f));
+        Manager.Instance.GrenadeOffInHand(player, (int)Object.Id.Raw, GrenadesThrown, hand);
+    }
+
+    // Where a grenade leaves the left hand: a little below and in front of the eyes, or the eyes
+    // themselves if that's inside a wall
+    Vector3 HandPosition(Quaternion view)
+    {
+        Vector3 eye = player.EyePosition;
+        Vector3 hand = eye + view * new Vector3(-0.25f, -0.2f, 0.45f);
+        if (Physics.Linecast(eye, hand, PlasmaGrenade.WorldMask, QueryTriggerInteraction.Ignore)) hand = eye;
+        return hand;
+    }
+
+    // How far the grenade in the hand has cooked, 0 (just pulled) to 1 (going off), or -1 when no
+    // grenade is held. For the hand-orb holding it (DroneHands) and the HUD.
+    public float CookProgress
+    {
+        get
+        {
+            if (Object == null || !Object.IsValid || !CookTimer.IsRunning) return -1f;
+            float? remaining = CookTimer.RemainingTime(Runner);
+            if (remaining == null) return -1f;
+            return PlasmaGrenadeRules.FuseProgress(remaining.Value);
+        }
     }
 
     // How far through a grenade throw this player is (0 to 1), or -1 when not throwing. For the
@@ -876,13 +959,40 @@ public class Weapon : NetworkBehaviour
 
     void RefreshGrenadeIndicator()
     {
+        // The touch controls cover the bottom right of the screen: there the NADE button shows the
+        // grenade instead (TouchControls), and the gun form icons step aside too
+        bool touch = TouchControls.UsingTouch;
+        if (arsenalRoot != null && arsenalRoot.activeSelf == touch) arsenalRoot.SetActive(!touch);
         if (grenadeDot == null) return;
-        bool has = GrenadeCount > 0;
+        GameObject holder = grenadeDot.transform.parent.gameObject;
+        if (holder.activeSelf == touch) holder.SetActive(!touch);
+        if (touch) return;
         Color c = ShotColor();
+        float cook = CookProgress;
+        if (cook >= 0f)
+        {
+            // Cooking: the dot flashes faster and whiter as the fuse runs down, and the label counts it
+            float frequency = Mathf.Lerp(3f, 14f, cook * cook);
+            float flash = Mathf.Sin(Time.time * frequency * Mathf.PI * 2f) > 0f ? 1f : 0.35f;
+            Color hot = Color.Lerp(c, Color.white, cook * 0.7f);
+            grenadeDot.color = new Color(hot.r * flash, hot.g * flash, hot.b * flash, 1f);
+            if (grenadeLabel != null)
+            {
+                grenadeLabel.color = Color.Lerp(Color.white, new Color(1f, 0.35f, 0.3f), cook);
+                grenadeLabel.text = ((1f - cook) * PlasmaGrenadeRules.FreeFuse).ToString("0.0");
+            }
+            return;
+        }
+
+        bool has = GrenadeCount > 0;
         // Breathes gently while ready, like the grenade itself
         float pulse = 0.85f + 0.15f * Mathf.Sin(Time.time * 6f);
         grenadeDot.color = has ? new Color(c.r * pulse, c.g * pulse, c.b * pulse, 1f) : new Color(1f, 1f, 1f, 0.15f);
-        if (grenadeLabel != null) grenadeLabel.color = has ? UITheme.MutedText : new Color(1f, 1f, 1f, 0.25f);
+        if (grenadeLabel != null)
+        {
+            grenadeLabel.color = has ? UITheme.MutedText : new Color(1f, 1f, 1f, 0.25f);
+            grenadeLabel.text = "PLASMA";
+        }
     }
 
     void SetCrosshairAlpha(float alpha)

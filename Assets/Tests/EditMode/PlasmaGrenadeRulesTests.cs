@@ -25,6 +25,23 @@ public class PlasmaGrenadeRulesTests
     }
 
     [Test]
+    public void FuseAfterSticking_NeverLongerThanTheStuckFuse()
+    {
+        Assert.AreEqual(PlasmaGrenadeRules.StuckFuse, PlasmaGrenadeRules.FuseAfterSticking(PlasmaGrenadeRules.FreeFuse), 1e-4f);
+        // Cooked almost all the way: it keeps the little it had left
+        Assert.AreEqual(0.4f, PlasmaGrenadeRules.FuseAfterSticking(0.4f), 1e-4f);
+        Assert.AreEqual(0f, PlasmaGrenadeRules.FuseAfterSticking(-1f), 1e-4f);
+    }
+
+    [Test]
+    public void FuseProgress_RunsFromArmedToGoingOff()
+    {
+        Assert.AreEqual(0f, PlasmaGrenadeRules.FuseProgress(PlasmaGrenadeRules.FreeFuse), 1e-4f);
+        Assert.AreEqual(1f, PlasmaGrenadeRules.FuseProgress(0f), 1e-4f);
+        Assert.AreEqual(0.5f, PlasmaGrenadeRules.FuseProgress(PlasmaGrenadeRules.FreeFuse / 2f), 1e-4f);
+    }
+
+    [Test]
     public void Bounce_HardHitBouncesBack()
     {
         Vector3 after = PlasmaGrenadeRules.Bounce(new Vector3(0f, -10f, 0f), Vector3.up);

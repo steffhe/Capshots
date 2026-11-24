@@ -9,9 +9,9 @@ using UnityEngine;
 // thrower's own game starts its copy straight away, so the throw never waits for the host.
 public class PlasmaGrenade : MonoBehaviour
 {
-    // How long a copy waits for the host to say it went off before quietly fading away (a throw the
-    // host never saw, or a lost message)
-    private const float OrphanTime = PlasmaGrenadeRules.FreeFuse + 2f;
+    // How long past its fuse a copy waits for the host to say it went off before quietly fading away
+    // (a throw the host never saw, or a lost message)
+    private const float OrphanTime = 2f;
     private const float CoreGlow = 3.5f;
     private const int TailLength = 5;
 
@@ -24,7 +24,9 @@ public class PlasmaGrenade : MonoBehaviour
     private Transform followed;
     private Vector3 followOffset;
     private bool stuck, wasStuck;
-    private float stuckAge;
+    private float stuckAge, stuckFuse;
+    // Seconds until it goes off, as far as this copy knows (the host decides)
+    private float fuseLeft;
 
     private Color color;
     private Transform visual, core;
@@ -46,6 +48,9 @@ public class PlasmaGrenade : MonoBehaviour
     }
 
     public static long MakeKey(int body, int number) => ((long)body << 20) | (uint)(number & 0xFFFFF);
+
+    // The colour a player's grenades glow in: theirs (or their team's), lightened a little
+    public static Color GlowColor(int actor) => Color.Lerp(PlayerCap.ColorFor(actor), Color.white, 0.25f);
 
     #region Flight
 
@@ -75,7 +80,7 @@ public class PlasmaGrenade : MonoBehaviour
 
     #region Creating
 
-    public static PlasmaGrenade Create(long key, int actor, Vector3 origin, Vector3 velocity, float stepTime)
+    public static PlasmaGrenade Create(long key, int actor, Vector3 origin, Vector3 velocity, float stepTime, float fuse)
     {
         GameObject root = new GameObject("Plasma Grenade");
         root.transform.position = origin;
@@ -85,7 +90,8 @@ public class PlasmaGrenade : MonoBehaviour
         grenade.position = origin;
         grenade.velocity = velocity;
         grenade.stepTime = Mathf.Max(0.005f, stepTime);
-        grenade.Build(Color.Lerp(PlayerCap.ColorFor(actor), Color.white, 0.25f));
+        grenade.fuseLeft = fuse;
+        grenade.Build(GlowColor(actor));
         return grenade;
     }
 
@@ -187,12 +193,15 @@ public class PlasmaGrenade : MonoBehaviour
         accumulator = 0f;
     }
 
-    // It stuck to this player (null if they're no longer here), at offset in their local space
-    public void StickTo(Transform target, Vector3 offset)
+    // It stuck to this player (null if they're no longer here), at offset in their local space, and
+    // goes off in 'fuse' seconds
+    public void StickTo(Transform target, Vector3 offset, float fuse)
     {
         if (stuck) return;
         stuck = true;
         stuckAge = 0f;
+        stuckFuse = Mathf.Max(0.05f, fuse);
+        fuseLeft = fuse;
         followed = target;
         followOffset = offset;
         velocity = Vector3.zero;
@@ -216,7 +225,8 @@ public class PlasmaGrenade : MonoBehaviour
     {
         float dt = Time.deltaTime;
         age += dt;
-        if (age > OrphanTime + (stuck ? PlasmaGrenadeRules.StuckFuse : 0f)) { Destroy(gameObject); return; }
+        fuseLeft -= dt;
+        if (fuseLeft < -OrphanTime) { Destroy(gameObject); return; }
 
         if (stuck)
         {
@@ -272,7 +282,7 @@ public class PlasmaGrenade : MonoBehaviour
         if (stuck)
         {
             // Pulses faster and faster, and swells, until it goes off
-            float t = Mathf.Clamp01(stuckAge / PlasmaGrenadeRules.StuckFuse);
+            float t = Mathf.Clamp01(stuckAge / stuckFuse);
             float frequency = Mathf.Lerp(5f, 22f, t * t);
             pulse = 0.5f + 0.5f * Mathf.Sin(stuckAge * frequency * Mathf.PI * 2f * (0.5f + 0.5f * t));
             swell = 1f + 0.35f * t + 0.15f * pulse;
@@ -281,8 +291,13 @@ public class PlasmaGrenade : MonoBehaviour
         }
         else
         {
-            pulse = 0.5f + 0.5f * Mathf.Sin(age * 9f * Mathf.PI * 2f);
-            intensity = 1.8f + 0.5f * pulse;
+            // Pulses faster as the fuse runs down, so a cooked grenade looks it
+            float t = PlasmaGrenadeRules.FuseProgress(fuseLeft);
+            float frequency = Mathf.Lerp(4f, 16f, t * t);
+            pulse = 0.5f + 0.5f * Mathf.Sin(age * frequency * Mathf.PI * 2f);
+            swell = 1f + 0.2f * t * t;
+            intensity = (1.8f + 0.5f * pulse) * (1f + t);
+            hum.pitch = Mathf.Lerp(1f, 1.5f, t);
         }
 
         // A slight crackle, like it can barely hold together
@@ -307,11 +322,15 @@ public class PlasmaGrenade : MonoBehaviour
 }
 
 // The blast of a plasma grenade going off: a blinding flash and a bubble of plasma in the thrower's
-// colour that bursts outward and fades, a ring of sparks, and a deep electric boom. Purely cosmetic.
+// colour that bursts outward and fades, a big spray of glowing sparks (white-hot and in the thrower's
+// colour) that arc out, skip off the floor and burn out, and a deep electric boom. Purely cosmetic.
 public class PlasmaBlast : MonoBehaviour
 {
     private const float Duration = 0.55f;
-    private const float FlashIntensity = 9f;
+    private const float FlashIntensity = 10f;
+    private const int SparkCount = 90;
+    private const float SparkGravity = 12f;
+    private const float SparkGlow = 4f;
 
     private Transform bubble;
     private Renderer bubbleRenderer;
@@ -319,6 +338,12 @@ public class PlasmaBlast : MonoBehaviour
     private Color color;
     private float age;
     private MaterialPropertyBlock block;
+
+    private Transform[] sparks;
+    private Vector3[] sparkVelocities, sparkScales;
+    private float[] sparkLifetimes;
+    // Where the floor is under the blast, for the sparks to skip off (-infinity: no floor nearby)
+    private float floorY = float.NegativeInfinity;
 
     public static void Spawn(Vector3 position, Color color)
     {
@@ -349,10 +374,13 @@ public class PlasmaBlast : MonoBehaviour
         flash.intensity = FlashIntensity;
         flash.shadows = LightShadows.None;
 
-        // Sparks spraying out all round: the kill sparks, several times over
-        for (int i = 0; i < 4; i++) KillSpark.Spawn(transform.position, Random.onUnitSphere, color);
+        if (Physics.Raycast(transform.position + Vector3.up * 0.2f, Vector3.down, out RaycastHit floor, 6f, PlasmaGrenade.WorldMask, QueryTriggerInteraction.Ignore))
+            floorY = floor.point.y + 0.02f;
+        BuildSparks();
 
         AudioSource.PlayClipAtPoint(PlasmaSounds.Boom, transform.position, 0.5f);
+        // The electric crackle of the kill sparks under the boom
+        AudioSource.PlayClipAtPoint(KillSpark.ZapClip(), transform.position, 0.25f);
 
         // The local player's view shakes, harder the closer they are
         Player local = Player.Local;
@@ -365,14 +393,65 @@ public class PlasmaBlast : MonoBehaviour
         }
     }
 
+    // Glowing streaks sprayed out all round, a little more upward than down. A few big slow embers,
+    // the rest fast thin streaks. Every third one is in the thrower's colour, the rest white-hot.
+    private void BuildSparks()
+    {
+        sparks = new Transform[SparkCount];
+        sparkVelocities = new Vector3[SparkCount];
+        sparkScales = new Vector3[SparkCount];
+        sparkLifetimes = new float[SparkCount];
+        Color hot = new Color(1f, 0.95f, 0.85f);
+        Color bright = Color.Lerp(color, Color.white, 0.2f);
+
+        for (int i = 0; i < SparkCount; i++)
+        {
+            GameObject spark = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            DestroyImmediate(spark.GetComponent<Collider>());
+            spark.name = "Spark";
+            spark.transform.SetParent(transform, false);
+            spark.transform.localPosition = Random.insideUnitSphere * 0.2f;
+
+            Renderer r = spark.GetComponent<Renderer>();
+            r.sharedMaterial = DroneBody.GlowMaterial;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            Color c = i % 3 == 0 ? bright : hot;
+            block.SetColor("_BaseColor", c);
+            block.SetColor("_Color", c);
+            block.SetColor("_EmissionColor", c * SparkGlow);
+            r.SetPropertyBlock(block);
+
+            bool ember = i % 9 == 0;
+            Vector3 direction = (Random.onUnitSphere + Vector3.up * 0.35f).normalized;
+            float speed = ember ? Random.Range(3f, 6f) : Random.Range(6f, 17f);
+            sparkVelocities[i] = direction * speed;
+            float size = ember ? Random.Range(0.05f, 0.08f) : Random.Range(0.02f, 0.04f);
+            sparkScales[i] = ember ? Vector3.one * size : new Vector3(size, size, size * 4f);
+            sparkLifetimes[i] = ember ? Random.Range(1f, 1.6f) : Random.Range(0.35f, 0.9f);
+            spark.transform.localScale = sparkScales[i];
+            spark.transform.rotation = Quaternion.LookRotation(direction);
+            sparks[i] = spark.transform;
+        }
+    }
+
     private void Update()
     {
-        age += Time.deltaTime;
+        float dt = Time.deltaTime;
+        age += dt;
+
+        bool bubbleDone = UpdateBubble();
+        bool sparksDone = UpdateSparks(dt);
+        if (bubbleDone && sparksDone) Destroy(gameObject);
+    }
+
+    private bool UpdateBubble()
+    {
+        if (bubble == null) return true;
         float t = Mathf.Clamp01(age / Duration);
 
         // Bursts out fast, then slows as it fades
         float grow = 1f - Mathf.Pow(1f - t, 3f);
-        bubble.localScale = Vector3.one * Mathf.Lerp(0.3f, PlasmaGrenadeRules.BlastRadius * 1.1f, grow);
+        bubble.localScale = Vector3.one * Mathf.Lerp(0.3f, PlasmaGrenadeRules.BlastRadius * 0.9f, grow);
         float fade = 1f - t;
         bubbleRenderer.GetPropertyBlock(block);
         Color body = Color.Lerp(Color.white, color, t) * fade;
@@ -380,12 +459,48 @@ public class PlasmaBlast : MonoBehaviour
         block.SetColor("_Color", body);
         block.SetColor("_EmissionColor", Color.Lerp(Color.white, color, Mathf.Min(1f, t * 2f)) * (6f * fade * fade));
         bubbleRenderer.SetPropertyBlock(block);
-        // Shrinks away near the end rather than hanging there as a dark ball
+        // Gone near the end rather than hanging there as a dark ball
         bubbleRenderer.enabled = t < 0.95f;
 
         if (flash != null) flash.intensity = FlashIntensity * Mathf.Pow(fade, 2f);
 
-        if (age >= Duration) Destroy(gameObject);
+        if (age < Duration) return false;
+        Destroy(bubble.gameObject);
+        bubble = null;
+        if (flash != null) { Destroy(flash); flash = null; }
+        return true;
+    }
+
+    private bool UpdateSparks(float dt)
+    {
+        bool anyLeft = false;
+        for (int i = 0; i < sparks.Length; i++)
+        {
+            Transform spark = sparks[i];
+            if (spark == null) continue;
+
+            float left = sparkLifetimes[i] - age;
+            if (left <= 0f) { Destroy(spark.gameObject); sparks[i] = null; continue; }
+            anyLeft = true;
+
+            Vector3 v = sparkVelocities[i];
+            v += Vector3.down * SparkGravity * dt;
+            // A little air drag, so the fast ones slow into an arc
+            v *= 1f - Mathf.Min(1f, 1.2f * dt);
+            Vector3 p = spark.position + v * dt;
+            // Skip off the floor, losing most of the speed
+            if (p.y < floorY && v.y < 0f)
+            {
+                p.y = floorY;
+                v = new Vector3(v.x * 0.6f, -v.y * 0.35f, v.z * 0.6f);
+            }
+            spark.position = p;
+            sparkVelocities[i] = v;
+            if (v.sqrMagnitude > 0.01f) spark.rotation = Quaternion.LookRotation(v);
+            // Shrink as they burn out
+            spark.localScale = sparkScales[i] * Mathf.Clamp01(left / 0.25f);
+        }
+        return !anyLeft;
     }
 }
 

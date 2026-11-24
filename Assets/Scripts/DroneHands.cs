@@ -26,6 +26,9 @@ public class DroneHands : MonoBehaviour
     private Renderer[] shells, rings;
     private Transform cell;
     private Renderer cellRenderer;
+    // The plasma grenade held up in the free hand while it's cooked; hidden the rest of the time
+    private Transform heldGrenade;
+    private Renderer heldGrenadeRenderer;
     private Vector3[] localGrips = new Vector3[2]; // in the gun model's space
     private Vector3 slot, top;                     // the cell slot under the handle, and the top of the gun
     private Vector3[] positions = new Vector3[2];  // smoothed, in the player's space
@@ -200,6 +203,13 @@ public class DroneHands : MonoBehaviour
         cell.SetParent(transform, false);
         cellRenderer = Part(cell, "Cell", PrimitiveType.Capsule, DroneBody.GlowMaterial, CellSize, false);
         cell.gameObject.SetActive(false);
+
+        // Held just above and in front of the free hand, so it reads as gripped, not swallowed
+        heldGrenade = new GameObject("Held Grenade").transform;
+        heldGrenade.SetParent(hands[1], false);
+        heldGrenade.localPosition = new Vector3(0f, Size * 0.45f, Size * 0.45f);
+        heldGrenadeRenderer = Part(heldGrenade, "Plasma", PrimitiveType.Sphere, DroneBody.GlowMaterial, Vector3.one * PlasmaGrenadeRules.Radius * 1.6f, false);
+        heldGrenade.gameObject.SetActive(false);
     }
 
     private static Renderer Part(Transform parent, string name, PrimitiveType type, Material material, Vector3 scale, bool shadows)
@@ -329,6 +339,8 @@ public class DroneHands : MonoBehaviour
         float reload = weapon != null ? weapon.ReloadProgress : -1f;
         PoseGun(reload);
         float throwing = weapon != null ? weapon.ThrowProgress : -1f;
+        float cooking = weapon != null ? weapon.CookProgress : -1f;
+        UpdateHeldGrenade(cooking);
 
         float time = Time.time;
         float dt = Time.deltaTime;
@@ -339,6 +351,7 @@ public class DroneHands : MonoBehaviour
             // In the gun's space, so the hands tip over with it
             Vector3 local = localGrips[i];
             if (i == 1 && reload >= 0f) local = ReloadHand(reload);
+            else if (i == 1 && cooking >= 0f) local = CookHand(cooking);
             else if (i == 1 && throwing >= 0f) local = ThrowHand(throwing);
             Vector3 target = root.InverseTransformPoint(gunDesign.TransformPoint(local));
             // A gentle bob, each hand slightly out of step
@@ -383,6 +396,31 @@ public class DroneHands : MonoBehaviour
         Vector3 pivot = localGrips[0];
         gunDesign.localRotation = rotation;
         gunDesign.localPosition = pivot - rotation * pivot + Vector3.down * (0.04f * tip);
+    }
+
+    // Where the free hand is while cooking a plasma grenade, in the gun's space: drawn back and up off
+    // the gun, ready to throw, shaking a little more as the fuse runs down
+    private Vector3 CookHand(float p)
+    {
+        Vector3 rest = localGrips[1];
+        Vector3 windUp = rest + new Vector3(-0.1f, 0.1f, -0.14f);
+        Vector3 shake = Random.insideUnitSphere * (0.004f * p);
+        return Vector3.Lerp(rest, windUp, Ease(0f, 0.06f, p)) + shake;
+    }
+
+    // The cooking grenade in the free hand: glowing in the player's colour, pulsing faster and
+    // brighter as its fuse runs down, like a thrown one
+    private void UpdateHeldGrenade(float cooking)
+    {
+        bool show = cooking >= 0f;
+        if (heldGrenade.gameObject.activeSelf != show) heldGrenade.gameObject.SetActive(show);
+        if (!show) return;
+
+        float frequency = Mathf.Lerp(4f, 16f, cooking * cooking);
+        float pulse = 0.5f + 0.5f * Mathf.Sin(Time.time * frequency * Mathf.PI * 2f);
+        Color glow = Color.Lerp(color, Color.white, 0.25f + 0.35f * cooking);
+        Paint(heldGrenadeRenderer, glow, glow * (3f * (0.75f + 0.5f * pulse) * (1f + cooking)));
+        heldGrenade.localScale = Vector3.one * (1f + 0.25f * cooking * cooking + 0.08f * pulse);
     }
 
     // Where the free hand is while throwing a plasma grenade, in the gun's space: it was let go as the

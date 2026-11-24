@@ -31,10 +31,12 @@ public partial class Manager
 
     #region Host
 
-    // Host only: a player threw a grenade
-    public void ThrowGrenade(PlayerRef owner, int ownerActor, int body, int number, Vector3 origin, Vector3 velocity)
+    // Host only: a player threw a grenade with 'fuse' seconds left (less than the full fuse if they
+    // cooked it), or dropped it by dying with it in the hand (no velocity)
+    public void ThrowGrenade(PlayerRef owner, int ownerActor, int body, int number, Vector3 origin, Vector3 velocity, float fuse)
     {
         if (!HasStateAuthority) return;
+        fuse = Mathf.Max(0f, fuse);
         liveGrenades.Add(new LiveGrenade
         {
             key = PlasmaGrenade.MakeKey(body, number),
@@ -44,9 +46,26 @@ public partial class Manager
             ownerActor = ownerActor,
             position = origin,
             velocity = velocity,
-            fuse = PlasmaGrenadeRules.FreeFuse,
+            fuse = fuse,
         });
-        RPC_GrenadeThrown(body, number, ownerActor, origin, velocity);
+        RPC_GrenadeThrown(body, number, ownerActor, origin, velocity, fuse);
+    }
+
+    // Host only: a player held a grenade for its whole fuse. It goes off in their hand, as if stuck
+    // to them.
+    public void GrenadeOffInHand(Player holder, int body, int number, Vector3 position)
+    {
+        if (!HasStateAuthority || holder == null) return;
+        Detonate(new LiveGrenade
+        {
+            key = PlasmaGrenade.MakeKey(body, number),
+            body = body,
+            number = number,
+            owner = holder.Owner,
+            ownerActor = holder.ActorId,
+            position = position,
+            stuckTo = holder,
+        });
     }
 
     // Host only, every tick: flies, sticks and sets off every grenade
@@ -82,8 +101,8 @@ public partial class Manager
                     g.position = point;
                     g.stuckOffset = target.transform.InverseTransformPoint(point);
                     g.velocity = Vector3.zero;
-                    g.fuse = PlasmaGrenadeRules.StuckFuse;
-                    RPC_GrenadeStuck(g.body, g.number, g.ownerActor, target.ActorId, g.stuckOffset);
+                    g.fuse = PlasmaGrenadeRules.FuseAfterSticking(g.fuse);
+                    RPC_GrenadeStuck(g.body, g.number, g.ownerActor, target.ActorId, g.stuckOffset, g.fuse);
                 }
                 // Only real bounces are sent; sliding along the floor plays out the same everywhere
                 else if (impact >= PlasmaGrenadeRules.MinBounceSpeed)
@@ -136,7 +155,7 @@ public partial class Manager
     private void Detonate(LiveGrenade g)
     {
         Vector3 center = g.position;
-        RPC_GrenadeExploded(g.body, g.number, center);
+        RPC_GrenadeExploded(g.body, g.number, g.ownerActor, center);
         OfficeGlass.Blast(center, PlasmaGrenadeRules.BlastRadius * 0.6f);
 
         Player thrower = Player.FindPlayer(g.owner);
@@ -181,21 +200,21 @@ public partial class Manager
     #region Everyone
 
     // The thrower's own game: shows the grenade straight away instead of waiting for the host
-    public void PredictGrenade(int body, int number, int ownerActor, Vector3 origin, Vector3 velocity)
+    public void PredictGrenade(int body, int number, int ownerActor, Vector3 origin, Vector3 velocity, float fuse)
     {
         if (Runner == null) return;
         long key = PlasmaGrenade.MakeKey(body, number);
         if (grenadeVisuals.ContainsKey(key)) return;
-        grenadeVisuals[key] = PlasmaGrenade.Create(key, ownerActor, origin, velocity, Runner.DeltaTime);
+        grenadeVisuals[key] = PlasmaGrenade.Create(key, ownerActor, origin, velocity, Runner.DeltaTime, fuse);
     }
 
     [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
-    private void RPC_GrenadeThrown(int body, int number, int ownerActor, Vector3 origin, Vector3 velocity)
+    private void RPC_GrenadeThrown(int body, int number, int ownerActor, Vector3 origin, Vector3 velocity, float fuse)
     {
         long key = PlasmaGrenade.MakeKey(body, number);
         // The thrower already has its own copy, a little ahead of the host's: leave it be
         if (grenadeVisuals.TryGetValue(key, out PlasmaGrenade existing) && existing != null) return;
-        grenadeVisuals[key] = PlasmaGrenade.Create(key, ownerActor, origin, velocity, Runner.DeltaTime);
+        grenadeVisuals[key] = PlasmaGrenade.Create(key, ownerActor, origin, velocity, Runner.DeltaTime, fuse);
     }
 
     [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
@@ -206,7 +225,7 @@ public partial class Manager
     }
 
     [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
-    private void RPC_GrenadeStuck(int body, int number, int ownerActor, int victimActor, Vector3 offset)
+    private void RPC_GrenadeStuck(int body, int number, int ownerActor, int victimActor, Vector3 offset, float fuse)
     {
         Player victim = null;
         foreach (Player p in Player.All)
@@ -215,7 +234,7 @@ public partial class Manager
         }
 
         PlasmaGrenade grenade = GrenadeVisual(body, number);
-        if (grenade != null) grenade.StickTo(victim != null ? victim.transform : null, offset);
+        if (grenade != null) grenade.StickTo(victim != null ? victim.transform : null, offset, fuse);
 
         int me = LocalActor;
         if (victimActor == me) ShowMessage("YOU'RE STUCK!");
@@ -223,14 +242,15 @@ public partial class Manager
     }
 
     [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
-    private void RPC_GrenadeExploded(int body, int number, Vector3 position)
+    private void RPC_GrenadeExploded(int body, int number, int ownerActor, Vector3 position)
     {
         long key = PlasmaGrenade.MakeKey(body, number);
         PlasmaGrenade grenade = GrenadeVisual(body, number);
         grenadeVisuals.Remove(key);
         if (grenade != null) grenade.Explode(position);
-        // Never saw it fly (joined just now, or lost the message): still see and hear the blast
-        else PlasmaBlast.Spawn(position, Color.white);
+        // Never thrown (it went off in the hand), or never seen flying (joined just now, or a lost
+        // message): still see and hear the blast
+        else PlasmaBlast.Spawn(position, PlasmaGrenade.GlowColor(ownerActor));
     }
 
     [Rpc(RpcSources.StateAuthority, RpcTargets.All)]

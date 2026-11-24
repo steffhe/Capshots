@@ -9,6 +9,11 @@ public partial class Launcher
     private const float ColumnWidth = 300f;
     private const float RowHeight = 52f;
     private const float RoomListWidth = 560f;
+    // Each tab's column is raised this much from where the scene has it: the scene left about 290
+    // units empty above the logo, and the create tab (which gained rows in code) reached to within
+    // a few units of the bottom of the screen. Raised, its top is 140 from the top of the screen
+    // and its bottom about 155 from the bottom.
+    private const float ColumnRaise = 150f;
 
     private Text levelText;
     private Text xpText;
@@ -24,6 +29,7 @@ public partial class Launcher
         StyleColumn(tabMain);
         StyleColumn(tabRooms);
         StyleColumn(tabCreate);
+        MenuColumnMargin.Attach(canvas, tabMain, tabRooms, tabCreate);
         BuildProfileCard();
         BuildRoomList();
         BuildCreateTab();
@@ -55,6 +61,7 @@ public partial class Launcher
     {
         Transform anchor = tab.transform.Find("Anchor");
         if (anchor == null) return;
+        ((RectTransform)anchor).anchoredPosition += new Vector2(0f, ColumnRaise);
 
         VerticalLayoutGroup layout = anchor.GetComponent<VerticalLayoutGroup>();
         if (layout != null)
@@ -392,4 +399,47 @@ public partial class Launcher
     }
 
     #endregion
+}
+
+// Keeps the main menu's columns clear of the left edge of the screen. They're placed from the middle
+// of the screen, so on narrow screens (4:3 tablets and narrower) they slid to within a few units of
+// the edge, the logo nearly touching it. Here they're nudged right just enough to keep a margin, and
+// follow the window as it's resized.
+public class MenuColumnMargin : MonoBehaviour
+{
+    // The leftmost thing in a column (the logo, wider than the column), from the middle of the screen
+    private const float ColumnLeft = -706f;
+    private const float MinMargin = 80f;
+
+    private RectTransform canvas;
+    private RectTransform[] tabs;
+    private float[] homeX;
+    private float shownShift = -1f;
+
+    public static void Attach(Transform canvas, params GameObject[] tabs)
+    {
+        if (canvas == null || canvas.GetComponent<MenuColumnMargin>() != null) return;
+        MenuColumnMargin margin = canvas.gameObject.AddComponent<MenuColumnMargin>();
+        margin.canvas = (RectTransform)canvas;
+        margin.tabs = new RectTransform[tabs.Length];
+        margin.homeX = new float[tabs.Length];
+        for (int i = 0; i < tabs.Length; i++)
+        {
+            if (tabs[i] == null) continue;
+            margin.tabs[i] = (RectTransform)tabs[i].transform;
+            margin.homeX[i] = margin.tabs[i].anchoredPosition.x;
+        }
+    }
+
+    private void LateUpdate()
+    {
+        float shift = Mathf.Max(0f, MinMargin - (canvas.rect.width / 2f + ColumnLeft));
+        if (Mathf.Approximately(shift, shownShift)) return;
+        shownShift = shift;
+        for (int i = 0; i < tabs.Length; i++)
+        {
+            if (tabs[i] == null) continue;
+            tabs[i].anchoredPosition = new Vector2(homeX[i] + shift, tabs[i].anchoredPosition.y);
+        }
+    }
 }

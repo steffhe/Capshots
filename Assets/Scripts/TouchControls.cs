@@ -65,6 +65,7 @@ public class TouchControls : MonoBehaviour
         public bool held;
         public int pressFrame = -1, releaseFrame = -1;
         public Image image;
+        public Text text;
     }
 
     private enum Owner { Stick, Look, Button }
@@ -91,6 +92,9 @@ public class TouchControls : MonoBehaviour
     private Vector2 stickOrigin;
     private bool sprinting;
     private TouchButton aimButton;
+    // Shows whether there's a plasma grenade to throw, and its fuse while it's cooked (the HUD's
+    // grenade dot is under the touch buttons, so it's hidden while they show)
+    private TouchButton grenadeButton;
     private bool usingTouch;
     private int lastPointerType;
 
@@ -225,11 +229,12 @@ public class TouchControls : MonoBehaviour
         AddButton("CROUCH", new[] { GameInput.Crouch, GameInput.Slide }, new Vector2(1f, 0f), new Vector2(-310f, 140f), 60f);
         AddButton("RELOAD", new[] { GameInput.Reload }, new Vector2(1f, 0f), new Vector2(-120f, 510f), 55f);
         AddButton("SWAP", new[] { GameInput.WeaponNext }, new Vector2(1f, 0f), new Vector2(-440f, 480f), 55f);
-        AddButton("NADE", new[] { GameInput.Grenade }, new Vector2(1f, 0f), new Vector2(-280f, 560f), 50f);
+        grenadeButton = AddButton("NADE", new[] { GameInput.Grenade }, new Vector2(1f, 0f), new Vector2(-280f, 560f), 50f);
 
-        // Top middle, clear of the kill feed (top right) and the player card (top left)
-        AddButton("II", null, new Vector2(0.5f, 1f), new Vector2(70f, -70f), 45f).onPress = OpenPauseMenu;
-        AddButton("SCORE", new[] { GameInput.Scoreboard }, new Vector2(0.5f, 1f), new Vector2(-70f, -70f), 45f);
+        // Top middle, either side of the match timer, clear of the kill feed (top right) and the
+        // player card (top left)
+        AddButton("II", null, new Vector2(0.5f, 1f), new Vector2(165f, -70f), 45f).onPress = OpenPauseMenu;
+        AddButton("SCORE", new[] { GameInput.Scoreboard }, new Vector2(0.5f, 1f), new Vector2(-165f, -70f), 45f);
 
         // Joystick: rests in the lower left and follows the thumb to wherever it lands
         stickBase = NewCircle("Stick", root, StickRadius, new Color(1f, 1f, 1f, 0.12f));
@@ -260,9 +265,35 @@ public class TouchControls : MonoBehaviour
         text.alignment = TextAnchor.MiddleCenter;
         text.color = new Color(1f, 1f, 1f, 0.85f);
         text.raycastTarget = false;
+        b.text = text;
 
         buttons.Add(b);
         return b;
+    }
+
+    // NADE: faint with no grenade, normal with one, and while it's cooked, gold turning red and
+    // flashing faster as the fuse runs down
+    private static readonly Color Empty = new Color(1f, 1f, 1f, 0.08f);
+    private static readonly Color Hot = new Color(1f, 0.3f, 0.2f, 0.7f);
+
+    private void RefreshGrenadeButton()
+    {
+        if (grenadeButton == null) return;
+        Player local = Player.Local;
+        Weapon weapon = local != null ? local.GetComponent<Weapon>() : null;
+        float cook = weapon != null ? weapon.CookProgress : -1f;
+        bool has = weapon != null && weapon.GrenadeCount > 0;
+
+        if (cook >= 0f)
+        {
+            float frequency = Mathf.Lerp(3f, 14f, cook * cook);
+            float flash = Mathf.Sin(Time.time * frequency * Mathf.PI * 2f) > 0f ? 1f : 0.6f;
+            Color c = Color.Lerp(On, Hot, cook);
+            c.a *= flash;
+            grenadeButton.image.color = c;
+        }
+        else if (!grenadeButton.held) grenadeButton.image.color = has ? Idle : Empty;
+        if (grenadeButton.text != null) grenadeButton.text.color = new Color(1f, 1f, 1f, has || cook >= 0f ? 0.85f : 0.3f);
     }
 
     private RectTransform NewCircle(string name, Transform parent, float radius, Color color)
@@ -315,6 +346,7 @@ public class TouchControls : MonoBehaviour
             ReleaseAll();
             return;
         }
+        RefreshGrenadeButton();
 
         float unit = Screen.height / ReferenceHeight;  // Screen pixels per layout unit
         seen.Clear();

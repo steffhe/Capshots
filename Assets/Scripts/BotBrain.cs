@@ -72,6 +72,8 @@ public class BotBrain : MonoBehaviour
     private bool reloadNextTick;
     // Plasma grenades: not before this time (Time.time)
     private float nextGrenadeAt;
+    // Holding the grenade button (cooking) until this time (Time.time)
+    private float grenadeHeldUntil;
 
     private const float BotGrenadeMinRange = 5f;
     private const float BotGrenadeMaxRange = 14f;
@@ -99,6 +101,7 @@ public class BotBrain : MonoBehaviour
         // A short pause after spawning, like a person getting their bearings
         nextScanAt = Time.time + Random.Range(0.2f, 0.6f);
         nextGrenadeAt = Time.time + Random.Range(3f, 6f);
+        grenadeHeldUntil = 0f;
 
         int shootable = weapon != null ? weapon.canBeShot.value : ~0;
         sightMask = shootable & ~((1 << Layers.LocalPlayer) | (1 << Layers.RemotePlayer) | (1 << Layers.Hitbox) | (1 << Layers.Glass));
@@ -233,12 +236,20 @@ public class BotBrain : MonoBehaviour
             bool lookingAtThem = Mathf.Abs(Mathf.DeltaAngle(yaw, exact.x)) < 4f && Mathf.Abs(Mathf.DeltaAngle(pitch, exact.y)) < 4f;
             if (lookingAtThem && Random.value < 0.4f)
             {
-                data.Buttons.Set(InputButton.Grenade, true);
+                // Cooked for a moment, so it doesn't give them the full fuse to get away
+                grenadeHeldUntil = now + Random.Range(0.3f, 1.3f);
                 nextGrenadeAt = now + Random.Range(8f, 14f);
-                trigger = false;
             }
             // Not this time: think about it again in a moment
             else nextGrenadeAt = now + Random.Range(0.8f, 1.6f);
+        }
+
+        // Holding a cooking grenade: keep the button down until it's time to throw (the gun can't
+        // fire meanwhile)
+        if (now < grenadeHeldUntil)
+        {
+            data.Buttons.Set(InputButton.Grenade, true);
+            trigger = false;
         }
 
         triggerWasDown = trigger;

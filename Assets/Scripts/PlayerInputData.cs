@@ -76,7 +76,7 @@ public class InputCollector
         data.Buttons.Set(InputButton.Fire, fire || GameInput.Held(GameInput.Fire));
         data.Buttons.Set(InputButton.Aim, GameInput.Held(GameInput.Aim));
         data.Buttons.Set(InputButton.Reload, reload);
-        data.Buttons.Set(InputButton.Grenade, grenade);
+        data.Buttons.Set(InputButton.Grenade, grenade || GameInput.Held(GameInput.Grenade));
         // A new body (just spawned) starts in the form picked in the settings, unless a form was
         // just picked by hand
         if (local != inputBody)

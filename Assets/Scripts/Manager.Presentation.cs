@@ -298,11 +298,36 @@ public partial class Manager
         StartCoroutine(RevealRows(board));
 
         BuildXpPanel(endgame);
+        FitResultsBoard(board as RectTransform, endgame.Find("XP") as RectTransform);
         if (VotingAvailable) BuildVotePanel(endgame);
 
         Text countdown = UITheme.NewText("Countdown", endgame, 18, UITheme.MutedText, TextAnchor.MiddleCenter);
         UITheme.Place(countdown.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 22f), new Vector2(800f, 24f));
         return countdown;
+    }
+
+    // The end screen's scoreboard hangs just below the result's subtitle and stops a gap above the XP
+    // panel, shrinking to fit when there are many players. (Centred, as in the prefab, it grew both
+    // ways and ran into the result title from about four players.)
+    private void FitResultsBoard(RectTransform board, RectTransform xpPanel)
+    {
+        if (board == null || board.childCount < 2) return;
+        const float gap = 18f;
+        // The subtitle's bottom edge (ShowResults: centred 122 above the middle, 30 tall)
+        const float top = 122f - 15f - gap;
+        float half = ((RectTransform)endgame).rect.height / 2f;
+        float xpTop = xpPanel != null ? xpPanel.anchoredPosition.y + xpPanel.sizeDelta.y : 180f;
+        float bottom = -half + xpTop + gap;
+
+        float header = ((RectTransform)board.GetChild(0)).sizeDelta.y;
+        float row = ((RectTransform)board.GetChild(1)).sizeDelta.y;
+        float needed = header + row * Mathf.Max(1, playerInfo.Count);
+        float scale = Mathf.Clamp(Mathf.Min(1f, (top - bottom) / needed), 0.5f, 1f);
+
+        // The layout centres the rows in the board, so a board exactly their height holds them exactly
+        board.sizeDelta = new Vector2(board.sizeDelta.x, needed);
+        board.localScale = Vector3.one * scale;
+        board.anchoredPosition = new Vector2(board.anchoredPosition.x, top - needed * scale / 2f);
     }
 
     // Scoreboard rows (after the header and the hidden template) slide in one after another
