@@ -536,6 +536,9 @@ public class Player : NetworkBehaviour
         }
 
         RefreshOwnHandsColor();
+        // While protected your own gun and hand-orbs are see-through too, so you can tell (after
+        // the colour refresh above, which would otherwise make them solid again)
+        UpdateProtectionGhost();
 
         float protectionLeft = ProtectionTimer.RemainingTime(Runner) ?? 0f;
         FeedbackUI.SpawnProtection(protectionLeft);
@@ -919,7 +922,8 @@ public class Player : NetworkBehaviour
         return transform.position;
     }
 
-    // Other players see a protected player see-through. Each body part's material is swapped for a
+    // A protected player is drawn see-through: by everyone else, and in their own view (their gun
+    // and hand-orbs). Each body part's material is swapped for a
     // transparent one (Resources/ProtectionGhost, an asset so builds keep its shader variant) and
     // given the part's own colour and glow at protectionAlpha. Parts drawn with another shader
     // (effects that manage themselves) and text are left alone.

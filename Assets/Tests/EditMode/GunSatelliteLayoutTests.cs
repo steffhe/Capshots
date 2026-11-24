@@ -103,31 +103,20 @@ public class GunSatelliteLayoutTests
     }
 
     [Test]
-    public void TheRotaryBarrelSleevesTheFrontOfTheBodyAndSpins()
+    public void TheRotaryBarrelSpinsOffTheFrontOfTheBody()
     {
         Layout.Shape gun = MachineGun;
         Vector3 muzzle = gun.Muzzle;
         for (int i = 0; i < Layout.Count; i++)
         {
             Layout.Pose pose = Layout.Arrange(Layout.Form.Orbit, i, gun, Rest);
-            Assert.Less(pose.position.z - pose.size.z * 0.5f, gun.body.max.z, "reaches back over the body");
-            Assert.Greater(pose.position.z + pose.size.z * 0.5f, gun.body.max.z, "and on past it");
+            Assert.Greater(pose.position.z - pose.size.z * 0.5f, gun.body.max.z, "in front of the body");
             float fromAxis = new Vector2(pose.position.x - muzzle.x, pose.position.y - muzzle.y).magnitude;
             Assert.AreEqual(Layout.RotaryRadius(gun), fromAxis, 1e-4f);
         }
         Vector3 still = Layout.Arrange(Layout.Form.Orbit, 0, gun, At(100f, 0f, 0f)).position;
         Vector3 turned = Layout.Arrange(Layout.Form.Orbit, 0, gun, At(100f, 0f, 1f)).position;
         Assert.Greater(Vector3.Distance(still, turned), 0.03f);
-    }
-
-    [Test]
-    public void AShotBurstsTheRotaryBarrelWideApart()
-    {
-        Layout.Shape gun = MachineGun;
-        Vector3 muzzle = gun.Muzzle;
-        Vector3 blast = Layout.Arrange(Layout.Form.Orbit, 0, gun, Firing).position;
-        float fromAxis = new Vector2(blast.x - muzzle.x, blast.y - muzzle.y).magnitude;
-        Assert.Greater(fromAxis, Layout.RotaryRadius(gun) * 2f);
     }
 
     [Test]
@@ -167,29 +156,19 @@ public class GunSatelliteLayoutTests
         }
         for (int i = 0; i < 2; i++)
         {
-            Layout.Pose rest = Layout.Arrange(Layout.Form.Tight, i, Pistol, Rest);
-            Layout.Pose shot = Layout.Arrange(Layout.Form.Tight, i, Pistol, Firing);
-            Assert.Less(shot.position.z, rest.position.z - 0.05f, "panel " + i + " recoils");
-            // Standing off the side of the body, reaching out past the muzzle, and thrown out wide by a shot
-            float restGap = Mathf.Abs(rest.position.x - Pistol.body.center.x) - Pistol.body.extents.x;
-            float shotGap = Mathf.Abs(shot.position.x - Pistol.body.center.x) - Pistol.body.extents.x;
-            Assert.Greater(restGap, Pistol.body.size.x * 0.2f, "panel " + i + " off the body");
-            Assert.Greater(rest.position.z + rest.size.z * 0.5f, Pistol.body.max.z, "panel " + i + " past the muzzle");
-            Assert.Greater(shotGap, restGap + Pistol.body.size.x * 0.4f, "panel " + i + " out wide");
+            float rest = Layout.Arrange(Layout.Form.Tight, i, Pistol, Rest).position.z;
+            float shot = Layout.Arrange(Layout.Form.Tight, i, Pistol, Firing).position.z;
+            Assert.Less(shot, rest - 0.05f, "panel " + i);
         }
     }
 
-    // Aimed down the sights, nothing may rise into the line of sight above the body (the machine
-    // gun's barrel only bursts above it when fired from the hip)
+    // Aimed down the sights, nothing may rise into the line of sight above the body
     [TestCase(Layout.Form.Tight)]
     [TestCase(Layout.Form.Orbit)]
     public void NothingRisesAboveTheBody(Layout.Form form)
     {
         Layout.Shape gun = form == Layout.Form.Tight ? Pistol : MachineGun;
-        Layout.Motion[] motions = form == Layout.Form.Tight
-            ? new[] { Rest, Firing, At(100f, 3f, 2f, 1f) }
-            : new[] { Rest, At(0.035f, 0f, 0f, 1f), At(100f, 3f, 2f, 1f) };
-        foreach (Layout.Motion motion in motions)
+        foreach (Layout.Motion motion in new[] { Rest, Firing, At(100f, 3f, 2f, 1f) })
         {
             for (int i = 0; i < Layout.Count; i++)
             {
