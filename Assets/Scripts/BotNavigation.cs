@@ -8,8 +8,13 @@ using UnityEngine.AI;
 // until it's ready, bots just head straight for their goal.
 public static class BotNavigation
 {
-    // The map's agent: a little wider than the player's capsule, so paths keep clear of walls
-    private const float AgentRadius = 0.5f;
+    // The map's agent. The builder rounds the radius up to whole voxels and also rounds walls out to
+    // the voxels they touch, so a radius the size of the player's capsule (0.5 m) took 0.6 m off each
+    // side of a 1.5 m doorway, and up to another 0.2 m for the posts: about half the office doors
+    // closed up on the mesh, and bots walked to the nearest spot outside the room and stood against
+    // its wall. Two voxels clears them all and still keeps paths 0.4-0.6 m off the walls; the
+    // capsule's last few centimetres just slide along them.
+    private const float AgentRadius = 0.39f;
     private const float AgentHeight = 2f;
     private const float AgentClimb = 0.45f;
     private const float AgentSlope = 45f;
@@ -133,16 +138,20 @@ public static class BotNavigation
     }
 
     // A walkable path between two points (each snapped onto the walkable area first), as corners.
-    // False if there's no navigation mesh yet or no way there.
-    public static bool FindPath(Vector3 from, Vector3 to, NavMeshPath path)
+    // False if there's no navigation mesh yet or no way there. complete is false when there's no way
+    // all the way there and the path only leads as close as the walkable area gets.
+    public static bool FindPath(Vector3 from, Vector3 to, NavMeshPath path, out bool complete)
     {
+        complete = false;
         if (!Ready) return false;
         if (!Snap(from, 3f, out Vector3 start)) return false;
         if (!Snap(to, 4f, out Vector3 end)) return false;
 
         NavMeshQueryFilter filter = new NavMeshQueryFilter { agentTypeID = agentTypeId, areaMask = NavMesh.AllAreas };
         if (!NavMesh.CalculatePath(start, end, filter, path)) return false;
-        return path.status != NavMeshPathStatus.PathInvalid && path.corners.Length > 0;
+        if (path.status == NavMeshPathStatus.PathInvalid || path.corners.Length == 0) return false;
+        complete = path.status == NavMeshPathStatus.PathComplete;
+        return true;
     }
 
     // Whether a bot can walk straight from one point to another without leaving the walkable area
