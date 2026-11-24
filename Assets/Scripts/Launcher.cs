@@ -42,8 +42,9 @@ public partial class Launcher : MonoBehaviour
     public static MapData[] Maps;
     private int currentmap = 0;
 
-    private static readonly string[] modeNames = { "FREE FOR ALL", "TEAM DEATHMATCH" };
-    private static readonly string[] modeShortNames = { "FFA", "TDM" };
+    // In MatchMode's order
+    private static readonly string[] modeNames = { "FREE FOR ALL", "TEAM DEATHMATCH", "CAP GRAB" };
+    private static readonly string[] modeShortNames = { "FFA", "TDM", "CAP" };
     private int currentmode = 0;
     private Text modeValue;
 
@@ -563,7 +564,8 @@ public partial class Launcher : MonoBehaviour
     private static string MatchGoal(SessionInfo session)
     {
         var properties = session.Properties;
-        if (properties.TryGetValue("killcount", out SessionProperty kills) && (int)kills > 0) return (int)kills + " KILLS";
+        bool caps = properties.TryGetValue("mode", out SessionProperty mode) && (int)mode == (int)MatchMode.CapGrab;
+        if (properties.TryGetValue("killcount", out SessionProperty kills) && (int)kills > 0) return (int)kills + (caps ? " CAPS" : " KILLS");
         if (properties.TryGetValue("matchlength", out SessionProperty length) && (int)length > 0) return Mathf.Max(1, (int)length / 60) + " MIN";
         return null;
     }

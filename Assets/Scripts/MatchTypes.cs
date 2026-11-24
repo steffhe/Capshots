@@ -43,7 +43,9 @@ public struct PlayerStats : INetworkStruct
 public enum MatchMode
 {
     FreeForAll = 0,
-    TeamDeathmatch = 1
+    TeamDeathmatch = 1,
+    // Free for all, but a kill only drops the victim's cap: grabbing it scores (Manager.CapGrab.cs)
+    CapGrab = 2
 }
 
 public enum GameState

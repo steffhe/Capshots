@@ -602,6 +602,14 @@ public class BotBrain : MonoBehaviour
             return;
         }
 
+        // Cap Grab: a cap on the ground nearby is worth more than a fight (an enemy's scores, its own
+        // denies it to them)
+        if (manager.IsCapGrab && manager.NearestCap(feet, 25f, out Vector3 cap))
+        {
+            goal = cap;
+            return;
+        }
+
         if (now >= wanderUntil)
         {
             // Go and check where an enemy was last seen

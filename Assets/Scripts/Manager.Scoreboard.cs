@@ -17,7 +17,13 @@ public partial class Manager
         Text modeText = lb.Find("Header/Mode").GetComponent<Text>();
         modeText.supportRichText = true;
         modeText.horizontalOverflow = HorizontalWrapMode.Overflow;
-        modeText.text = IsTeamMode ? TeamHeader() : "FREE FOR ALL";
+        modeText.text = IsTeamMode ? TeamHeader() : LoadingScreen.ModeName((int)mode);
+        // In Cap Grab the kills column counts caps
+        foreach (Text label in lb.Find("Header").GetComponentsInChildren<Text>(true))
+        {
+            string upper = label.text.Trim().ToUpperInvariant();
+            if (upper == "KILLS" || upper == "CAPS") label.text = ScoreWord;
+        }
         lb.Find("Header/Map").GetComponent<Text>().text = CurrentMapName();
 
         GameObject playerCard = lb.GetChild(1).gameObject;

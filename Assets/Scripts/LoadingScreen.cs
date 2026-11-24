@@ -92,7 +92,7 @@ public class LoadingScreen : MonoBehaviour
         instance.FadeTo(0f, FadeOutTime, 2f);
     }
 
-    public static string ModeName(int mode) => mode == (int)MatchMode.TeamDeathmatch ? "TEAM DEATHMATCH" : "FREE FOR ALL";
+    public static string ModeName(int mode) => mode == (int)MatchMode.TeamDeathmatch ? "TEAM DEATHMATCH" : mode == (int)MatchMode.CapGrab ? "CAP GRAB" : "FREE FOR ALL";
 
     private static LoadingScreen Instance
     {

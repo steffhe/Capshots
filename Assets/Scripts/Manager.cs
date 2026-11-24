@@ -272,12 +272,12 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
         if (myind >= 0 && playerInfo.Count > myind)
         {
-            myKills.text = $"{playerInfo[myind].kills} KILLS";
+            myKills.text = $"{playerInfo[myind].kills} {ScoreWord}";
             myDeaths.text = $"{playerInfo[myind].deaths} DEATHS";
         }
         else
         {
-            myKills.text = "0 KILLS";
+            myKills.text = $"0 {ScoreWord}";
             myDeaths.text = "0 DEATHS";
         }
 
@@ -438,6 +438,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
         SpawnWaitingPlayers();
         CheckPickups();
+        CheckCaps();
         UpdateGrenades();
         BotNavigation.Tick();
 
@@ -526,7 +527,8 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         if (State == GameState.Playing)
         {
             ChangeStats(victim, 0, 1);
-            if (killer.IsRealPlayer && killer != victim) ChangeStats(killer, 1, 0);
+            // In Cap Grab a kill only drops the cap: grabbing it is what scores (Manager.CapGrab.cs)
+            if (killer.IsRealPlayer && killer != victim && !IsCapGrab) ChangeStats(killer, 1, 0);
             CountStreaks(victim, killer, out multiKill, out streak, out endedStreak);
             CountForAwards(killer, victim, weaponName, headshot, streak);
         }

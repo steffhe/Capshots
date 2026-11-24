@@ -783,6 +783,7 @@ public class Player : NetworkBehaviour
         {
             manager.SpawnRagdoll(transform.position, transform.rotation, Velocity, hitDirection.normalized, hitOffset, knockback, headshot, ActorId);
             manager.DropAmmo(GroundPosition());
+            manager.DropCap(GroundPosition(), ActorId);
             manager.PlayerKilled(Owner, attacker, weaponName, headshot);
         }
 
