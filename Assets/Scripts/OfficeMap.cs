@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 
 // Builds the Office map (the 3rd floor of an office building) when its scene loads, from the
 // boxes in Assets/Resources/Maps/Office.txt. That file is made by Tools/OfficeMap/generate.py
@@ -30,8 +31,14 @@ public class OfficeMap : MonoBehaviour
     public Manager manager;
     [Tooltip("The baked floor (set by Capshots > Bake Office Map). Empty: the floor is built when the scene loads.")]
     public OfficeBake baked;
+    [Header("Look")]
+    [Tooltip("Tone mapping for the Office, so sunlit walls and grass roll off instead of clipping to white")]
+    public TonemappingMode tonemapping = TonemappingMode.ACES;
+    [Tooltip("Brightens (+) or darkens (-) the whole picture, in stops")]
+    public float exposure = 0f;
 
     private const float CellSize = 24f;
+    private VolumeProfile lookProfile;
     private const int CollidersPerObject = 256;
 
     private static readonly Dictionary<string, Texture2D> textures = new Dictionary<string, Texture2D>();
@@ -45,6 +52,28 @@ public class OfficeMap : MonoBehaviour
             return;
         }
         Build(OfficeMapData.Parse(layout.text), LayoutHash(layout));
+        CreateLook();
+    }
+
+    private void OnDestroy()
+    {
+        if (lookProfile != null) Destroy(lookProfile);
+    }
+
+    // A global volume for the Office's tone mapping and exposure. Made here rather than placed in the
+    // scene so a bake can't lose it. Edit "Office Look" in play mode to try values, then set them above.
+    private void CreateLook()
+    {
+        var go = new GameObject("Office Look");
+        go.transform.SetParent(transform, false);
+        Volume volume = go.AddComponent<Volume>();
+        volume.isGlobal = true;
+        lookProfile = ScriptableObject.CreateInstance<VolumeProfile>();
+        Tonemapping tone = lookProfile.Add<Tonemapping>(true);
+        tone.mode.Override(tonemapping);
+        ColorAdjustments color = lookProfile.Add<ColorAdjustments>(true);
+        color.postExposure.Override(exposure);
+        volume.sharedProfile = lookProfile;
     }
 
     // Identifies a layout, so a bake can tell whether it was made from this one
@@ -136,6 +165,10 @@ public class OfficeMap : MonoBehaviour
         {
             SetColor(material, "_EmissionColor", new Color(color.r, color.g, color.b) * 1.6f);
         }
+        // The ceiling panels are what lights the rooms in the lightmaps, as the ceiling shuts out the sky
+        material.globalIlluminationFlags = def.kind == OfficeMapData.MaterialKind.Glow
+            ? MaterialGlobalIlluminationFlags.BakedEmissive
+            : MaterialGlobalIlluminationFlags.EmissiveIsBlack;
         if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", def.smoothness);
         if (material.HasProperty("_Metallic")) material.SetFloat("_Metallic", 0f);
         if (material.HasProperty("_BaseMap"))

@@ -372,7 +372,8 @@ for room in rooms:
 
 for r in L.SLABS:
     rbox("wood", wrect(r), -0.4, 0.0)
-    rbox("ceiling", wrect(r), H, H + 0.3, "s")
+    # It casts shadows: it is the roof, and without it the sun and sky light every room in the lightmaps
+    rbox("ceiling", wrect(r), H, H + 0.3)
     # The floors below
     rbox("ext", wrect(r), GROUND_Y, -0.4, "n")
 
