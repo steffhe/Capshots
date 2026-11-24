@@ -65,8 +65,11 @@ public partial class Manager
 
         Text rules = UITheme.NewText("Rules", root, 20, UITheme.AccentText, TextAnchor.MiddleCenter);
         UITheme.Row(rules.rectTransform, 104f, 28f);
-        string goal = IsTeamMode ? $"FIRST TEAM TO {killcount} KILLS" : $"FIRST TO {killcount} KILLS";
-        rules.text = $"{LoadingScreen.ModeName((int)mode)}   ·   {goal}   ·   {Mathf.Max(1, matchlength / 60)} MIN";
+        string goal;
+        if (HasKillLimit) goal = IsTeamMode ? $"FIRST TEAM TO {killcount} KILLS" : $"FIRST TO {killcount} KILLS";
+        else goal = $"MOST KILLS IN {Mathf.Max(1, matchlength / 60)} MIN";
+        if (HasKillLimit && HasTimeLimit) goal += $"   ·   {Mathf.Max(1, matchlength / 60)} MIN";
+        rules.text = $"{LoadingScreen.ModeName((int)mode)}   ·   {goal}";
         UITheme.AddShadow(rules);
 
         // Rise and fade in, hold, fade out

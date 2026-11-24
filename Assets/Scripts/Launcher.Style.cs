@@ -335,7 +335,7 @@ public partial class Launcher
         {
             Button button = child.GetComponent<Button>();
             Text label = button != null ? button.GetComponentInChildren<Text>() : null;
-            if (label != null && (label == mapValue || label == modeValue || label == botsValue))
+            if (label != null && (label == mapValue || label == modeValue || label == botsValue || label == winByValue))
             {
                 UITheme.StyleSelector(button);
             }
@@ -376,7 +376,8 @@ public partial class Launcher
         Slider slider = row.GetComponentInChildren<Slider>(true);
         if (slider != null)
         {
-            UITheme.Place((RectTransform)slider.transform, new Vector2(0.5f, 0.5f), new Vector2(42f, 0f), new Vector2(100f, 20f));
+            // A little left of centre, leaving room on the right for a value like "20 MIN"
+            UITheme.Place((RectTransform)slider.transform, new Vector2(0.5f, 0.5f), new Vector2(18f, 0f), new Vector2(92f, 20f));
             UITheme.StyleSlider(slider);
         }
 
@@ -385,6 +386,8 @@ public partial class Launcher
         {
             UITheme.StyleText(value, 18, UITheme.TextColor, TextAnchor.MiddleRight);
             UITheme.Place(value.rectTransform, new Vector2(1f, 0.5f), new Vector2(-16f, 0f), new Vector2(40f, 30f));
+            // "20 MIN" is wider than the box: it grows to the left
+            value.horizontalOverflow = HorizontalWrapMode.Overflow;
         }
     }
 

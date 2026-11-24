@@ -19,7 +19,7 @@ To play together, each player runs the game, picks a username and either creates
 ## Features
 
 - Online multiplayer through Photon Fusion: host rooms, browse and join open rooms, or quick-join a random one
-- Room options: game mode, map, bots, max players and kills to win
+- Room options: game mode, map, bots, max players, and how the match is won: first to a number of kills (up to 50, with a clock counting up) or the most kills when the time runs out (1 to 20 minutes). The room list shows which
 - Bots: the host can fill a room with up to 7 computer players. They find their way around every map, hunt down enemies, aim with a short reaction time and some inaccuracy, change gun form for the distance and swap energy cells like anyone else. They play by the same rules as people (same movement, gun, damage and spawn protection), show on the scoreboard and kill feed with BOT in their name, and make way when people join: a bot leaves when someone joins a full room, and comes back when they leave. In Team Deathmatch they fill both teams evenly
 - Two game modes: Free For All, and Team Deathmatch (blue vs red, automatic team balancing, no friendly fire, first team to the kill limit wins)
 - Several maps to choose from, including Office: a real office floor with glass-walled offices and meeting rooms around a courtyard garden. Its glass walls crack when shot and shatter on the second hit, leaving a gap to walk and shoot through

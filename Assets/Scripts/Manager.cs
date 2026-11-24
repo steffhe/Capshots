@@ -17,8 +17,14 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
     public const int MaxPlayers = 16;
 
     public int mainmenu = 0;
+    // How the match is won, from the room's settings (these are the defaults for a map opened
+    // without them). 0 means no limit: a match is won either on kills, with the clock counting up,
+    // or on time, by whoever has the most kills when it runs out.
     public int killcount = 20;
     public int matchlength = 180;
+
+    public bool HasKillLimit => killcount > 0;
+    public bool HasTimeLimit => matchlength > 0;
 
     [Header("Match start")]
     public int minPlayersToStart = 2;
@@ -142,6 +148,8 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         if (properties.TryGetValue("mode", out value)) mode = (MatchMode)(int)value;
         if (properties.TryGetValue("matchlength", out value)) matchlength = (int)value;
         if (properties.TryGetValue("bots", out value)) botSetting = (int)value;
+        // A match needs some way to end
+        if (!HasKillLimit && !HasTimeLimit) killcount = 20;
     }
 
     private void Update()
@@ -460,6 +468,12 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
                 break;
 
             case GameState.Playing:
+                // Won on kills only: the clock shows how long the match has been going
+                if (!HasTimeLimit)
+                {
+                    MatchTime += 1;
+                    break;
+                }
                 MatchTime -= 1;
                 if (MatchTime < 0)
                 {
@@ -507,7 +521,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
     private void ScoreCheck()
     {
-        if (State != GameState.Playing) return;
+        if (State != GameState.Playing || !HasKillLimit) return;
 
         bool detectwin = false;
         if (IsTeamMode)
@@ -571,11 +585,12 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         matchEnded = true;
 
         // The host only stops the clock at zero when time runs out; a kill limit ends it early
-        bool timeUp = MatchTime <= 0;
+        bool timeUp = HasTimeLimit && MatchTime <= 0;
 
         AwardMatchXp();
 
-        currentMatchTime = 0;
+        // A countdown stops at zero; a clock counting up stops where it is
+        if (HasTimeLimit) currentMatchTime = 0;
         RefreshTimerUI();
 
         // Banner, results, then back to the menu (Manager.Presentation.cs). The host stays on the
