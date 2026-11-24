@@ -114,18 +114,20 @@ public static class GunSatelliteLayout
         // Closer together while aiming
         float fill = Mathf.Lerp(0.76f, 0.86f, m.aim);
         // The shot's wave runs from the back segment to the front one
-        float kick = Kick(m.shotAge - i * 0.018f);
+        float kick = Kick(m.shotAge - i * 0.028f);
         float idle = 1f - 0.6f * m.aim;
 
         float z = barrel.min.z + segment * (i + 0.5f);
         z += Mathf.Sin(m.time * 1.6f - i * 0.55f) * segment * 0.06f * idle;
-        z += kick * segment * 0.5f;
+        z += kick * segment * 1.1f;
+        // Every other segment jumps out to one side, then the other
+        float scatter = kick * barrel.size.x * 0.45f * (i % 2 == 0 ? 1f : -1f);
 
         float roll = Mathf.Sin(m.time * 1.1f + i * 0.9f) * 7f * idle + kick * 15f * (i % 2 == 0 ? 1f : -1f);
         float swell = 1.08f + 0.25f * kick;
         return new Pose
         {
-            position = new Vector3(barrel.center.x, barrel.center.y, z),
+            position = new Vector3(barrel.center.x + scatter, barrel.center.y, z),
             rotation = Quaternion.Euler(0f, 0f, roll),
             size = new Vector3(barrel.size.x * swell, barrel.size.y * swell, segment * fill),
         };
@@ -143,9 +145,9 @@ public static class GunSatelliteLayout
 
         float angle = i * Mathf.PI * 2f / Count + m.spin;
         Vector3 outward = new Vector3(Mathf.Cos(angle), Mathf.Sin(angle), 0f);
-        float radius = RotaryRadius(shape) * (1f - 0.1f * m.aim) + kick * width * 0.06f;
+        float radius = RotaryRadius(shape) * (1f - 0.1f * m.aim) + kick * width * 0.15f;
         // Every other slat sticks out a little further, so the barrel looks machined rather than a tube
-        float z = muzzle.z + width * 0.07f + length * 0.5f + (i % 2) * length * 0.08f + kick * length * 0.06f;
+        float z = muzzle.z + width * 0.07f + length * 0.5f + (i % 2) * length * 0.08f + kick * length * 0.16f;
         return new Pose
         {
             position = new Vector3(muzzle.x, muzzle.y, z) + outward * radius,
@@ -173,7 +175,7 @@ public static class GunSatelliteLayout
                 : new Bounds(new Vector3(body.center.x, body.min.y - width * 0.3f, body.max.z - body.size.z * 0.25f),
                              new Vector3(width * 0.8f, width * 0.5f, body.size.z * 0.35f));
             float side = i == ClawPetals ? -1f : 1f;
-            float rack = Pump(m.shotAge) * under.size.z * 0.45f;
+            float rack = Pump(m.shotAge) * under.size.z * 0.65f;
             return new Pose
             {
                 position = new Vector3(under.center.x + side * (under.extents.x + width * 0.07f), under.center.y, under.center.z - rack),
@@ -188,8 +190,8 @@ public static class GunSatelliteLayout
         Vector3 outward = new Vector3(Mathf.Cos(angle), Mathf.Sin(angle), 0f);
         float length = body.size.z * 0.22f;
         // Opens wide with the blast, breathes a little at rest, and narrows while aiming
-        float flare = (14f + 3f * Mathf.Sin(m.time * 1.4f + i * 1.1f)) * (1f - 0.5f * m.aim) + 42f * kick;
-        float radius = Mathf.Max(body.size.x, body.size.y) * 0.4f + kick * width * 0.15f;
+        float flare = (14f + 3f * Mathf.Sin(m.time * 1.4f + i * 1.1f)) * (1f - 0.5f * m.aim) + 68f * kick;
+        float radius = Mathf.Max(body.size.x, body.size.y) * 0.4f + kick * width * 0.35f;
 
         Vector3 along = Quaternion.AngleAxis(flare, Vector3.Cross(Vector3.forward, outward)) * Vector3.forward;
         Vector3 root = muzzle + outward * radius - Vector3.forward * width * 0.15f;
@@ -215,12 +217,12 @@ public static class GunSatelliteLayout
         {
             // Down the sides: hover a little off the body, tighter while aiming, and recoil back
             float side = i == 0 ? -1f : 1f;
-            float gap = width * (0.1f + 0.03f * breathe) * (1f - 0.5f * m.aim) + kick * width * 0.1f;
+            float gap = width * (0.1f + 0.03f * breathe) * (1f - 0.5f * m.aim) + kick * width * 0.28f;
             float length = body.size.z * 0.7f;
             return new Pose
             {
                 position = new Vector3(body.center.x + side * (body.extents.x + gap + width * 0.05f), body.center.y + height * 0.1f,
-                                       body.center.z + body.size.z * 0.05f - kick * body.size.z * 0.22f),
+                                       body.center.z + body.size.z * 0.05f - kick * body.size.z * 0.38f),
                 rotation = Quaternion.LookRotation(Vector3.forward, side < 0f ? Vector3.left : Vector3.right),
                 size = new Vector3(height * 0.55f, width * 0.1f, length),
             };
@@ -229,10 +231,10 @@ public static class GunSatelliteLayout
         {
             // A cap floating in front of the muzzle, punched forward by the shot
             Vector3 muzzle = shape.Muzzle;
-            float swell = 1f + 0.3f * kick;
+            float swell = 1f + 0.45f * kick;
             return new Pose
             {
-                position = new Vector3(muzzle.x, body.center.y + height * 0.1f, muzzle.z + width * (0.22f + 0.03f * breathe) + kick * width * 0.6f),
+                position = new Vector3(muzzle.x, body.center.y + height * 0.1f, muzzle.z + width * (0.22f + 0.03f * breathe) + kick * width * 1.3f),
                 rotation = Quaternion.identity,
                 size = new Vector3(width * 0.9f * swell, height * 0.5f * swell, width * 0.16f),
             };
@@ -241,7 +243,7 @@ public static class GunSatelliteLayout
         float plate = body.size.z * 0.4f;
         return new Pose
         {
-            position = new Vector3(body.center.x, body.min.y - width * (0.14f + 0.02f * breathe) - kick * width * 0.15f, body.max.z - plate * 0.5f),
+            position = new Vector3(body.center.x, body.min.y - width * (0.14f + 0.02f * breathe) - kick * width * 0.4f, body.max.z - plate * 0.5f),
             rotation = Quaternion.LookRotation(Vector3.forward, Vector3.down),
             size = new Vector3(width * 0.8f, width * 0.12f, plate),
         };

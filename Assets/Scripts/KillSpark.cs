@@ -118,8 +118,9 @@ public class KillSpark : MonoBehaviour
         if (!anyLeft && flash == null && age > ZapClip().length) Destroy(gameObject);
     }
 
-    // A short electric zap: a buzzy crackle that drops in pitch, synthesized once
-    private static AudioClip ZapClip()
+    // A short electric zap: a buzzy crackle that drops in pitch, synthesized once. NeckSparks
+    // crackles with it too.
+    internal static AudioClip ZapClip()
     {
         if (zapClip != null) return zapClip;
 

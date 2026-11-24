@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-// The floating cast-stone pieces built into the player's gun, each with a glowing strip in the
+// The floating pieces built into the player's gun, of the same metal as the gun, each with a glowing strip in the
 // player's (or team's) colour. For each form they make up part of the gun (GunSatelliteLayout):
 // the sniper rifle's barrel, the machine gun's rotary barrel, the shotgun's flared muzzle and pump,
 // the pistol's side panels. They move all the time (breathing, turning, spinning), react to every
@@ -16,10 +16,13 @@ using UnityEngine;
 public class GunSatellites : MonoBehaviour
 {
     private const int Count = GunSatelliteLayout.Count;
-    // Rough, non-metallic cast stone, with a fine grain and pores (StoneMaterial)
-    private static readonly Color StoneColor = new Color(0.6f, 0.59f, 0.56f);
-    private const float StoneSmoothness = 0.12f;
-    private static Material stoneMaterial;
+    // The pieces are made of the gun's own material (its Body's), in its own colour
+    private Color plateColor = new Color(0.075f, 0.08f, 0.09f);
+    private Material metal;
+    // While the player has spawn protection the pieces are see-through like the rest of them
+    // (Player skips them and leaves it to this): Resources/ProtectionGhost, at Player.protectionAlpha
+    private static Material ghostMaterial;
+    private float alpha = 1f;
     // The glowing strip along each piece's outer face, as a share of the piece's size
     private static readonly Vector3 StripScale = new Vector3(0.4f, 0.16f, 0.86f);
     private const float Glow = 2.6f;
@@ -27,11 +30,14 @@ public class GunSatellites : MonoBehaviour
     private const float CellIn = 0.58f;
     // Seconds the pieces take to re-form into a new form's parts, and the stagger between pieces
     private const float ReformTime = 0.45f, ReformStagger = 0.025f;
-    // How tightly the pieces follow the gun as it moves (higher: less trailing)
-    private const float TrailRate = 28f;
+    // How tightly the pieces follow the gun's own sway and kick (higher: less trailing). They trail
+    // in the space of what holds the gun, which moves and turns with the view, so running and
+    // looking around never leave them behind; and never by more than MaxTrail of the body's width.
+    private const float TrailRate = 40f;
+    private const float MaxTrail = 0.3f;
     // The machine gun's rotary barrel: turns this fast at rest (radians a second), faster with
     // every shot up to MaxSpin, and slows back down after
-    private const float RestSpin = 1f, SpinPerShot = 4f, MaxSpin = 28f, SpinDown = 1.2f;
+    private const float RestSpin = 1f, SpinPerShot = 6f, MaxSpin = 36f, SpinDown = 1.2f;
 
     private Player player;
     private Weapon weapon;
@@ -51,7 +57,9 @@ public class GunSatellites : MonoBehaviour
     private Quaternion[] fromRotations;
     private float reformStart = -10f;
     // What each piece showed last frame, in the gun model's space, and where it is in the world
-    private Vector3[] shownPositions, shownSizes, worldPositions;
+    // Where each piece is, in the space of what holds the gun (trailing it slightly)
+    private Vector3[] shownPositions, shownSizes, heldPositions;
+    private Transform heldSpace;
     private Quaternion[] shownRotations;
 
     private float spin, spinSpeed = RestSpin;
@@ -142,99 +150,19 @@ public class GunSatellites : MonoBehaviour
         shownPositions = new Vector3[Count];
         shownSizes = new Vector3[Count];
         shownRotations = new Quaternion[Count];
-        worldPositions = new Vector3[Count];
+        heldPositions = new Vector3[Count];
         for (int i = 0; i < Count; i++)
         {
             // A unit block scaled to the piece's size, with a glowing strip along its outer face
             Transform piece = new GameObject("Piece " + i).transform;
             piece.SetParent(transform, false);
-            plates[i] = Part(piece, "Plate", StoneMaterial, Vector3.zero, Vector3.one);
+            // The gun's material is set when fitted to a gun (FitTo)
+            plates[i] = Part(piece, "Plate", DroneBody.ShellMaterial, Vector3.zero, Vector3.one);
             strips[i] = Part(piece, "Strip", DroneBody.GlowMaterial, new Vector3(0f, 0.5f + StripScale.y * 0.5f, 0f), StripScale);
             pieces[i] = piece;
             shownRotations[i] = fromRotations[i] = Quaternion.identity;
         }
     }
-
-    // Matte cast stone: URP Lit, not metallic, rough, with a grain texture made here so no texture
-    // asset is needed. Tinted by StoneColor through each plate's property block.
-    private static Material StoneMaterial
-    {
-        get
-        {
-            if (stoneMaterial != null) return stoneMaterial;
-            Shader lit = Shader.Find("Universal Render Pipeline/Lit");
-            stoneMaterial = lit != null ? new Material(lit) : new Material(DroneBody.ShellMaterial);
-            stoneMaterial.name = "Gun Satellite Stone";
-            if (stoneMaterial.HasProperty("_Metallic")) stoneMaterial.SetFloat("_Metallic", 0f);
-            if (stoneMaterial.HasProperty("_Smoothness")) stoneMaterial.SetFloat("_Smoothness", StoneSmoothness);
-            Texture2D grain = StoneGrain(128, 7);
-            if (stoneMaterial.HasProperty("_BaseMap")) stoneMaterial.SetTexture("_BaseMap", grain);
-            if (stoneMaterial.HasProperty("_MainTex")) stoneMaterial.SetTexture("_MainTex", grain);
-            return stoneMaterial;
-        }
-    }
-
-    // A tiling greyscale grain: soft blotches, fine speckle, and a scattering of small dark pores
-    private static Texture2D StoneGrain(int size, int seed)
-    {
-        System.Random random = new System.Random(seed);
-        float[] coarse = Noise(random, 8), fine = Noise(random, 32);
-        Color[] pixels = new Color[size * size];
-        for (int y = 0; y < size; y++)
-        {
-            for (int x = 0; x < size; x++)
-            {
-                float u = (float)x / size, v = (float)y / size;
-                float value = 0.82f + 0.12f * (Sample(coarse, 8, u, v) - 0.5f) * 2f + 0.08f * (Sample(fine, 32, u, v) - 0.5f) * 2f;
-                value += ((float)random.NextDouble() - 0.5f) * 0.06f;
-                pixels[y * size + x] = new Color(value, value, value, 1f);
-            }
-        }
-        // Pores: small dark pits, a couple of pixels across
-        for (int p = 0; p < size * size / 180; p++)
-        {
-            int cx = random.Next(size), cy = random.Next(size);
-            float depth = 0.25f + (float)random.NextDouble() * 0.25f;
-            for (int dy = -1; dy <= 1; dy++)
-            {
-                for (int dx = -1; dx <= 1; dx++)
-                {
-                    int px = (cx + dx + size) % size, py = (cy + dy + size) % size;
-                    float k = dx == 0 && dy == 0 ? 1f : 0.4f;
-                    pixels[py * size + px] *= 1f - depth * k;
-                }
-            }
-        }
-        Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, true);
-        texture.name = "Gun Satellite Stone Grain";
-        texture.wrapMode = TextureWrapMode.Repeat;
-        texture.filterMode = FilterMode.Bilinear;
-        texture.SetPixels(pixels);
-        texture.Apply(true, true);
-        return texture;
-    }
-
-    // A grid of random values, cells x cells, that wraps round
-    private static float[] Noise(System.Random random, int cells)
-    {
-        float[] grid = new float[cells * cells];
-        for (int i = 0; i < grid.Length; i++) grid[i] = (float)random.NextDouble();
-        return grid;
-    }
-
-    // Smoothly interpolated value from a wrapping noise grid, at u, v in 0 to 1
-    private static float Sample(float[] grid, int cells, float u, float v)
-    {
-        float x = u * cells, y = v * cells;
-        int x0 = Mathf.FloorToInt(x), y0 = Mathf.FloorToInt(y);
-        float tx = Mathf.SmoothStep(0f, 1f, x - x0), ty = Mathf.SmoothStep(0f, 1f, y - y0);
-        int x1 = (x0 + 1) % cells, y1 = (y0 + 1) % cells;
-        x0 %= cells; y0 %= cells;
-        float a = Mathf.Lerp(grid[y0 * cells + x0], grid[y0 * cells + x1], tx);
-        float b = Mathf.Lerp(grid[y1 * cells + x0], grid[y1 * cells + x1], tx);
-        return Mathf.Lerp(a, b, ty);
-    }
-
 
     private static Renderer Part(Transform parent, string name, Material material, Vector3 position, Vector3 scale)
     {
@@ -260,16 +188,35 @@ public class GunSatellites : MonoBehaviour
         Color strip = Color.Lerp(color * 0.35f, color, glow);
         for (int i = 0; i < Count; i++)
         {
-            Set(plates[i], StoneColor, Color.black);
+            Set(plates[i], plateColor, Color.black);
             Set(strips[i], strip, color * (Glow * glow));
         }
+    }
+
+    // The gun's metal for the pieces and the glow for their strips, or the see-through material
+    // for both while protected
+    private void ApplyMaterials()
+    {
+        bool ghost = player != null && player.IsProtected;
+        if (ghost && ghostMaterial == null) ghostMaterial = Resources.Load<Material>("ProtectionGhost");
+        if (ghostMaterial == null) ghost = false;
+        Material plate = ghost ? ghostMaterial : metal;
+        Material strip = ghost ? ghostMaterial : DroneBody.GlowMaterial;
+        if (plate == null || (plates[0].sharedMaterial == plate && strips[0].sharedMaterial == strip)) return;
+
+        alpha = ghost ? player.protectionAlpha : 1f;
+        for (int i = 0; i < Count; i++)
+        {
+            plates[i].sharedMaterial = plate;
+            strips[i].sharedMaterial = strip;
+        }
+        shownGlow = -1f; // repaint, with the new see-through-ness
     }
 
     private void Set(Renderer r, Color c, Color emission)
     {
         r.GetPropertyBlock(block);
-        // Keep any see-through-ness set on it (Player's spawn protection)
-        if (block.HasColor("_BaseColor")) c.a = block.GetColor("_BaseColor").a;
+        c.a = alpha;
         block.SetColor("_BaseColor", c);
         block.SetColor("_Color", c);
         block.SetColor("_EmissionColor", emission);
@@ -329,6 +276,23 @@ public class GunSatellites : MonoBehaviour
         design = newDesign;
         shape = newShape;
         form = GunSatelliteLayout.FormOf(CurrentForm);
+
+        // Made of the same material as the gun: its Body's, else its first part's. Read from the
+        // gun's prefab, as the model itself may be drawn see-through (spawn protection) right now.
+        Gun shownGunForm = CurrentForm;
+        Transform source = shownGunForm != null && shownGunForm.prefab != null ? shownGunForm.prefab.transform.Find("Anchor/Design") : null;
+        if (source == null) source = design;
+        Transform bodyPart = source.Find("Body");
+        Renderer bodyRenderer = bodyPart != null ? bodyPart.GetComponent<Renderer>() : null;
+        if (bodyRenderer == null) bodyRenderer = source.GetComponentInChildren<MeshRenderer>(true);
+        Material gunMetal = bodyRenderer != null ? bodyRenderer.sharedMaterial : null;
+        if (gunMetal != null)
+        {
+            metal = gunMetal;
+            if (metal.HasProperty("_BaseColor")) plateColor = metal.GetColor("_BaseColor");
+            else if (metal.HasProperty("_Color")) plateColor = metal.GetColor("_Color");
+            shownGlow = -1f; // repaint in the gun's colour
+        }
 
         // The part the pieces stand in for is hidden (its copy retracting into the next form is too)
         string part = GunSatelliteLayout.ReplacedPart(form);
@@ -411,12 +375,17 @@ public class GunSatellites : MonoBehaviour
         float drift = shape.body.size.x * 0.5f;
 
         // Dimmer as the energy runs down, and almost dark while the cell is out
+        ApplyMaterials();
         Paint(Mathf.Lerp(0.3f + 0.7f * EnergyFraction, 0.15f, loose));
 
         float trail = 1f - Mathf.Exp(-dt * TrailRate);
         // Sizes are in the gun model's units; the pieces hang off this holder, which may be scaled differently
         float holderScale = transform.lossyScale.x;
         float scale = holderScale > 0f ? design.lossyScale.x / holderScale : 1f;
+        // What holds the gun (it moves and turns with the view), and the furthest a piece may trail, in its units
+        Transform space = shownGun != null && shownGun.transform.parent != null ? shownGun.transform.parent : design;
+        float spaceScale = space.lossyScale.x;
+        float maxLag = shape.body.size.x * MaxTrail * (spaceScale > 0f ? design.lossyScale.x / spaceScale : 1f);
         for (int i = 0; i < Count; i++)
         {
             GunSatelliteLayout.Pose pose = GunSatelliteLayout.Arrange(form, i, shape, motion);
@@ -448,16 +417,23 @@ public class GunSatellites : MonoBehaviour
             shownRotations[i] = rotation;
             shownSizes[i] = size;
 
-            // Follow the gun a touch behind as it moves, so the pieces feel like they float
-            Vector3 world = design.TransformPoint(position);
-            worldPositions[i] = placed ? Vector3.Lerp(worldPositions[i], world, trail) : world;
+            // Follow the gun's sway a touch behind, so the pieces feel like they float, but only
+            // relative to what holds the gun, and never far
+            Vector3 held = space.InverseTransformPoint(design.TransformPoint(position));
+            if (!placed || space != heldSpace) heldPositions[i] = held;
+            else
+            {
+                Vector3 lag = Vector3.Lerp(heldPositions[i], held, trail) - held;
+                heldPositions[i] = held + Vector3.ClampMagnitude(lag, maxLag);
+            }
 
             Transform piece = pieces[i];
-            piece.position = worldPositions[i];
+            piece.position = space.TransformPoint(heldPositions[i]);
             piece.rotation = design.rotation * rotation;
             piece.localScale = size * scale;
         }
         placed = true;
+        heldSpace = space;
     }
 
     private void OnDestroy()

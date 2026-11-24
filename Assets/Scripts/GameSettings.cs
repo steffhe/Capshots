@@ -46,8 +46,16 @@ public static class GameSettings
     public static string StartingGun
     {
         get => PlayerPrefs.GetString(StartingGunKey, "");
-        set { PlayerPrefs.SetString(StartingGunKey, value ?? ""); PlayerPrefs.Save(); }
+        set
+        {
+            PlayerPrefs.SetString(StartingGunKey, value ?? "");
+            PlayerPrefs.Save();
+            StartingGunChanged?.Invoke();
+        }
     }
+
+    // The main menu's player model switches to the new starting gun at once
+    public static event System.Action StartingGunChanged;
 
     public static float Volume
     {

@@ -7,6 +7,8 @@ using UnityEngine.UI;
 // Settings panel inside the pause menu: look sensitivity, ADS sensitivity, field of view, volume,
 // graphics quality, starting gun and key bindings. Built at runtime from copies of the pause menu's own button,
 // slider and label (styled by UITheme.StylePause), so the Pause prefab doesn't need editing.
+// The main menu has the same panel (CreateForMainMenu), built from copies of its own button,
+// slider and label, and opened by its own Settings button.
 public class SettingsMenu : MonoBehaviour
 {
     private Transform anchor;
@@ -42,13 +44,58 @@ public class SettingsMenu : MonoBehaviour
     private const float ColumnWidth = 400f;
     private const float HeaderY = 270f;
 
+    // In the main menu rather than the pause menu
+    private bool inMainMenu;
+
     public static SettingsMenu Create(Pause pause)
     {
         return pause.gameObject.AddComponent<SettingsMenu>();
     }
 
+    // For the main menu: the panel goes on canvas, hideWhileOpen (the menu column) is hidden while
+    // it's open, and its buttons, sliders and labels are copies of the templates given. Open it
+    // with Open().
+    public static SettingsMenu CreateForMainMenu(Transform canvas, GameObject hideWhileOpen, GameObject buttonTemplate, Slider sliderTemplate, Text labelTemplate)
+    {
+        GameObject holder = new GameObject("Settings Menu", typeof(RectTransform));
+        RectTransform rect = (RectTransform)holder.transform;
+        rect.SetParent(canvas, false);
+        rect.SetAsLastSibling();
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = rect.offsetMax = Vector2.zero;
+
+        SettingsMenu menu = holder.AddComponent<SettingsMenu>();
+        menu.inMainMenu = true;
+        menu.anchor = rect;
+        menu.mainButtons = hideWhileOpen;
+        menu.buttonTemplate = buttonTemplate;
+        menu.sliderTemplate = sliderTemplate;
+        menu.labelTemplate = labelTemplate;
+        return menu;
+    }
+
+    public void Open()
+    {
+        if (panel == null) Build();
+        if (panel != null) OpenSettings();
+    }
+
+    private void Build()
+    {
+        if (panel != null || buttonTemplate == null || sliderTemplate == null || labelTemplate == null) return;
+        BuildPanel();
+        panel.SetActive(false);
+    }
+
     private void Start()
     {
+        if (inMainMenu)
+        {
+            Build();
+            return;
+        }
+
         anchor = transform.GetChild(0);
         Transform buttons = anchor.Find("Buttons");
         Transform sens = anchor.Find("Sensitivity");
@@ -88,6 +135,12 @@ public class SettingsMenu : MonoBehaviour
     {
         // Unpausing hides the whole pause menu: go back to the main pause buttons for next time
         if (panel != null && panel.activeSelf && !anchor.gameObject.activeSelf) CloseSettings();
+        // In the main menu, Esc closes the panel (in a match it unpauses, closing it as above)
+        if (inMainMenu && panel != null && panel.activeSelf && !GameInput.IsRebinding && !OptionPicker.Showing)
+        {
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame) CloseSettings();
+        }
     }
 
     #region Panel
@@ -142,16 +195,27 @@ public class SettingsMenu : MonoBehaviour
             RefreshLabels();
         });
 
+        Button qualityButton = null;
         GameObject quality = NewButton(rect, "", () =>
         {
-            if (QualitySettings.names.Length > 0) GameSettings.Quality = (GameSettings.Quality + 1) % QualitySettings.names.Length;
-            RefreshLabels();
+            string[] names = QualitySettings.names;
+            if (names.Length == 0) return;
+            string[] options = new string[names.Length];
+            for (int i = 0; i < names.Length; i++) options[i] = names[i].ToUpperInvariant();
+            OptionPicker.Open(qualityButton, options, GameSettings.Quality, i =>
+            {
+                GameSettings.Quality = i;
+                RefreshLabels();
+            });
         });
+        qualityButton = quality.GetComponent<Button>();
         UITheme.StyleSelector(quality.GetComponent<Button>());
         Place(quality, new Vector2(LeftColumn, y - 72f), new Vector2(ColumnWidth, 48f));
         qualityText = quality.GetComponentInChildren<Text>();
 
-        GameObject startingGun = NewButton(rect, "", NextStartingGun);
+        Button startingGunButton = null;
+        GameObject startingGun = NewButton(rect, "", () => PickStartingGun(startingGunButton));
+        startingGunButton = startingGun.GetComponent<Button>();
         UITheme.StyleSelector(startingGun.GetComponent<Button>());
         Place(startingGun, new Vector2(LeftColumn, y - 128f), new Vector2(ColumnWidth, 48f));
         startingGunText = startingGun.GetComponentInChildren<Text>();
@@ -255,14 +319,18 @@ public class SettingsMenu : MonoBehaviour
         startingGunText.text = UITheme.Option("STARTING GUN", gun.ToUpperInvariant());
     }
 
-    // Steps the starting gun to the next form, in loadout order, wrapping round
-    private void NextStartingGun()
+    // A list of the gun's forms, in loadout order
+    private void PickStartingGun(Button button)
     {
         Weapon weapon = PlayerWeapon();
-        if (weapon == null || weapon.loadout.Length == 0) return;
-        int next = GunForms.Step(weapon.PreferredStartingSlot, 1, weapon.loadout.Length);
-        GameSettings.StartingGun = weapon.loadout[next].gunName;
-        RefreshLabels();
+        if (weapon == null) return;
+        string[] options = new string[weapon.loadout.Length];
+        for (int i = 0; i < options.Length; i++) options[i] = weapon.loadout[i].gunName.ToUpperInvariant();
+        OptionPicker.Open(button, options, weapon.PreferredStartingSlot, i =>
+        {
+            GameSettings.StartingGun = weapon.loadout[i].gunName;
+            RefreshLabels();
+        });
     }
 
     private Weapon PlayerWeapon()
@@ -299,7 +367,8 @@ public class SettingsMenu : MonoBehaviour
 
     #region Building blocks
 
-    // Copies the pause menu's Resume button, without its Resume action, as a secondary button
+    // Copies the pause menu's Resume button (or the main menu's button), without its own action
+    // (Resume, or opening a menu tab), as a secondary button
     private GameObject NewButton(Transform parent, string text, UnityAction onClick)
     {
         GameObject copy = Instantiate(buttonTemplate, parent);
@@ -310,7 +379,7 @@ public class SettingsMenu : MonoBehaviour
         {
             for (int i = 0; i < button.onClick.GetPersistentEventCount(); i++)
             {
-                if (button.onClick.GetPersistentMethodName(i) == "TogglePause")
+                if (button.onClick.GetPersistentMethodName(i) == "TogglePause" || button.onClick.GetPersistentTarget(i) is Launcher)
                 {
                     button.onClick.SetPersistentListenerState(i, UnityEventCallState.Off);
                 }

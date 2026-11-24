@@ -22,6 +22,9 @@ public class MenuScenery : MonoBehaviour
     private Vector2 lean;
 
     private Transform model;
+    // The menu model's gun, what holds it (aimed at the cursor by the scene), and the model
+    private GameObject heldGun;
+    private Transform gunHolder, gunOwner;
     private Quaternion modelRotation;
     private Vector3 modelPosition;
     private float modelYaw;
@@ -51,8 +54,20 @@ public class MenuScenery : MonoBehaviour
             model = player.transform;
             modelRotation = model.rotation;
             modelPosition = model.position;
-            HoldStartingGun(player);
         }
+
+        // The model holds the starting gun. Picking another in the menu's settings swaps it at once.
+        FindHeldGun();
+        // The menu scene's model has no Player script: it's the one holding the gun. It breathes and
+        // glances towards the cursor (see Update).
+        if (model == null && gunOwner != null)
+        {
+            model = gunOwner;
+            modelRotation = model.rotation;
+            modelPosition = model.position;
+        }
+        HoldStartingGun();
+        GameSettings.StartingGunChanged += HoldStartingGun;
 
         SetMood();
         AddRimLight();
@@ -61,40 +76,56 @@ public class MenuScenery : MonoBehaviour
 
     // The menu scene's model holds a pistol placed in the scene. Swap it for the starting gun (the
     // same model a match would show) and give it hand-orbs and floating pieces, in the logo's colour.
-    private static void HoldStartingGun(Player player)
+    // The menu scene's model is a copy of the player with its scripts removed, holding a pistol
+    // placed in the scene: the one object there with a gun's Sway on it
+    private void FindHeldGun()
     {
-        Weapon weapon = player.GetComponent<Weapon>();
-        if (weapon == null || weapon.loadout == null || weapon.loadout.Length == 0 || weapon.weaponParent == null) return;
+        foreach (Sway sway in FindObjectsByType<Sway>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (sway.transform.parent == null) continue;
+            heldGun = sway.gameObject;
+            gunHolder = sway.transform.parent;
+            gunOwner = gunHolder.root;
+            return;
+        }
+    }
+
+    // Swaps the held gun for the starting gun (the same model a match would show), held still, with
+    // hand-orbs and floating pieces in the logo's colour
+    private void HoldStartingGun()
+    {
+        if (gunHolder == null) return;
+        GameObject prefab = Resources.Load<GameObject>("Player");
+        Weapon weapon = prefab != null ? prefab.GetComponent<Weapon>() : null;
+        if (weapon == null || weapon.loadout == null || weapon.loadout.Length == 0) return;
         Gun gun = weapon.loadout[weapon.PreferredStartingSlot];
         if (gun == null || gun.prefab == null) return;
 
-        Transform holder = weapon.weaponParent;
-        Transform placed = holder.childCount > 0 ? holder.GetChild(0) : null;
-        GameObject model;
-        if (placed != null && placed.name == gun.prefab.name)
+        // Again after a change of starting gun: the old gun's hand-orbs and pieces go with it
+        foreach (DroneHands old in gunOwner.GetComponentsInChildren<DroneHands>(true)) Destroy(old.gameObject);
+        foreach (GunSatellites old in gunOwner.GetComponentsInChildren<GunSatellites>(true)) Destroy(old.gameObject);
+
+        if (heldGun == null || heldGun.name != gun.prefab.name)
         {
-            model = placed.gameObject;
-        }
-        else
-        {
-            model = Instantiate(gun.prefab, holder, false);
+            GameObject model = Instantiate(gun.prefab, gunHolder, false);
             model.name = gun.prefab.name;
-            if (placed != null)
+            if (heldGun != null)
             {
-                model.transform.localPosition = placed.localPosition;
-                model.transform.localRotation = placed.localRotation;
-                model.transform.localScale = placed.localScale;
-                Destroy(placed.gameObject);
+                model.transform.localPosition = heldGun.transform.localPosition;
+                model.transform.localRotation = heldGun.transform.localRotation;
+                model.transform.localScale = heldGun.transform.localScale;
+                Destroy(heldGun);
             }
+            heldGun = model;
         }
 
         // Held still: no sway from the mouse, no colliders, and the shot line is only a template
-        foreach (Sway sway in model.GetComponentsInChildren<Sway>(true)) sway.enabled = false;
-        foreach (Collider c in model.GetComponentsInChildren<Collider>(true)) c.enabled = false;
-        foreach (LineRenderer line in model.GetComponentsInChildren<LineRenderer>(true)) line.enabled = false;
+        foreach (Sway sway in heldGun.GetComponentsInChildren<Sway>(true)) sway.enabled = false;
+        foreach (Collider c in heldGun.GetComponentsInChildren<Collider>(true)) c.enabled = false;
+        foreach (LineRenderer line in heldGun.GetComponentsInChildren<LineRenderer>(true)) line.enabled = false;
 
-        DroneHands.AttachToDisplay(player.transform, model, PlayerCap.LogoColor);
-        GunSatellites.AttachToDisplay(player.transform, model, gun, PlayerCap.LogoColor);
+        DroneHands.AttachToDisplay(gunOwner, heldGun, PlayerCap.LogoColor);
+        GunSatellites.AttachToDisplay(gunOwner, heldGun, gun, PlayerCap.LogoColor);
     }
 
     // Fog the colour of the sunset sky's horizon, so the far end of the floor melts into it
@@ -199,6 +230,7 @@ public class MenuScenery : MonoBehaviour
 
     private void OnDestroy()
     {
+        GameSettings.StartingGunChanged -= HoldStartingGun;
         if (volume != null)
         {
             if (volume.sharedProfile != null) Destroy(volume.sharedProfile);

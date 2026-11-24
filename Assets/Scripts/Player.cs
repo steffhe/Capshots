@@ -936,6 +936,8 @@ public class Player : NetworkBehaviour
     {
         if (!(r is MeshRenderer || r is SkinnedMeshRenderer)) return false;
         if (r.GetComponent<TextMeshPro>() != null) return false;
+        // The gun's floating pieces see to their own (GunSatellites)
+        if (r.GetComponentInParent<GunSatellites>() != null) return false;
         Material[] materials = r.sharedMaterials;
         if (materials.Length == 0) return false;
         foreach (Material m in materials)
