@@ -1,7 +1,10 @@
 using UnityEngine;
 
 // The hat every player wears (see Hats for the list): the baseball cap to start with, and more as
-// they level up. Built from primitives and a few generated meshes, so no art is needed. It sits on
+// they level up. Built from primitives and a few generated meshes. Each part is made of a surface
+// (Surface): cotton twill, knit, felt, satin, glossy plastic, metal or hammered metal, each a
+// material in Resources/Hats with its own shine and a tiling normal map (Tools/HatTextures), or a
+// glow for the halo. It sits on
 // the head, so on a dead player's ragdoll it flies off together with the head (or on its own, on a
 // headshot). Every hat is drawn in shades of one colour: the team colour in Team Deathmatch,
 // otherwise a colour picked from the player's actor number, so every client shows the same colour
@@ -11,8 +14,15 @@ public class PlayerCap : MonoBehaviour
     // Which shade of the hat's colour a part is drawn in
     private enum Shade { Main, Dark, Light }
 
+    // What a part is made of: a material in Resources/Hats ("Hat" + the name), or the glow
+    private enum Surface { Twill, Knit, Felt, Satin, Plastic, Metal, Hammered, Glow }
+    private static readonly System.Collections.Generic.Dictionary<Surface, Material> surfaceMaterials = new System.Collections.Generic.Dictionary<Surface, Material>();
+    // How brightly a glowing part (the halo) glows, in its light shade
+    private const float HaloGlow = 1.8f;
+
     private Renderer[] renderers;
     private Shade[] shades;
+    private bool[] glows;
     private static Material capMaterial;
 
     // The hat this is (see Hats)
@@ -21,6 +31,9 @@ public class PlayerCap : MonoBehaviour
     // While building: the parts so far, and whether they get colliders (a ragdoll's hat)
     private readonly System.Collections.Generic.List<Renderer> parts = new System.Collections.Generic.List<Renderer>();
     private readonly System.Collections.Generic.List<Shade> partShades = new System.Collections.Generic.List<Shade>();
+    private readonly System.Collections.Generic.List<bool> partGlows = new System.Collections.Generic.List<bool>();
+    // What the parts being built are made of (set by each hat as it builds)
+    private Surface surface = Surface.Twill;
     private bool solid;
 
     // Puts a hat on a head made from Unity's sphere mesh, sized to it and drawn on the head's layer.
@@ -48,8 +61,10 @@ public class PlayerCap : MonoBehaviour
         cap.Build(hat, r);
         cap.renderers = cap.parts.ToArray();
         cap.shades = cap.partShades.ToArray();
+        cap.glows = cap.partGlows.ToArray();
         cap.parts.Clear();
         cap.partShades.Clear();
+        cap.partGlows.Clear();
         cap.SetColor(color);
         return cap;
     }
@@ -67,6 +82,7 @@ public class PlayerCap : MonoBehaviour
             renderers[i].GetPropertyBlock(block);
             block.SetColor("_BaseColor", c); // URP
             block.SetColor("_Color", c);     // built-in shaders
+            block.SetColor("_EmissionColor", glows != null && glows[i] ? c * HaloGlow : Color.black);
             renderers[i].SetPropertyBlock(block);
         }
     }
@@ -95,6 +111,7 @@ public class PlayerCap : MonoBehaviour
     // facing is -1) and a button on top
     private void BuildCap(float r, float facing)
     {
+        surface = Surface.Twill;
         Crown(Vector3.one * (1.07f * r));
         // Brim: a thin flat disc sticking out from the crown's edge, tipped slightly down
         Primitive("Brim", PrimitiveType.Cylinder, Shade.Dark, new Vector3(0f, 0.25f * r, 1.05f * r * facing), new Vector3(1.4f * r, 0.035f * r, 1.4f * r), new Vector3(8f * facing, 0f, 0f), true);
@@ -104,6 +121,7 @@ public class PlayerCap : MonoBehaviour
     // A knitted beanie: a taller crown, a turned-up cuff round the bottom and a pom-pom
     private void BuildBeanie(float r)
     {
+        surface = Surface.Knit;
         Crown(new Vector3(1.08f * r, 1.22f * r, 1.08f * r));
         Generated("Cuff", Frustum(0.97f, false), Shade.Dark, new Vector3(0f, 0.12f * r, 0f), new Vector3(1.12f * r, 0.3f * r, 1.12f * r), Vector3.zero, true);
         Primitive("Pom", PrimitiveType.Sphere, Shade.Light, new Vector3(0f, 1.36f * r, 0f), Vector3.one * (0.42f * r), Vector3.zero, false);
@@ -112,6 +130,7 @@ public class PlayerCap : MonoBehaviour
     // A bucket hat: a flat-topped crown narrowing upwards and a brim sloping down all round
     private void BuildBucketHat(float r)
     {
+        surface = Surface.Twill;
         Generated("Crown", Frustum(0.82f, true), Shade.Main, new Vector3(0f, 0.18f * r, 0f), new Vector3(1.08f * r, 0.92f * r, 1.08f * r), Vector3.zero, true);
         Generated("Band", Frustum(0.96f, false), Shade.Dark, new Vector3(0f, 0.24f * r, 0f), new Vector3(1.09f * r, 0.16f * r, 1.09f * r), Vector3.zero, false);
         Generated("Brim", Frustum(0.68f, false), Shade.Dark, new Vector3(0f, 0.02f * r, 0f), new Vector3(1.6f * r, 0.22f * r, 1.6f * r), Vector3.zero, true);
@@ -120,6 +139,7 @@ public class PlayerCap : MonoBehaviour
     // A builder's hard hat: a domed shell, a ridge from front to back and a flat brim, longer at the front
     private void BuildHardHat(float r)
     {
+        surface = Surface.Plastic;
         Crown(new Vector3(1.1f * r, 1.15f * r, 1.18f * r));
         Generated("Ridge", Dome(), Shade.Dark, Vector3.zero, new Vector3(0.24f * r, 1.21f * r, 1.24f * r), Vector3.zero, false);
         Primitive("Brim", PrimitiveType.Cylinder, Shade.Dark, new Vector3(0f, 0.23f * r, 0.12f * r), new Vector3(2.5f * r, 0.03f * r, 2.7f * r), Vector3.zero, true);
@@ -129,8 +149,11 @@ public class PlayerCap : MonoBehaviour
     // faster the player moves
     private void BuildPropellerBeanie(float r)
     {
+        surface = Surface.Twill;
         Crown(Vector3.one * (1.07f * r));
         Primitive("Brim", PrimitiveType.Cylinder, Shade.Dark, new Vector3(0f, 0.25f * r, 0.95f * r), new Vector3(1.0f * r, 0.035f * r, 0.8f * r), new Vector3(8f, 0f, 0f), true);
+        // The propeller is plastic
+        surface = Surface.Plastic;
         Primitive("Stem", PrimitiveType.Cylinder, Shade.Dark, new Vector3(0f, 1.16f * r, 0f), new Vector3(0.09f * r, 0.12f * r, 0.09f * r), Vector3.zero, false);
 
         GameObject rotor = new GameObject("Rotor");
@@ -148,17 +171,23 @@ public class PlayerCap : MonoBehaviour
     private void BuildTopHat(float r)
     {
         const float sit = 0.6f; // where the brim rests, as a fraction of the head's radius
+        surface = Surface.Felt;
         Primitive("Brim", PrimitiveType.Cylinder, Shade.Dark, new Vector3(0f, sit * r, 0f), new Vector3(2.4f * r, 0.025f * r, 2.4f * r), Vector3.zero, true);
         Primitive("Crown", PrimitiveType.Cylinder, Shade.Main, new Vector3(0f, (sit + 0.56f) * r, 0f), new Vector3(1.6f * r, 0.56f * r, 1.6f * r), Vector3.zero, true);
+        surface = Surface.Satin;
         Primitive("Band", PrimitiveType.Cylinder, Shade.Dark, new Vector3(0f, (sit + 0.12f) * r, 0f), new Vector3(1.63f * r, 0.09f * r, 1.63f * r), Vector3.zero, false);
     }
 
     // A horned helmet: a round helmet with a rim, and a horn sticking out and up from each side
     private void BuildVikingHelmet(float r)
     {
+        // A hammered metal helmet with smooth metal trim, and horns of polished horn
+        surface = Surface.Hammered;
         Crown(Vector3.one * (1.08f * r));
+        surface = Surface.Metal;
         Generated("Rim", Frustum(1f, false), Shade.Dark, new Vector3(0f, 0.12f * r, 0f), new Vector3(1.11f * r, 0.16f * r, 1.11f * r), Vector3.zero, true);
         Generated("Ridge", Dome(), Shade.Dark, Vector3.zero, new Vector3(0.16f * r, 1.13f * r, 1.13f * r), Vector3.zero, false);
+        surface = Surface.Plastic;
         for (int side = -1; side <= 1; side += 2)
         {
             Generated("Horn", Frustum(0f, false), Shade.Light, new Vector3(0.82f * r * side, 0.55f * r, 0f), new Vector3(0.24f * r, 0.8f * r, 0.24f * r), new Vector3(0f, 0f, -58f * side), false);
@@ -169,6 +198,8 @@ public class PlayerCap : MonoBehaviour
     private void BuildCrown(float r)
     {
         const float bottom = 0.5f, height = 0.32f, radius = 0.9f, flare = 1.08f;
+        // Metal, in the player's colour
+        surface = Surface.Metal;
         Generated("Band", Frustum(flare, false), Shade.Main, new Vector3(0f, bottom * r, 0f), new Vector3(radius * r, height * r, radius * r), Vector3.zero, true);
         const int points = 8;
         float top = (bottom + height) * r;
@@ -190,6 +221,7 @@ public class PlayerCap : MonoBehaviour
     // A halo: a ring floating above the head
     private void BuildHalo(float r)
     {
+        surface = Surface.Glow;
         Generated("Ring", Torus(0.24f), Shade.Light, new Vector3(0f, 1.42f * r, 0f), Vector3.one * (0.68f * r), new Vector3(-8f, 0f, 0f), true);
     }
 
@@ -240,9 +272,10 @@ public class PlayerCap : MonoBehaviour
         if (solid && collide) part.AddComponent<BoxCollider>();
 
         Renderer renderer = part.GetComponent<Renderer>();
-        renderer.sharedMaterial = SharedMaterial(renderer.sharedMaterial);
+        renderer.sharedMaterial = SurfaceMaterial(surface, renderer.sharedMaterial);
         parts.Add(renderer);
         partShades.Add(shade);
+        partGlows.Add(surface == Surface.Glow);
         return renderer;
     }
 
@@ -294,6 +327,7 @@ public class PlayerCap : MonoBehaviour
         const int segments = 24;
         var vertices = new System.Collections.Generic.List<Vector3>();
         var normals = new System.Collections.Generic.List<Vector3>();
+        var uvs = new System.Collections.Generic.List<Vector2>();
         var triangles = new System.Collections.Generic.List<int>();
 
         // The side: a ring at the bottom and one at the top. Its outward normal leans up as it narrows.
@@ -306,8 +340,8 @@ public class PlayerCap : MonoBehaviour
                 float a = 2f * Mathf.PI * j / segments;
                 Vector3 around = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a));
                 Vector3 normal = (around + Vector3.up * (1f - topRadius)).normalized * flip;
-                vertices.Add(around); normals.Add(normal);
-                vertices.Add(around * topRadius + Vector3.up); normals.Add(normal);
+                vertices.Add(around); normals.Add(normal); uvs.Add(new Vector2((float)j / segments, 0f));
+                vertices.Add(around * topRadius + Vector3.up); normals.Add(normal); uvs.Add(new Vector2((float)j / segments, 1f));
             }
             for (int j = 0; j < segments; j++)
             {
@@ -320,11 +354,12 @@ public class PlayerCap : MonoBehaviour
         if (capTop && topRadius > 0f)
         {
             int centre = vertices.Count;
-            vertices.Add(Vector3.up); normals.Add(Vector3.up);
+            vertices.Add(Vector3.up); normals.Add(Vector3.up); uvs.Add(new Vector2(0.5f, 0.5f));
             for (int j = 0; j <= segments; j++)
             {
                 float a = 2f * Mathf.PI * j / segments;
                 vertices.Add(new Vector3(Mathf.Cos(a) * topRadius, 1f, Mathf.Sin(a) * topRadius)); normals.Add(Vector3.up);
+                uvs.Add(new Vector2(0.5f + 0.5f * Mathf.Cos(a), 0.5f + 0.5f * Mathf.Sin(a)));
             }
             for (int j = 0; j < segments; j++)
             {
@@ -335,7 +370,10 @@ public class PlayerCap : MonoBehaviour
         mesh = new Mesh { name = "Hat " + key };
         mesh.SetVertices(vertices);
         mesh.SetNormals(normals);
+        mesh.SetUVs(0, uvs);
         mesh.SetTriangles(triangles, 0);
+        // Tangents, for the surfaces' normal maps
+        mesh.RecalculateTangents();
         mesh.RecalculateBounds();
         meshes[key] = mesh;
         return mesh;
@@ -352,6 +390,7 @@ public class PlayerCap : MonoBehaviour
         float tube = thickness * 0.5f;
         Vector3[] vertices = new Vector3[(segments + 1) * (sides + 1)];
         Vector3[] normals = new Vector3[vertices.Length];
+        Vector2[] torusUvs = new Vector2[vertices.Length];
         for (int i = 0; i <= segments; i++)
         {
             float a = 2f * Mathf.PI * i / segments;
@@ -362,6 +401,7 @@ public class PlayerCap : MonoBehaviour
                 Vector3 normal = around * Mathf.Cos(b) + Vector3.up * Mathf.Sin(b);
                 vertices[i * (sides + 1) + j] = around + normal * tube;
                 normals[i * (sides + 1) + j] = normal;
+                torusUvs[i * (sides + 1) + j] = new Vector2((float)i / segments, (float)j / sides);
             }
         }
         int[] triangles = new int[segments * sides * 6];
@@ -379,7 +419,9 @@ public class PlayerCap : MonoBehaviour
         mesh = new Mesh { name = "Hat " + key };
         mesh.vertices = vertices;
         mesh.normals = normals;
+        mesh.uv = torusUvs;
         mesh.triangles = triangles;
+        mesh.RecalculateTangents();
         mesh.RecalculateBounds();
         meshes[key] = mesh;
         return mesh;
@@ -454,8 +496,22 @@ public class PlayerCap : MonoBehaviour
         mesh.normals = normals;
         mesh.uv = uvs;
         mesh.triangles = triangles;
+        // Tangents, for the surfaces' normal maps
+        mesh.RecalculateTangents();
         mesh.RecalculateBounds();
         return mesh;
+    }
+
+    // The material for a surface, white: each hat's colour comes from a property block. Falls back
+    // to the plain shared material if its asset is missing.
+    private static Material SurfaceMaterial(Surface kind, Material fallback)
+    {
+        Material material;
+        if (surfaceMaterials.TryGetValue(kind, out material) && material != null) return material;
+        material = kind == Surface.Glow ? DroneBody.GlowMaterial : Resources.Load<Material>("Hats/Hat" + kind);
+        if (material == null) material = SharedMaterial(fallback);
+        surfaceMaterials[kind] = material;
+        return material;
     }
 
     // One shared white URP material; each cap's colour comes from a property block
