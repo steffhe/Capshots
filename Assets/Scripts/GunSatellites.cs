@@ -27,8 +27,11 @@ public class GunSatellites : MonoBehaviour
     private const float CellIn = 0.58f;
     // Seconds the pieces take to re-form into a new form's parts, and the stagger between pieces
     private const float ReformTime = 0.45f, ReformStagger = 0.025f;
-    // How tightly the pieces follow the gun as it moves (higher: less trailing)
-    private const float TrailRate = 28f;
+    // How tightly the pieces follow the gun's own sway and kick (higher: less trailing). They trail
+    // in the space of what holds the gun, which moves and turns with the view, so running and
+    // looking around never leave them behind; and never by more than MaxTrail of the body's width.
+    private const float TrailRate = 40f;
+    private const float MaxTrail = 0.3f;
     // The machine gun's rotary barrel: turns this fast at rest (radians a second), faster with
     // every shot up to MaxSpin, and slows back down after
     private const float RestSpin = 1f, SpinPerShot = 4f, MaxSpin = 28f, SpinDown = 1.2f;
@@ -51,7 +54,9 @@ public class GunSatellites : MonoBehaviour
     private Quaternion[] fromRotations;
     private float reformStart = -10f;
     // What each piece showed last frame, in the gun model's space, and where it is in the world
-    private Vector3[] shownPositions, shownSizes, worldPositions;
+    // Where each piece is, in the space of what holds the gun (trailing it slightly)
+    private Vector3[] shownPositions, shownSizes, heldPositions;
+    private Transform heldSpace;
     private Quaternion[] shownRotations;
 
     private float spin, spinSpeed = RestSpin;
@@ -142,7 +147,7 @@ public class GunSatellites : MonoBehaviour
         shownPositions = new Vector3[Count];
         shownSizes = new Vector3[Count];
         shownRotations = new Quaternion[Count];
-        worldPositions = new Vector3[Count];
+        heldPositions = new Vector3[Count];
         for (int i = 0; i < Count; i++)
         {
             // A unit block scaled to the piece's size, with a glowing strip along its outer face
@@ -417,6 +422,10 @@ public class GunSatellites : MonoBehaviour
         // Sizes are in the gun model's units; the pieces hang off this holder, which may be scaled differently
         float holderScale = transform.lossyScale.x;
         float scale = holderScale > 0f ? design.lossyScale.x / holderScale : 1f;
+        // What holds the gun (it moves and turns with the view), and the furthest a piece may trail, in its units
+        Transform space = shownGun != null && shownGun.transform.parent != null ? shownGun.transform.parent : design;
+        float spaceScale = space.lossyScale.x;
+        float maxLag = shape.body.size.x * MaxTrail * (spaceScale > 0f ? design.lossyScale.x / spaceScale : 1f);
         for (int i = 0; i < Count; i++)
         {
             GunSatelliteLayout.Pose pose = GunSatelliteLayout.Arrange(form, i, shape, motion);
@@ -448,16 +457,23 @@ public class GunSatellites : MonoBehaviour
             shownRotations[i] = rotation;
             shownSizes[i] = size;
 
-            // Follow the gun a touch behind as it moves, so the pieces feel like they float
-            Vector3 world = design.TransformPoint(position);
-            worldPositions[i] = placed ? Vector3.Lerp(worldPositions[i], world, trail) : world;
+            // Follow the gun's sway a touch behind, so the pieces feel like they float, but only
+            // relative to what holds the gun, and never far
+            Vector3 held = space.InverseTransformPoint(design.TransformPoint(position));
+            if (!placed || space != heldSpace) heldPositions[i] = held;
+            else
+            {
+                Vector3 lag = Vector3.Lerp(heldPositions[i], held, trail) - held;
+                heldPositions[i] = held + Vector3.ClampMagnitude(lag, maxLag);
+            }
 
             Transform piece = pieces[i];
-            piece.position = worldPositions[i];
+            piece.position = space.TransformPoint(heldPositions[i]);
             piece.rotation = design.rotation * rotation;
             piece.localScale = size * scale;
         }
         placed = true;
+        heldSpace = space;
     }
 
     private void OnDestroy()
