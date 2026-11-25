@@ -106,11 +106,55 @@ public class Look : MonoBehaviour
     // Mouse and gamepad look combined, in old mouse-axis units, with the ADS multiplier from the settings
     Vector2 LookInput()
     {
-        Vector2 look = GameInput.MouseLookValue + GameInput.StickLookValue * StickLookScale * Time.deltaTime;
+        Vector2 stick = GameInput.StickLookValue * StickLookScale * Time.deltaTime;
+        Vector2 pointer = GameInput.MouseLookValue;
+        // Aim assist for a stick or a thumb (not a mouse): slower turning over an enemy
+        bool touch = TouchControls.UsingTouch;
+        if (stick.sqrMagnitude > 0f || (touch && pointer.sqrMagnitude > 0f))
+        {
+            float slowdown = AimSlowdown();
+            stick *= slowdown;
+            // With touch controls the drag arrives as pointer movement
+            if (touch) pointer *= slowdown;
+        }
+        Vector2 look = pointer + stick;
 
         if (weaponComponent != null && weaponComponent.isAiming) look *= GameSettings.AdsSensitivity;
 
         return look;
+    }
+
+    // AimAssist's slowdown for the enemy nearest the crosshair that can be seen, or 1 for none
+    float AimSlowdown()
+    {
+        Manager manager = Manager.Instance;
+        if (owner == null || manager == null) return 1f;
+        Vector3 eye = cam.position;
+        Vector3 forward = cam.forward;
+        float best = 1f;
+        Player bestTarget = null;
+        Vector3 bestPoint = Vector3.zero;
+        foreach (Player p in Player.All)
+        {
+            if (p == null || p == owner || p.IsDead || !manager.AreEnemies(owner.ActorId, p.ActorId)) continue;
+            // The middle of the body
+            Vector3 point = p.transform.position + Vector3.up * 0.2f;
+            Vector3 to = point - eye;
+            float distance = to.magnitude;
+            if (distance > AimAssist.Range) continue;
+            float slowdown = AimAssist.Slowdown(Vector3.Angle(forward, to), distance);
+            if (slowdown < best)
+            {
+                best = slowdown;
+                bestTarget = p;
+                bestPoint = point;
+            }
+        }
+        if (bestTarget == null) return 1f;
+        // Not through walls: only the world counts, not players, guns or hitboxes
+        int world = Physics.DefaultRaycastLayers & ~((1 << Layers.LocalPlayer) | (1 << Layers.RemotePlayer) | (1 << Layers.Gun) | (1 << Layers.LocalGun) | (1 << Layers.Hitbox) | (1 << Layers.Glass));
+        if (Physics.Linecast(eye, bestPoint, world, QueryTriggerInteraction.Ignore)) return 1f;
+        return best;
     }
 
     void ApplyView()

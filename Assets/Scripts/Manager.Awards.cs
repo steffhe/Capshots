@@ -7,7 +7,7 @@ using UnityEngine.UI;
 // PUNCHING BAG. The host counts cap shots, grenade kills and best streaks while the match is played
 // (kills and deaths are on the scoreboard already), picks the awards when it ends and sends them to
 // everyone. They get a screen of their own before the results (AwardStage: each winner's drone over
-// their card), and stay as a row of cards along the top of the results screen.
+// their card, with all their awards listed on it).
 public partial class Manager
 {
     // Host only: what each player did this match, beyond kills and deaths
@@ -17,10 +17,10 @@ public partial class Manager
     }
     private readonly Dictionary<PlayerRef, AwardCount> awardCounts = new Dictionary<PlayerRef, AwardCount>();
 
-    // Everyone: the awards the host sent, and whether the results screen is up to show them
+    // Everyone: the awards the host sent, for the awards screen (AwardStage), and how many players won
+    // something (set by the host with the end of the match, so it reaches everyone with it)
     private List<MatchAwards.Award> awards;
-    private bool resultsShown;
-    private RectTransform awardsRow;
+    [Networked] private byte AwardCards { get; set; }
 
     // Host only: a kill while the match is being played
     private void CountForAwards(PlayerRef killer, PlayerRef victim, string weaponName, bool headshot, int streak)
@@ -54,6 +54,9 @@ public partial class Manager
         // The same order on every machine, so ties go the same way
         tallies.Sort((a, b) => a.actor.CompareTo(b.actor));
         List<MatchAwards.Award> chosen = MatchAwards.Choose(tallies);
+        // How many cards the awards screen has, so every machine gives it the same time, even one
+        // the awards themselves reach late (it arrives with the end of the match: Manager.Presentation)
+        AwardCards = (byte)MatchAwards.GroupByPlayer(chosen).Count;
         if (chosen.Count > 0) RPC_Awards(MatchAwards.Pack(chosen));
     }
 
@@ -61,77 +64,32 @@ public partial class Manager
     private void RPC_Awards(string packed)
     {
         awards = MatchAwards.Unpack(packed);
-        if (resultsShown) BuildAwards();
     }
 
-    // For the awards screen: each award with its winner's colour and cap
+    // For the awards screen: each player who won something, once, with all their awards, in the order
+    // their first award comes
     private List<AwardStage.Entry> AwardEntries()
     {
         List<AwardStage.Entry> entries = new List<AwardStage.Entry>();
         int me = LocalActor;
-        foreach (MatchAwards.Award award in awards)
+        foreach (List<MatchAwards.Award> group in MatchAwards.GroupByPlayer(awards))
         {
-            entries.Add(new AwardStage.Entry
+            MatchAwards.Award first = group[0];
+            AwardStage.Entry entry = new AwardStage.Entry
             {
-                title = award.title,
-                detail = award.detail,
-                name = award.name,
-                color = PlayerCap.ColorFor(award.actor),
-                hat = GetPlayerHat(award.actor),
+                name = first.name,
+                color = PlayerCap.ColorFor(first.actor),
+                hat = GetPlayerHat(first.actor),
                 teamMode = IsTeamMode,
-                mine = award.actor == me,
-            });
+                mine = first.actor == me,
+            };
+            foreach (MatchAwards.Award award in group)
+            {
+                entry.titles.Add(award.title);
+                entry.details.Add(award.detail);
+            }
+            entries.Add(entry);
         }
         return entries;
-    }
-
-    // A row of cards along the top of the results screen: the award, who won it and why
-    private void BuildAwards()
-    {
-        if (awards == null || awards.Count == 0 || endgame == null || awardsRow != null) return;
-
-        const float cardWidth = 250f, cardHeight = 74f, gap = 14f;
-        Transform design = endgame.Find("Design");
-        awardsRow = new GameObject("Awards", typeof(RectTransform)).GetComponent<RectTransform>();
-        awardsRow.SetParent(design != null ? design : endgame, false);
-        float width = awards.Count * cardWidth + (awards.Count - 1) * gap;
-        UITheme.Place(awardsRow, new Vector2(0.5f, 0.5f), new Vector2(0f, 322f), new Vector2(width, cardHeight));
-
-        int me = LocalActor;
-        for (int i = 0; i < awards.Count; i++)
-        {
-            MatchAwards.Award award = awards[i];
-            bool mine = award.actor == me;
-
-            Image card = UITheme.NewImage("Award", awardsRow, mine ? new Color(0.45f, 0.36f, 0.08f, 0.85f) : new Color(0f, 0f, 0f, 0.55f), 10f);
-            RectTransform rect = card.rectTransform;
-            rect.anchorMin = rect.anchorMax = new Vector2(0f, 0.5f);
-            rect.pivot = new Vector2(0f, 0.5f);
-            rect.sizeDelta = new Vector2(cardWidth, cardHeight);
-            rect.anchoredPosition = new Vector2(i * (cardWidth + gap), 0f);
-
-            Text title = UITheme.NewText("Title", rect, 15, new Color(1f, 0.8f, 0.3f), TextAnchor.MiddleCenter);
-            UITheme.Place(title.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -16f), new Vector2(cardWidth - 12f, 20f));
-            title.text = award.title;
-
-            Text name = UITheme.NewText("Name", rect, 22, Color.white, TextAnchor.MiddleCenter);
-            UITheme.Place(name.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 0f), new Vector2(cardWidth - 12f, 26f));
-            name.text = mine ? "YOU" : award.name.ToUpperInvariant();
-
-            Text detail = UITheme.NewText("Detail", rect, 13, UITheme.MutedText, TextAnchor.MiddleCenter);
-            UITheme.Place(detail.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 14f), new Vector2(cardWidth - 12f, 18f));
-            detail.text = award.detail;
-
-            // Pop in one after another, after the scoreboard rows
-            CanvasGroup group = card.gameObject.AddComponent<CanvasGroup>();
-            group.alpha = 0f;
-            StartCoroutine(RevealAward(group, 0.8f + i * 0.15f));
-        }
-    }
-
-    private System.Collections.IEnumerator RevealAward(CanvasGroup group, float delay)
-    {
-        yield return new WaitForSecondsRealtime(delay);
-        if (group != null) yield return FadeGroup(group, 0.3f);
     }
 }

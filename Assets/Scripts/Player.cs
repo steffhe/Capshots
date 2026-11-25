@@ -295,6 +295,8 @@ public class Player : NetworkBehaviour
         {
             Local = this;
             look.Initialize(transform.eulerAngles.y);
+            // The first time ever: what the controls are (bots never get here: they aren't local players)
+            if (!IsBot) ControlsHint.ShowOnce();
 
             int playerLayer = Layers.LocalPlayer;
             normalCam.cullingMask &= ~(1 << playerLayer);
@@ -1033,6 +1035,9 @@ public class Player : NetworkBehaviour
         if (r.GetComponent<TextMeshPro>() != null) return false;
         // The gun's floating pieces see to their own (GunSatellites)
         if (r.GetComponentInParent<GunSatellites>() != null) return false;
+        // The scope's reticle keeps glowing: it's only seen through the scope, by its owner, and a
+        // see-through copy would lose its glow
+        if (r.name == DroneHands.ReticleGlowName) return false;
         Material[] materials = r.sharedMaterials;
         if (materials.Length == 0) return false;
         foreach (Material m in materials)

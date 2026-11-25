@@ -349,7 +349,8 @@ public partial class Launcher
             UITheme.StyleText(name, 20, UITheme.TextColor, TextAnchor.MiddleLeft);
             name.horizontalOverflow = HorizontalWrapMode.Wrap;
             name.verticalOverflow = VerticalWrapMode.Truncate;
-            name.supportRichText = false;
+            // Rich text on: the room code after the title is greyed with a colour tag
+            name.supportRichText = true;
             UITheme.Stretch(name.rectTransform);
             name.rectTransform.anchorMax = new Vector2(0.52f, 1f);
             name.rectTransform.offsetMin = new Vector2(18f, 0f);

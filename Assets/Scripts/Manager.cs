@@ -186,6 +186,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         // The HUD goes away for the end of match banner and results
         bool showHud = alive && !matchEnded;
         if (Hud.activeSelf != showHud) Hud.SetActive(showHud);
+        UpdateCapArrows();
 
         if (state == GameState.Ending) return;
 

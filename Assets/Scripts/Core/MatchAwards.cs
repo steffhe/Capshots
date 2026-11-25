@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-// The awards on the results screen: a few titles for whoever did something best (or worst) in the
+// The awards on the awards screen at the end of a match: a few titles for whoever did something best (or worst) in the
 // match. The host counts what each player did (Manager.Awards.cs) and picks them here when the
 // match ends; everyone's results screen shows them. Kept apart from the match so the EditMode tests
 // can check the rules.
@@ -99,4 +99,24 @@ public static class MatchAwards
 
     // Names can hold anything a player typed: keep the separators out
     private static string Clean(string text) => string.IsNullOrEmpty(text) ? "" : text.Replace('|', '/').Replace('\n', ' ');
+
+    // The awards by player, for the awards screen: one group per player who won something, in the
+    // order their first award comes, each with their awards in order
+    public static List<List<Award>> GroupByPlayer(IList<Award> awards)
+    {
+        List<List<Award>> groups = new List<List<Award>>();
+        if (awards == null) return groups;
+        Dictionary<int, List<Award>> byActor = new Dictionary<int, List<Award>>();
+        foreach (Award award in awards)
+        {
+            if (!byActor.TryGetValue(award.actor, out List<Award> group))
+            {
+                group = new List<Award>();
+                byActor[award.actor] = group;
+                groups.Add(group);
+            }
+            group.Add(award);
+        }
+        return groups;
+    }
 }

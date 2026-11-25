@@ -7,23 +7,28 @@ using UnityEngine.UI;
 // The awards screen at the end of a match, between the result banner and the results (scoreboard,
 // XP and map vote): MATCH AWARDS along the top, and for each award a card with who won it and why,
 // with that player's drone hovering over it in their colour and cap, holding the gun form that fits
-// the award. The awards come up one after another, each drone popping in over its card.
+// the award. A player who won several gets one card listing them all. The cards come up one after
+// another, each drone popping in over its card.
 //
 // The drones stand on a little stage of their own, built far above the map and filmed by a camera
 // of its own drawn over the map view, so nothing in the map gets in the way. Purely local
 // presentation: Manager builds it from the awards the host sent (Manager.Awards.cs).
 public class AwardStage : MonoBehaviour
 {
-    public struct Entry
+    // One player and every award they won (a player who won several is shown once, with all of them
+    // listed on their card)
+    public class Entry
     {
-        public string title, detail, name;
+        public string name;
         public Color color;
         public int hat;
         public bool teamMode, mine;
+        public readonly List<string> titles = new List<string>();
+        public readonly List<string> details = new List<string>();
     }
 
-    // Timing: a moment for the title, then each award, then a hold on all of them
-    private const float IntroTime = 0.7f, PerAward = 0.85f, HoldTime = 2.4f;
+    // Timing: a moment for the title, then each player's card, then a long hold on all of them
+    private const float IntroTime = 1f, PerAward = 1.2f, HoldTime = 4.5f;
     public static float Duration(int count) => IntroTime + count * PerAward + HoldTime;
 
     // Far above any map, so the map's own geometry is never in the shot (the camera's far plane is short)
@@ -32,7 +37,9 @@ public class AwardStage : MonoBehaviour
     // The player prefab's proportions (as in MenuBattle)
     private const float FeetToRoot = 0.97f, RootToGun = 0.556f, HoverHeight = 0.12f;
     // Cards: size and gap in canvas units, and where their tops sit (fraction of the screen's height)
-    private const float CardWidth = 330f, CardHeight = 128f, CardGap = 70f, CardTop = 0.27f;
+    // A card's height: the name, then a title and detail line for each award
+    private const float CardWidth = 330f, CardGap = 70f, CardTop = 0.27f;
+    private const float CardNameHeight = 64f, CardAwardHeight = 50f, CardPadding = 12f;
     private const float PopTime = 0.4f;
 
     private class Drone
@@ -63,7 +70,8 @@ public class AwardStage : MonoBehaviour
     }
 
     // Reveals the awards one by one, then holds; ends after Duration
-    public IEnumerator Play()
+    // until: when to end (unscaled time); by default after Duration
+    public IEnumerator Play(float until = -1f)
     {
         float start = Time.unscaledTime;
         StartCoroutine(Fade(titleGroup, 0.4f));
@@ -76,7 +84,7 @@ public class AwardStage : MonoBehaviour
             FeedbackUI.AwardShown();
             yield return new WaitForSecondsRealtime(PerAward);
         }
-        float end = start + Duration(drones.Count);
+        float end = until >= 0f ? until : start + Duration(drones.Count);
         while (Time.unscaledTime < end) yield return null;
     }
 
@@ -208,10 +216,10 @@ public class AwardStage : MonoBehaviour
 
         DroneBody dressed = DroneBody.Dress(body, head, entry.color, entry.teamMode);
         // The punching bag has taken a beating: its lights flicker and its collar sparks
-        if (dressed != null && entry.title == "PUNCHING BAG") dressed.SetHealth(0.2f);
+        if (dressed != null && entry.titles.Contains("PUNCHING BAG")) dressed.SetHealth(0.2f);
         PlayerCap.Attach(head, entry.color, false, entry.hat);
 
-        Gun form = FormFor(entry.title);
+        Gun form = FormFor(entry.titles.Count > 0 ? entry.titles[0] : "");
         if (form != null)
         {
             Transform holder = new GameObject("Weapon").transform;
@@ -247,6 +255,9 @@ public class AwardStage : MonoBehaviour
         floor.position = new Vector3(transform.position.x, y - 0.01f, transform.position.z + 1f);
         floor.localScale = new Vector3(18f, 0.01f, 10f);
         Renderer r = floor.GetComponent<Renderer>();
+        // The drone's shell material, which builds always include (a primitive's default material
+        // can be left out of a build, and then draws pink)
+        r.sharedMaterial = DroneBody.ShellMaterial;
         MaterialPropertyBlock block = new MaterialPropertyBlock();
         block.SetColor("_BaseColor", new Color(0.05f, 0.06f, 0.09f));
         block.SetColor("_Color", new Color(0.05f, 0.06f, 0.09f));
@@ -326,22 +337,26 @@ public class AwardStage : MonoBehaviour
             RectTransform rect = card.rectTransform;
             rect.anchorMin = rect.anchorMax = new Vector2(0.5f, CardTop);
             rect.pivot = new Vector2(0.5f, 1f);
-            rect.sizeDelta = new Vector2(CardWidth, CardHeight);
+            rect.sizeDelta = new Vector2(CardWidth, CardNameHeight + entry.titles.Count * CardAwardHeight + CardPadding);
             rect.anchoredPosition = new Vector2(-width / 2f + CardWidth / 2f + i * (CardWidth + CardGap), 0f);
             Image accent = UITheme.NewImage("Accent", rect, entry.color, 0f);
             UITheme.Row(accent.rectTransform, 0f, 3f);
 
-            Text awardTitle = UITheme.NewText("Title", rect, 20, new Color(1f, 0.8f, 0.3f), TextAnchor.MiddleCenter);
-            UITheme.Row(awardTitle.rectTransform, 16f, 26f);
-            awardTitle.text = entry.title;
-
             Text name = UITheme.NewText("Name", rect, 32, Color.white, TextAnchor.MiddleCenter);
-            UITheme.Row(name.rectTransform, 46f, 40f);
+            UITheme.Row(name.rectTransform, 14f, 40f);
             name.text = entry.mine ? "YOU" : entry.name.ToUpperInvariant();
 
-            Text detail = UITheme.NewText("Detail", rect, 17, UITheme.MutedText, TextAnchor.MiddleCenter);
-            UITheme.Row(detail.rectTransform, 92f, 24f);
-            detail.text = entry.detail;
+            // Each award under the name: its title, and why
+            for (int a = 0; a < entry.titles.Count; a++)
+            {
+                float top = CardNameHeight + a * CardAwardHeight;
+                Text awardTitle = UITheme.NewText("Title", rect, 20, new Color(1f, 0.8f, 0.3f), TextAnchor.MiddleCenter);
+                UITheme.Row(awardTitle.rectTransform, top, 24f);
+                awardTitle.text = entry.titles[a];
+                Text detail = UITheme.NewText("Detail", rect, 16, UITheme.MutedText, TextAnchor.MiddleCenter);
+                UITheme.Row(detail.rectTransform, top + 23f, 20f);
+                detail.text = entry.details[a];
+            }
 
             CanvasGroup group = card.gameObject.AddComponent<CanvasGroup>();
             group.alpha = 0f;
