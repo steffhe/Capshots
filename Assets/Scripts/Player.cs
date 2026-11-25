@@ -77,6 +77,7 @@ public class Player : NetworkBehaviour
     private PlayerCap[] caps = new PlayerCap[0];
     // The hat the caps are (see Hats)
     private int wornHat = -1;
+    private int wornFace = -1;
     private DroneBody[] drones = new DroneBody[0];
     private DroneHands hands;
     private GunSatellites satellites;
@@ -320,8 +321,8 @@ public class Player : NetworkBehaviour
         bool teamMode = manager != null && manager.IsTeamMode;
         drones = new DroneBody[]
         {
-            DroneBody.Dress(standingCollider != null ? standingCollider.transform : null, standingColliderHead != null ? standingColliderHead.transform : null, capColor, teamMode),
-            DroneBody.Dress(crouchingCollider != null ? crouchingCollider.transform : null, crouchingColliderHead != null ? crouchingColliderHead.transform : null, capColor, teamMode),
+            DroneBody.Dress(standingCollider != null ? standingCollider.transform : null, standingColliderHead != null ? standingColliderHead.transform : null, capColor, teamMode, false, WornFace()),
+            DroneBody.Dress(crouchingCollider != null ? crouchingCollider.transform : null, crouchingColliderHead != null ? crouchingColliderHead.transform : null, capColor, teamMode, false, WornFace()),
         };
         // You don't see your own body, so its damage sparks would only show in front of your eyes
         foreach (DroneBody drone in drones) if (drone != null) drone.showSparks = !IsLocal;
@@ -552,6 +553,7 @@ public class Player : NetworkBehaviour
         ApplyCrouchVisuals(false);
         RefreshNameTag();
         RefreshHat();
+        RefreshFace();
         RefreshDamageVisuals();
 
         if (!IsLocal)
@@ -885,6 +887,25 @@ public class Player : NetworkBehaviour
     {
         int hat = WornHat();
         if (hat != wornHat) PutOnHat(hat);
+    }
+
+    // The face this player shows: your own pick, or the one the host has for everyone else (bots included)
+    private int WornFace()
+    {
+        if (IsLocal && !IsBot) return GameSettings.Face;
+        return manager != null ? manager.GetPlayerFace(ActorId) : Faces.Classic;
+    }
+
+    // Changes the face when it changes: a new pick in the pause menu, or the host's list arriving
+    // after this player spawned
+    private void RefreshFace()
+    {
+        int face = WornFace();
+        if (face == wornFace) return;
+        wornFace = face;
+        foreach (DroneBody drone in drones) if (drone != null) drone.SetFace(face);
+        // See-through while spawn protected: look again for parts to ghost, so the new face is too
+        ghostedGun = null;
     }
 
     // A hat on both heads (standing and crouching), drawn like the head: hidden from your own camera,

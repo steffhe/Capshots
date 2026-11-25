@@ -58,7 +58,8 @@ public class DroneBody : MonoBehaviour
 
     // Dresses a capsule body and the sphere head on (or above) it. Safe to call twice: the second call
     // only recolours. dead: a ragdoll, with glowing X-es for eyes and its other lights off.
-    public static DroneBody Dress(Transform body, Transform head, Color accent, bool teamMode = false, bool dead = false)
+    // face: the face to show (see Faces), or -1 to keep the one it has.
+    public static DroneBody Dress(Transform body, Transform head, Color accent, bool teamMode = false, bool dead = false, int face = -1)
     {
         if (body == null) return null;
         DroneBody drone = body.GetComponent<DroneBody>();
@@ -68,18 +69,19 @@ public class DroneBody : MonoBehaviour
             drone.Build(body, head, dead);
         }
         drone.SetColor(accent, teamMode);
+        if (face >= 0) drone.SetFace(face);
         return drone;
     }
 
     // Dresses every player model in the scene that isn't dressed yet, e.g. the main menu's player model
-    public static void DressSceneModels(Color accent)
+    public static void DressSceneModels(Color accent, int face = -1)
     {
         foreach (Transform t in Object.FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
         {
             if (!t.CompareTag("Head") || t.GetComponent<MeshFilter>() == null) continue;
             Transform body = t.parent;
             if (body == null || body.GetComponent<MeshFilter>() == null || body.GetComponent<DroneBody>() != null) continue;
-            Dress(body, t, accent);
+            Dress(body, t, accent, false, false, face);
         }
     }
 
@@ -295,45 +297,212 @@ public class DroneBody : MonoBehaviour
         Renderer visor = Part(root, "Face", PrimitiveType.Sphere, VisorMaterial, visorCentre, visorRadii * 2f);
         Paint(visor, VisorColor, Color.black);
 
-        // Two big oval eyes and a little blush, sitting on the face screen's surface
-        eyeScale = new Vector3(0.2f * r, 0.3f * r, 0.08f * r);
-        eyeTransforms = new Transform[2];
-        // Alive: two ovals. Dead: an X of two crossed bars for each eye.
-        eyes = new Renderer[dead ? 4 : 2];
-        blush = new Renderer[2];
+        // The face: eyes (and cheeks, for some faces) on the screen's surface. Built by BuildFace, so
+        // a different face can be put on later (SetFace).
+        faceRoot = root;
+        faceCentre = visorCentre;
+        faceRadii = visorRadii;
+        faceSize = r;
+        BuildFace(Faces.Classic);
+
         for (int i = 0; i < 2; i++)
         {
             float side = i == 0 ? -1f : 1f;
-            Vector3 eyePosition = OnVisor(new Vector2(side * 0.24f * r, -0.06f * r), visorCentre, visorRadii, 0.02f * r);
-            if (dead)
-            {
-                // Lying flat on the face screen: turned to its surface there, then crossed at 45 degrees
-                Vector3 normal = Vector3.Scale(eyePosition - visorCentre, new Vector3(1f / (visorRadii.x * visorRadii.x), 1f / (visorRadii.y * visorRadii.y), 1f / (visorRadii.z * visorRadii.z))).normalized;
-                // Rounded bars (a capsule is 2 units long at scale 1), soft like the living eyes' ovals
-                Vector3 barSize = new Vector3(0.075f * r, 0.17f * r, 0.04f * r);
-                for (int b = 0; b < 2; b++)
-                {
-                    Renderer bar = Part(root, (i == 0 ? "Left Eye X" : "Right Eye X"), PrimitiveType.Capsule, GlowMaterial, eyePosition, barSize, false);
-                    bar.transform.localRotation = Quaternion.LookRotation(normal) * Quaternion.Euler(0f, 0f, b == 0 ? 45f : -45f);
-                    eyes[i * 2 + b] = bar;
-                }
-                eyeTransforms[i] = eyes[i * 2].transform;
-            }
-            else
-            {
-                eyes[i] = Part(root, i == 0 ? "Left Eye" : "Right Eye", PrimitiveType.Sphere, GlowMaterial, eyePosition, eyeScale, false);
-                eyeTransforms[i] = eyes[i].transform;
-            }
-
-            Vector3 blushPosition = OnVisor(new Vector2(side * 0.44f * r, -0.3f * r), visorCentre, visorRadii, 0.01f * r);
-            blush[i] = Part(root, "Blush", PrimitiveType.Sphere, GlowMaterial, blushPosition, new Vector3(0.14f * r, 0.07f * r, 0.04f * r), false);
-
             // Ear pods: round discs on the sides of the head, with a glowing dot in the middle
             Vector3 earPosition = new Vector3(side * 0.97f * r, -0.02f * r, 0f);
             accentList.Add(Part(root, "Ear", PrimitiveType.Cylinder, TrimMaterial, earPosition, new Vector3(0.45f * r, 0.1f * r, 0.45f * r), true, new Vector3(0f, 0f, 90f)));
             lightList.Add(Part(root, "Ear Light", PrimitiveType.Cylinder, GlowMaterial, earPosition, new Vector3(0.2f * r, 0.11f * r, 0.2f * r), false, new Vector3(0f, 0f, 90f)));
         }
     }
+
+    #region Face
+
+    // Where the face goes: the head's part root, the face screen's centre and radii, and the head's radius
+    private Transform faceRoot;
+    private Vector3 faceCentre, faceRadii;
+    private float faceSize;
+    // The face showing (see Faces), and the object its parts are under (rebuilt on a change)
+    private int currentFace = -1;
+    private Transform faceParts;
+    // Parts drawn in the face screen's own dark colour (pupils, brows), over the glowing ones
+    private Renderer[] darkParts;
+
+    // Shows a different face (see Faces). A dead drone keeps its X-es.
+    public void SetFace(int face)
+    {
+        if (!Faces.IsValid(face)) face = Faces.Classic;
+        if (face == currentFace || faceRoot == null) return;
+        BuildFace(face);
+    }
+
+    // Builds the eyes (and cheeks) for a face. Each eye is built round a pivot lying on the face
+    // screen's surface, facing out of it (x across, y up, z out), and blinks by squashing that pivot.
+    private void BuildFace(int face)
+    {
+        currentFace = face;
+        if (faceParts != null)
+        {
+            if (Application.isPlaying) Destroy(faceParts.gameObject);
+            else DestroyImmediate(faceParts.gameObject);
+        }
+        faceParts = new GameObject("Face Parts").transform;
+        faceParts.gameObject.layer = faceRoot.gameObject.layer;
+        faceParts.SetParent(faceRoot, false);
+
+        var glow = new List<Renderer>();
+        var dark = new List<Renderer>();
+        var pivots = new List<Transform>();
+        float r = faceSize;
+
+        Transform Eye(float x, float y)
+        {
+            Vector3 at = OnVisor(new Vector2(x * r, y * r), faceCentre, faceRadii, 0.02f * r);
+            Vector3 normal = Vector3.Scale(at - faceCentre, new Vector3(1f / (faceRadii.x * faceRadii.x), 1f / (faceRadii.y * faceRadii.y), 1f / (faceRadii.z * faceRadii.z))).normalized;
+            Transform pivot = new GameObject("Eye").transform;
+            pivot.gameObject.layer = faceParts.gameObject.layer;
+            pivot.SetParent(faceParts, false);
+            pivot.localPosition = at;
+            pivot.localRotation = Quaternion.LookRotation(normal, Vector3.up);
+            pivots.Add(pivot);
+            return pivot;
+        }
+        // z: how far out of the screen (a glint sits in front of a pupil)
+        void Lit(Transform eye, PrimitiveType type, float x, float y, Vector3 size, float roll = 0f, float z = 0f) =>
+            glow.Add(Part(eye, "Glow", type, GlowMaterial, new Vector3(x * r, y * r, z * r), size * r, false, new Vector3(0f, 0f, roll)));
+        void Shade(Transform eye, PrimitiveType type, float x, float y, Vector3 size, float roll = 0f) =>
+            dark.Add(Part(eye, "Dark", type, VisorMaterial, new Vector3(x * r, y * r, 0.045f * r), size * r, false, new Vector3(0f, 0f, roll)));
+        // An upturned V, like a smiling closed eye: two short bars meeting at the top
+        void Chevron(Transform eye)
+        {
+            Lit(eye, PrimitiveType.Capsule, -0.065f, -0.02f, new Vector3(0.07f, 0.1f, 0.04f), -55f);
+            Lit(eye, PrimitiveType.Capsule, 0.065f, -0.02f, new Vector3(0.07f, 0.1f, 0.04f), 55f);
+        }
+        Vector3 oval = new Vector3(0.2f, 0.3f, 0.08f);
+
+        for (int i = 0; i < 2; i++)
+        {
+            float side = i == 0 ? -1f : 1f;
+            // Towards the middle of the face, from this eye
+            float inner = -side;
+            if (dead)
+            {
+                // An X of two crossed rounded bars for each eye
+                Transform x = Eye(side * 0.24f, -0.06f);
+                Lit(x, PrimitiveType.Capsule, 0f, 0f, new Vector3(0.075f, 0.17f, 0.04f), 45f);
+                Lit(x, PrimitiveType.Capsule, 0f, 0f, new Vector3(0.075f, 0.17f, 0.04f), -45f);
+                continue;
+            }
+            switch (face)
+            {
+                case Faces.Happy:
+                    Chevron(Eye(side * 0.24f, -0.02f));
+                    break;
+                case Faces.Wink:
+                    if (i == 0) Lit(Eye(side * 0.24f, -0.06f), PrimitiveType.Sphere, 0f, 0f, oval);
+                    else Chevron(Eye(side * 0.24f, -0.02f));
+                    break;
+                case Faces.Sleepy:
+                {
+                    // Half shut: a low flat oval under a heavy lid
+                    Transform eye = Eye(side * 0.24f, -0.1f);
+                    Lit(eye, PrimitiveType.Sphere, 0f, -0.01f, new Vector3(0.22f, 0.12f, 0.08f));
+                    Lit(eye, PrimitiveType.Capsule, 0f, 0.07f, new Vector3(0.035f, 0.13f, 0.03f), 90f);
+                    break;
+                }
+                case Faces.Visor:
+                    // One wide bar across the face: built once
+                    if (i == 0) Lit(Eye(0f, -0.06f), PrimitiveType.Capsule, 0f, 0f, new Vector3(0.12f, 0.36f, 0.05f), 90f);
+                    break;
+                case Faces.Angry:
+                {
+                    // Ovals with their top inner corners cut off by a dark slanting brow
+                    Transform eye = Eye(side * 0.24f, -0.06f);
+                    Lit(eye, PrimitiveType.Sphere, 0f, 0f, oval);
+                    Shade(eye, PrimitiveType.Cube, inner * 0.06f, 0.115f, new Vector3(0.34f, 0.14f, 0.05f), -inner * 32f);
+                    break;
+                }
+                case Faces.Hearts:
+                {
+                    // Two round lobes over a point
+                    Transform eye = Eye(side * 0.24f, -0.04f);
+                    Lit(eye, PrimitiveType.Sphere, -0.055f, 0.04f, new Vector3(0.14f, 0.14f, 0.06f));
+                    Lit(eye, PrimitiveType.Sphere, 0.055f, 0.04f, new Vector3(0.14f, 0.14f, 0.06f));
+                    Lit(eye, PrimitiveType.Cube, 0f, -0.035f, new Vector3(0.135f, 0.135f, 0.05f), 45f);
+                    break;
+                }
+                case Faces.Stars:
+                {
+                    // A four-pointed star, with shorter points between
+                    Transform eye = Eye(side * 0.24f, -0.05f);
+                    Lit(eye, PrimitiveType.Sphere, 0f, 0f, new Vector3(0.08f, 0.34f, 0.05f));
+                    Lit(eye, PrimitiveType.Sphere, 0f, 0f, new Vector3(0.08f, 0.34f, 0.05f), 90f);
+                    Lit(eye, PrimitiveType.Sphere, 0f, 0f, new Vector3(0.05f, 0.18f, 0.05f), 45f);
+                    Lit(eye, PrimitiveType.Sphere, 0f, 0f, new Vector3(0.05f, 0.18f, 0.05f), -45f);
+                    break;
+                }
+                case Faces.Cyclops:
+                {
+                    // One big eye in the middle, with a dark pupil and a glint: built once
+                    if (i != 0) break;
+                    Transform eye = Eye(0f, -0.06f);
+                    Lit(eye, PrimitiveType.Sphere, 0f, 0f, new Vector3(0.36f, 0.42f, 0.08f));
+                    Shade(eye, PrimitiveType.Sphere, 0f, -0.03f, new Vector3(0.16f, 0.2f, 0.04f));
+                    Lit(eye, PrimitiveType.Sphere, 0.05f, 0.03f, new Vector3(0.06f, 0.06f, 0.03f), 0f, 0.075f);
+                    break;
+                }
+                case Faces.Dots:
+                    // Small round eyes, and a little mouth below them (built once)
+                    Lit(Eye(side * 0.2f, -0.02f), PrimitiveType.Sphere, 0f, 0f, new Vector3(0.12f, 0.13f, 0.06f));
+                    if (i == 0)
+                    {
+                        Transform mouth = Eye(0f, -0.25f);
+                        pivots.Remove(mouth); // the mouth doesn't blink
+                        Lit(mouth, PrimitiveType.Capsule, 0f, 0f, new Vector3(0.035f, 0.07f, 0.03f), 90f);
+                    }
+                    break;
+                case Faces.Sparkle:
+                {
+                    // Big shiny eyes: a dark pupil low in each, with two glints
+                    Transform eye = Eye(side * 0.24f, -0.06f);
+                    Lit(eye, PrimitiveType.Sphere, 0f, 0f, new Vector3(0.22f, 0.32f, 0.08f));
+                    Shade(eye, PrimitiveType.Sphere, 0f, -0.03f, new Vector3(0.13f, 0.18f, 0.04f));
+                    Lit(eye, PrimitiveType.Sphere, 0.035f, 0.035f, new Vector3(0.06f, 0.06f, 0.03f), 0f, 0.075f);
+                    Lit(eye, PrimitiveType.Sphere, -0.035f, -0.08f, new Vector3(0.03f, 0.03f, 0.03f), 0f, 0.075f);
+                    break;
+                }
+                default:
+                    // Classic and Blushing: the two big ovals
+                    Lit(Eye(side * 0.24f, -0.06f), PrimitiveType.Sphere, 0f, 0f, oval);
+                    break;
+            }
+        }
+
+        // Pink cheeks under the eyes
+        var cheeks = new List<Renderer>();
+        if (Faces.HasCheeks(face))
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                float side = i == 0 ? -1f : 1f;
+                Vector3 at = OnVisor(new Vector2(side * 0.44f * r, -0.3f * r), faceCentre, faceRadii, 0.01f * r);
+                cheeks.Add(Part(faceParts, "Blush", PrimitiveType.Sphere, GlowMaterial, at, new Vector3(0.14f * r, 0.07f * r, 0.04f * r), false));
+            }
+        }
+
+        eyes = glow.ToArray();
+        darkParts = dark.ToArray();
+        blush = cheeks.ToArray();
+        eyeTransforms = pivots.ToArray();
+        // The pivots blink, so their own scale is the one to squash
+        eyeScale = Vector3.one;
+
+        if (block == null) block = new MaterialPropertyBlock();
+        Paint(eyes, eyeColor, eyeColor * EyeGlow);
+        Paint(darkParts, VisorColor, Color.black);
+        Paint(blush, BlushColor, dead ? Color.black : BlushColor * 0.6f);
+    }
+
+    #endregion
 
     // Half the width of the body capsule at height y (bottomCentre/topCentre: the centres of its round ends)
     private static float BodyRadiusAt(float y, float radius, float topCentre, float bottomCentre)

@@ -91,7 +91,9 @@ public partial class Launcher : MonoBehaviour
         DressMenuModel();
         GameSettings.HatChanged += DressMenuModel;
         // ...and is the same little drone as in a match
-        DroneBody.DressSceneModels(PlayerCap.LogoColor);
+        DroneBody.DressSceneModels(PlayerCap.LogoColor, GameSettings.Face);
+        // ...showing your face, and changing face when you pick another in Customize
+        GameSettings.FaceChanged += DressMenuFace;
         ShowWordmark();
         ApplyStyle();
         BuildHome();
@@ -142,12 +144,29 @@ public partial class Launcher : MonoBehaviour
         if (Instance == this) Instance = null;
         if (MenuNavigation.Home == quickPlayButton) MenuNavigation.Home = null;
         GameSettings.HatChanged -= DressMenuModel;
+        GameSettings.FaceChanged -= DressMenuFace;
     }
 
     // Puts the hat picked in Customize on the menu's player model
     private void DressMenuModel()
     {
         PlayerCap.AttachToSceneHeads(PlayerCap.LogoColor, GameSettings.Hat);
+    }
+
+    // Shows the face picked in Customize on the menu's player model (see PreviewFace)
+    private void DressMenuFace() => PreviewFace(GameSettings.Face);
+
+    // Shows a face on the menu's player model: the one picked, or one being looked at in Customize.
+    // The model is the drone with a Head-tagged sphere for a head (the background bots' heads, built
+    // by MenuBattle, aren't tagged).
+    public static void PreviewFace(int face)
+    {
+        foreach (Transform t in FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            if (!t.CompareTag("Head") || t.GetComponent<MeshFilter>() == null || t.parent == null) continue;
+            DroneBody drone = t.parent.GetComponent<DroneBody>();
+            if (drone != null) drone.SetFace(face);
+        }
     }
 
     // Joins the session lobby so the room list fills in. The app version (set from the release

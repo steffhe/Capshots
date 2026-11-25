@@ -70,6 +70,7 @@ public partial class Manager
             Ping = 0,
             // One of the first few hats, so bots look like people who've played a little
             Hat = (byte)Random.Range(0, Hats.BotHatCount),
+            Face = (byte)Random.Range(0, Faces.BotFaceCount),
         };
         Stats.Set(bot, stats);
         bots.Add(bot);

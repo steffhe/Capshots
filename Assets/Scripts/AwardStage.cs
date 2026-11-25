@@ -24,6 +24,7 @@ public class AwardStage : MonoBehaviour
         public string name;
         public Color color;
         public int hat;
+        public int face;
         public bool teamMode, mine;
         public readonly List<string> titles = new List<string>();
         public readonly List<string> details = new List<string>();
@@ -56,6 +57,10 @@ public class AwardStage : MonoBehaviour
     private readonly List<CanvasGroup> cards = new List<CanvasGroup>();
     private readonly List<RectTransform> cardRects = new List<RectTransform>();
     private Camera cam;
+    // Your own drone's gun holder, if you won an award: it follows the cursor
+    private Transform myGun;
+    private Quaternion myGunRest;
+    private bool myGunRestSet;
     private RectTransform screen;
     private CanvasGroup titleGroup;
     private bool fogWas;
@@ -352,7 +357,7 @@ public class AwardStage : MonoBehaviour
         head.localPosition = new Vector3(0f, 1.4498f, 0f);
         head.localScale = new Vector3(0.70853f, 1.1542f, 0.70853f);
 
-        DroneBody dressed = DroneBody.Dress(body, head, entry.color, entry.teamMode);
+        DroneBody dressed = DroneBody.Dress(body, head, entry.color, entry.teamMode, false, entry.face);
         // The punching bag has taken a beating: its lights flicker and its collar sparks
         if (dressed != null && entry.titles.Contains("PUNCHING BAG")) dressed.SetHealth(0.2f);
         PlayerCap.Attach(head, entry.color, false, entry.hat);
@@ -361,6 +366,8 @@ public class AwardStage : MonoBehaviour
         if (form != null)
         {
             Transform holder = new GameObject("Weapon").transform;
+            // Your own drone aims its gun at the cursor, like the main menu's (see AimMyGun)
+            if (entry.mine) myGun = holder;
             holder.SetParent(drone.root, false);
             holder.localPosition = new Vector3(-0.031f, RootToGun, 0f);
             GameObject gun = Instantiate(form.prefab, holder, false);
@@ -535,6 +542,40 @@ public class AwardStage : MonoBehaviour
             float turn = Mathf.Sin((time + drone.phase) * 0.7f) * 8f;
             drone.root.rotation = Quaternion.Euler(0f, drone.yaw + turn, Mathf.Sin((time + drone.phase) * 1.3f) * 2f);
         }
+    }
+
+    // After Update has turned the drones: your own drone's gun points where the cursor is (a point
+    // on a plane a little in front of the gun, towards the camera), like the main menu's. With a
+    // controller, the right stick swings it about instead. Neither: it rests pointing ahead.
+    private void LateUpdate()
+    {
+        if (myGun == null || cam == null || !myGun.gameObject.activeInHierarchy) return;
+        if (!myGunRestSet)
+        {
+            myGunRest = myGun.localRotation;
+            myGunRestSet = true;
+        }
+        Quaternion rest = myGun.parent.rotation * myGunRest;
+        Quaternion target = rest;
+
+        UnityEngine.InputSystem.Gamepad pad = UnityEngine.InputSystem.Gamepad.current;
+        Vector2 stick = pad != null ? pad.rightStick.ReadValue() : Vector2.zero;
+        UnityEngine.InputSystem.Mouse mouse = UnityEngine.InputSystem.Mouse.current;
+        if (stick.sqrMagnitude > 0.04f)
+        {
+            target = rest * Quaternion.Euler(-stick.y * 35f, stick.x * 45f, 0f);
+        }
+        else if (mouse != null && !MenuNavigation.UsingGamepad)
+        {
+            Ray ray = cam.ScreenPointToRay(mouse.position.ReadValue());
+            Plane front = new Plane(Vector3.back, myGun.position + Vector3.back * 3f);
+            if (front.Raycast(ray, out float distance))
+            {
+                Vector3 look = ray.GetPoint(distance) - myGun.position;
+                if (look.sqrMagnitude > 0.0001f) target = Quaternion.LookRotation(look, Vector3.up);
+            }
+        }
+        myGun.rotation = Quaternion.Slerp(myGun.rotation, target, 1f - Mathf.Exp(-Time.unscaledDeltaTime * 12f));
     }
 
     // Overshoots a little before settling at 1

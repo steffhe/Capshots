@@ -137,6 +137,7 @@ public partial class Manager
             Team = p.team,
             Ping = 0,
             Hat = (byte)p.hat,
+            Face = (byte)p.face,
         };
         Stats.Set(bot, stats);
         bots.Add(bot);

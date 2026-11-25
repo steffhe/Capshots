@@ -74,6 +74,23 @@ public static class GameSettings
     // The main menu's player model, or your drone in a match, puts the new hat on at once
     public static event System.Action HatChanged;
 
+    // The face shown on the drone's screen (see Faces), saved in the profile. Reads as the classic
+    // face while the one picked is still locked; setting a locked face is ignored.
+    public static int Face
+    {
+        get => Faces.Wearable(Launcher.myProfile.face, Launcher.myProfile.level);
+        set
+        {
+            if (!Faces.IsUnlocked(value, Launcher.myProfile.level) || value == Launcher.myProfile.face) return;
+            Launcher.myProfile.face = value;
+            Data.SaveProfile(Launcher.myProfile);
+            FaceChanged?.Invoke();
+        }
+    }
+
+    // The main menu's player model, or your drone in a match, changes face at once
+    public static event System.Action FaceChanged;
+
     // The level the player was at when they last looked at their hats in Customize: hats unlocked
     // since then are new (a NEW badge on the Customize button, and on their rows). 0 at first, so
     // every unlocked hat starts out new.
@@ -84,7 +101,8 @@ public static class GameSettings
         set { PlayerPrefs.SetInt(HatsSeenLevelKey, value); PlayerPrefs.Save(); }
     }
 
-    public static bool HasNewHats => Hats.AnyUnlockedBetween(HatsSeenLevel, Launcher.myProfile.level);
+    // (Faces unlock with levels too, so a new face counts as well)
+    public static bool HasNewHats => Hats.AnyUnlockedBetween(HatsSeenLevel, Launcher.myProfile.level) || Faces.AnyUnlockedBetween(HatsSeenLevel, Launcher.myProfile.level);
 
     public static float Volume
     {

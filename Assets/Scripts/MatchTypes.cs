@@ -14,6 +14,8 @@ public class PlayerInfo
     public byte team;
     // The hat they wear (see Hats)
     public int hat;
+    // The face on their drone's screen (see Faces)
+    public int face;
     // Round trip time in milliseconds, measured by the host. -1 if not known yet.
     public int ping = -1;
     // Ready to start, in a lobby room's warmup (Manager.Lobby.cs)
@@ -39,6 +41,8 @@ public struct PlayerStats : INetworkStruct
     public short Ping;
     // The hat they wear (see Hats)
     public byte Hat;
+    // The face on their drone's screen (see Faces)
+    public byte Face;
     // Ready to start, in a lobby room's warmup (Manager.Lobby.cs)
     public NetworkBool Ready;
 }

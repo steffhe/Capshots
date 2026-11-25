@@ -155,9 +155,19 @@ public class MenuNavigation : MonoBehaviour
         module.AssignDefaultActions();
         // Only the left stick and d-pad move between buttons: the right stick turns the drone in
         // Customize (see MenuScenery), and would otherwise also jump round the hat list
-        if (module.move != null && module.move.action != null)
+        // (The default actions bind it as its four directions, <Gamepad>/rightStick/up and so on, so
+        // every binding starting with it is switched off.)
+        InputAction navigate = module.move != null ? module.move.action : null;
+        if (navigate != null)
         {
-            module.move.action.ApplyBindingOverride(new InputBinding { path = "<Gamepad>/rightStick", overridePath = "" });
+            for (int i = 0; i < navigate.bindings.Count; i++)
+            {
+                string path = navigate.bindings[i].path;
+                if (path != null && path.StartsWith("<Gamepad>/rightStick", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    navigate.ApplyBindingOverride(i, "");
+                }
+            }
         }
     }
 
