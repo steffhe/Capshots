@@ -79,7 +79,7 @@ public class DeadPlayer : MonoBehaviour
     {
         Collider[] ragdollColliders = AllColliders();
 
-        foreach (Player player in FindObjectsByType<Player>(FindObjectsSortMode.None))
+        foreach (Player player in Player.All)
         {
             if ((player.transform.position - transform.position).sqrMagnitude > 4f) continue;
             foreach (Collider playerCollider in player.GetComponentsInChildren<Collider>(true))

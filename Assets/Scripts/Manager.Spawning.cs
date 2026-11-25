@@ -71,7 +71,7 @@ public partial class Manager
     private Transform ChooseSpawnPoint(PlayerRef forPlayer)
     {
         List<Vector3> enemyEyes = new List<Vector3>();
-        foreach (Player p in FindObjectsByType<Player>(FindObjectsSortMode.None))
+        foreach (Player p in Player.All)
         {
             if (p.Object == null || !p.Object.IsValid || p.IsDead) continue;
             if (p.Owner == forPlayer) continue;

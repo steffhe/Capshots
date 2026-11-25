@@ -817,15 +817,16 @@ public class Weapon : NetworkBehaviour
 
     // A laser beam from the muzzle to where the shot landed, in the shooter's colour, that thins
     // out and fades. Each shot gets its own copy of the gun's line, so quick shots don't cut each
-    // other short. Not parented to the gun, so it stays where it was fired.
+    // other short. Not parented to the gun, so it stays where it was fired. Beams are reused (ShotEffects).
+    static MaterialPropertyBlock beamBlock;
+
     void ShotLine(Vector3 hitPos, bool pellet)
     {
         if (lineRend == null) return;
 
-        GameObject beamObject = new GameObject("Laser");
         // The main camera draws the Gun layer, so walls in front of the beam still hide it
-        beamObject.layer = Layers.Gun;
-        LineRenderer beam = CopyLine(lineRend, beamObject);
+        BeamFade fade = ShotEffects.Beam(lineRend, Layers.Gun);
+        LineRenderer beam = fade.Line;
         beam.useWorldSpace = true;
         beam.positionCount = 2;
         beam.SetPosition(0, lineRend.transform.position);
@@ -836,13 +837,13 @@ public class Weapon : NetworkBehaviour
         beam.enabled = true;
 
         Color color = ShotColor();
-        MaterialPropertyBlock block = new MaterialPropertyBlock();
+        if (beamBlock == null) beamBlock = new MaterialPropertyBlock();
+        MaterialPropertyBlock block = beamBlock;
         beam.GetPropertyBlock(block);
         block.SetColor("_BaseColor", new Color(color.r, color.g, color.b, 0.85f)); // URP
         block.SetColor("_Color", new Color(color.r, color.g, color.b, 0.85f));     // built-in shaders
         beam.SetPropertyBlock(block);
 
-        BeamFade fade = beamObject.AddComponent<BeamFade>();
         fade.Begin(beam, width, pellet ? 0.15f : 0.3f);
     }
 
@@ -923,6 +924,13 @@ public class Weapon : NetworkBehaviour
     public static LineRenderer CopyLine(LineRenderer original, GameObject target)
     {
         LineRenderer line = target.AddComponent<LineRenderer>();
+        CopyLineSettings(original, line);
+        return line;
+    }
+
+    // Makes line look like original
+    public static void CopyLineSettings(LineRenderer original, LineRenderer line)
+    {
         line.sharedMaterials = original.sharedMaterials;
         line.widthCurve = original.widthCurve;
         line.widthMultiplier = original.widthMultiplier;
@@ -933,7 +941,6 @@ public class Weapon : NetworkBehaviour
         line.textureMode = original.textureMode;
         line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         line.receiveShadows = false;
-        return line;
     }
 
     // A glowing dot above the ammo count in the player's colour while they carry a grenade, an empty
@@ -1039,9 +1046,9 @@ public class Weapon : NetworkBehaviour
         // A force field ripples where it's hit instead of getting a scorch mark
         if (hitWorld && !BoundaryField.Ripple(endPoint))
         {
-            GameObject newHole = Instantiate(bulletholePrefab, endPoint + hitNormal * 0.001f, Quaternion.identity) as GameObject;
-            newHole.transform.LookAt(endPoint + hitNormal);
-            Destroy(newHole, 5);
+            ShotEffects.Mark(bulletholePrefab, endPoint, hitNormal);
+            // Fewer for each shotgun pellet, so a blast isn't a fountain
+            ShotEffects.Sparks(endPoint, hitNormal, ShotColor(), gun.pellets > 1 ? 2 : 5);
         }
 
         if (!first) return;

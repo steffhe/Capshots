@@ -33,7 +33,7 @@ public partial class Manager
     {
         if (pickups.Count == 0) return;
 
-        Player[] players = FindObjectsByType<Player>(FindObjectsSortMode.None);
+        List<Player> players = Player.All;
         // Which box went to whom. The RPCs are sent after the loop: on the host an RPC to everyone
         // runs at once, and it removes the box from pickups while they're still being gone through.
         List<(int id, int actor)> taken = null;

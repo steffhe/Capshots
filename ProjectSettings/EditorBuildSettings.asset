@@ -8,16 +8,16 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Menu.unity
     guid: 25541a5f0bb732d44a25bb1bad900dc6
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/Map.unity
     guid: fb55221daff117849a3ea94af5b4c056
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/Map 1.unity
     guid: ee6b811fadb5c864a8016a3d9686abab
   - enabled: 1
     path: Assets/Scenes/Map 2.unity
     guid: ce0b452f85163664dae42d8b58b241d3
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/Nuketown.unity
     guid: d1ac5bb1b7da431e80ca687bef1a7023
   - enabled: 1
