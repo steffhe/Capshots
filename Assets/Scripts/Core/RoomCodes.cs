@@ -34,4 +34,33 @@ public static class RoomCodes
         foreach (char c in code) if (Letters.IndexOf(c) < 0) return false;
         return true;
     }
+
+    // The room code in an invite link's query (?code=KXQT, any case), or null if it has none or an
+    // invalid one
+    public static string FromUrl(string url)
+    {
+        if (string.IsNullOrEmpty(url)) return null;
+        int query = url.IndexOf('?');
+        if (query < 0) return null;
+        int end = url.IndexOf('#', query);
+        string q = end < 0 ? url.Substring(query + 1) : url.Substring(query + 1, end - query - 1);
+        foreach (string pair in q.Split('&'))
+        {
+            int eq = pair.IndexOf('=');
+            if (eq <= 0) continue;
+            if (pair.Substring(0, eq).ToLowerInvariant() != "code") continue;
+            string code = Normalize(System.Uri.UnescapeDataString(pair.Substring(eq + 1)));
+            return IsValid(code) ? code : null;
+        }
+        return null;
+    }
+
+    // A link that joins this code's match: the page's address without its query or fragment, then ?code=
+    public static string InviteLink(string pageUrl, string code)
+    {
+        string page = pageUrl ?? "";
+        int cut = page.IndexOfAny(new[] { '?', '#' });
+        if (cut >= 0) page = page.Substring(0, cut);
+        return page + "?code=" + code;
+    }
 }

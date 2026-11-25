@@ -295,6 +295,8 @@ public class Player : NetworkBehaviour
         {
             Local = this;
             look.Initialize(transform.eulerAngles.y);
+            // The first time ever: what the controls are (bots never get here: they aren't local players)
+            if (!IsBot) ControlsHint.ShowOnce();
 
             int playerLayer = Layers.LocalPlayer;
             normalCam.cullingMask &= ~(1 << playerLayer);

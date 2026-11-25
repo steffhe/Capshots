@@ -80,4 +80,25 @@ public class MatchAwardsTests
         Assert.AreEqual(101, back[1].actor);
         Assert.IsEmpty(MatchAwards.Unpack(""));
     }
+
+    [Test]
+    public void GroupByPlayer_OneGroupPerPlayer_InOrderOfTheirFirstAward()
+    {
+        var awards = new List<MatchAwards.Award>
+        {
+            new MatchAwards.Award { title = "CAPSHOT KING", actor = 7 },
+            new MatchAwards.Award { title = "ON A ROLL", actor = 3 },
+            new MatchAwards.Award { title = "STICKY FINGERS", actor = 7 },
+            new MatchAwards.Award { title = "PUNCHING BAG", actor = 9 },
+        };
+        var groups = MatchAwards.GroupByPlayer(awards);
+        Assert.AreEqual(3, groups.Count);
+        Assert.AreEqual(7, groups[0][0].actor);
+        Assert.AreEqual(2, groups[0].Count);
+        Assert.AreEqual("CAPSHOT KING", groups[0][0].title);
+        Assert.AreEqual("STICKY FINGERS", groups[0][1].title);
+        Assert.AreEqual(3, groups[1][0].actor);
+        Assert.AreEqual(9, groups[2][0].actor);
+        Assert.IsEmpty(MatchAwards.GroupByPlayer(null));
+    }
 }

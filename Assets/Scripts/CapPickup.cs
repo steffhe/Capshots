@@ -114,18 +114,8 @@ public class CapPickup : MonoBehaviour
     {
         float s = Mathf.Clamp01((time - launchedAt) / FlightTime);
         Vector3 rest = transform.position + Vector3.up * FloatHeight;
-        // Most of the way across early on, like something thrown
-        float across = 1f - (1f - s) * (1f - s);
-        Vector3 p = Vector3.Lerp(flightFrom, rest, across);
-        // The arc peaks about 40% of the way through: fast up, slow down
-        float k = Mathf.Pow(s, 0.75f) * 2f - 1f;
-        p.y += FlightHeight * (1f - k * k);
-        // Swaying as it falls, settling at the end
-        float sway = Mathf.Sin(s * Mathf.PI * 3f) * 0.18f * s * (1f - s) * 4f;
-        p += tumbleAxis * sway;
-        pivot.position = p;
-        float tumble = 1080f * (1f - (1f - s) * (1f - s) * (1f - s));
-        pivot.rotation = Quaternion.AngleAxis(tumble, tumbleAxis) * Quaternion.Euler(0f, s * 720f, 0f);
+        pivot.position = CapFlight.Position(flightFrom, rest, tumbleAxis, FlightHeight, s);
+        pivot.rotation = Quaternion.AngleAxis(CapFlight.Tumble(s), tumbleAxis) * Quaternion.Euler(0f, s * 720f, 0f);
         // A bit smaller off the head, growing to the pickup's size
         pivot.localScale = Vector3.one * Mathf.Lerp(0.6f, 0.7f, s);
     }

@@ -70,7 +70,8 @@ public class AwardStage : MonoBehaviour
     }
 
     // Reveals the awards one by one, then holds; ends after Duration
-    public IEnumerator Play()
+    // until: when to end (unscaled time); by default after Duration
+    public IEnumerator Play(float until = -1f)
     {
         float start = Time.unscaledTime;
         StartCoroutine(Fade(titleGroup, 0.4f));
@@ -83,7 +84,7 @@ public class AwardStage : MonoBehaviour
             FeedbackUI.AwardShown();
             yield return new WaitForSecondsRealtime(PerAward);
         }
-        float end = start + Duration(drones.Count);
+        float end = until >= 0f ? until : start + Duration(drones.Count);
         while (Time.unscaledTime < end) yield return null;
     }
 

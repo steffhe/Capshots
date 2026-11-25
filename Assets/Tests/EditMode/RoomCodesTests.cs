@@ -33,4 +33,26 @@ public class RoomCodesTests
     {
         Assert.AreEqual(expected, RoomCodes.IsValid(code));
     }
+
+    [TestCase("https://steffhe.github.io/Capshots/?code=KXQT", "KXQT")]
+    [TestCase("https://steffhe.github.io/Capshots/?code=kxqt", "KXQT")]
+    [TestCase("https://steffhe.github.io/Capshots/?x=1&CODE=kx-qt#top", "KXQT")]
+    [TestCase("https://steffhe.github.io/Capshots/?code=KXOT", null)]
+    [TestCase("https://steffhe.github.io/Capshots/", null)]
+    [TestCase("https://steffhe.github.io/Capshots/?other=KXQT", null)]
+    [TestCase("", null)]
+    [TestCase(null, null)]
+    public void FromUrl_ReadsAValidCodeFromTheQuery(string url, string expected)
+    {
+        Assert.AreEqual(expected, RoomCodes.FromUrl(url));
+    }
+
+    [TestCase("https://steffhe.github.io/Capshots/", "https://steffhe.github.io/Capshots/?code=KXQT")]
+    [TestCase("https://steffhe.github.io/Capshots/?code=ABCD", "https://steffhe.github.io/Capshots/?code=KXQT")]
+    [TestCase("https://steffhe.github.io/Capshots/#x", "https://steffhe.github.io/Capshots/?code=KXQT")]
+    public void InviteLink_ReplacesAnyQuery(string page, string expected)
+    {
+        Assert.AreEqual(expected, RoomCodes.InviteLink(page, "KXQT"));
+        Assert.AreEqual("KXQT", RoomCodes.FromUrl(RoomCodes.InviteLink(page, "KXQT")));
+    }
 }

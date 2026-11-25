@@ -44,9 +44,8 @@ public partial class Launcher : MonoBehaviour
 
     // In MatchMode's order
     private static readonly string[] modeNames = { "FREE FOR ALL", "TEAM DEATHMATCH", "CAP GRAB", "GUN GAME", "TEAM CAP GRAB" };
-    // The order the mode list shows them in (MatchMode values, which can't change: rooms send them),
-    // with Team Cap Grab right under Cap Grab
-    private static readonly MatchMode[] modeOrder = { MatchMode.FreeForAll, MatchMode.TeamDeathmatch, MatchMode.CapGrab, MatchMode.TeamCapGrab, MatchMode.GunGame };
+    // The order the mode list shows them in (ModeOrder: Team Cap Grab right under Cap Grab)
+    private static int[] modeOrder => ModeOrder.Menu;
     private static readonly string[] modeShortNames = { "FFA", "TDM", "CAP", "GUN", "TEAM CAP" };
     private int currentmode = 0;
     private Text modeValue;
@@ -106,6 +105,24 @@ public partial class Launcher : MonoBehaviour
         LoadingScreen.Hide(0.15f);
         // Build it now (after the font is set up by ApplyStyle) rather than on the first Play click
         LoadingScreen.Prepare();
+    }
+
+    // Opened from an invite link (the browser version's address with ?code=KXQT): straight into
+    // that match. Once only: the code is taken out of the address, so the menu stays put when the
+    // player comes back to it.
+    private static bool inviteUsed;
+
+    private System.Collections.IEnumerator Start()
+    {
+        if (inviteUsed || !Browser.IsBrowser) yield break;
+        string code = RoomCodes.FromUrl(Application.absoluteURL);
+        inviteUsed = true;
+        if (code == null) yield break;
+        Browser.ClearUrlQuery();
+        // A moment for the menu (and the connection to Photon) to get going
+        yield return new WaitForSeconds(0.5f);
+        if (joinCodeField != null) joinCodeField.text = code;
+        JoinWithCode();
     }
 
     private void OnEnable()
@@ -246,12 +263,12 @@ public partial class Launcher : MonoBehaviour
         int selected = 0;
         for (int i = 0; i < modeOrder.Length; i++)
         {
-            names[i] = modeNames[(int)modeOrder[i]];
-            if ((int)modeOrder[i] == currentmode) selected = i;
+            names[i] = modeNames[modeOrder[i]];
+            if (modeOrder[i] == currentmode) selected = i;
         }
         OptionPicker.Open(ButtonOf(modeValue), names, selected, i =>
         {
-            currentmode = (int)modeOrder[i];
+            currentmode = modeOrder[i];
             RefreshModeText();
             // What the match is won by depends on the mode (caps, kills or the gun ladder)
             RefreshWinBy();

@@ -17,8 +17,10 @@ public partial class Manager
     }
     private readonly Dictionary<PlayerRef, AwardCount> awardCounts = new Dictionary<PlayerRef, AwardCount>();
 
-    // Everyone: the awards the host sent, for the awards screen (AwardStage)
+    // Everyone: the awards the host sent, for the awards screen (AwardStage), and how many players won
+    // something (set by the host with the end of the match, so it reaches everyone with it)
     private List<MatchAwards.Award> awards;
+    [Networked] private byte AwardCards { get; set; }
 
     // Host only: a kill while the match is being played
     private void CountForAwards(PlayerRef killer, PlayerRef victim, string weaponName, bool headshot, int streak)
@@ -52,6 +54,9 @@ public partial class Manager
         // The same order on every machine, so ties go the same way
         tallies.Sort((a, b) => a.actor.CompareTo(b.actor));
         List<MatchAwards.Award> chosen = MatchAwards.Choose(tallies);
+        // How many cards the awards screen has, so every machine gives it the same time, even one
+        // the awards themselves reach late (it arrives with the end of the match: Manager.Presentation)
+        AwardCards = (byte)MatchAwards.GroupByPlayer(chosen).Count;
         if (chosen.Count > 0) RPC_Awards(MatchAwards.Pack(chosen));
     }
 
@@ -66,25 +71,24 @@ public partial class Manager
     private List<AwardStage.Entry> AwardEntries()
     {
         List<AwardStage.Entry> entries = new List<AwardStage.Entry>();
-        Dictionary<int, AwardStage.Entry> byActor = new Dictionary<int, AwardStage.Entry>();
         int me = LocalActor;
-        foreach (MatchAwards.Award award in awards)
+        foreach (List<MatchAwards.Award> group in MatchAwards.GroupByPlayer(awards))
         {
-            if (!byActor.TryGetValue(award.actor, out AwardStage.Entry entry))
+            MatchAwards.Award first = group[0];
+            AwardStage.Entry entry = new AwardStage.Entry
             {
-                entry = new AwardStage.Entry
-                {
-                    name = award.name,
-                    color = PlayerCap.ColorFor(award.actor),
-                    hat = GetPlayerHat(award.actor),
-                    teamMode = IsTeamMode,
-                    mine = award.actor == me,
-                };
-                byActor[award.actor] = entry;
-                entries.Add(entry);
+                name = first.name,
+                color = PlayerCap.ColorFor(first.actor),
+                hat = GetPlayerHat(first.actor),
+                teamMode = IsTeamMode,
+                mine = first.actor == me,
+            };
+            foreach (MatchAwards.Award award in group)
+            {
+                entry.titles.Add(award.title);
+                entry.details.Add(award.detail);
             }
-            entry.titles.Add(award.title);
-            entry.details.Add(award.detail);
+            entries.Add(entry);
         }
         return entries;
     }

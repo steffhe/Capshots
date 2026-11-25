@@ -96,9 +96,15 @@ public partial class Manager
     }
 
     // Team score shown under the match timer, built from the timer text so it matches the HUD style
+    // Under the timer: the team score in team modes, otherwise the race to the limit (CreateRaceScore)
     private void CreateTeamScore()
     {
-        if (!IsTeamMode || timer == null) return;
+        if (!IsTeamMode)
+        {
+            CreateRaceScore();
+            return;
+        }
+        if (timer == null) return;
 
         GameObject scoreObject = Instantiate(timer.gameObject, timer.transform.parent);
         scoreObject.name = "Team Score";
@@ -119,6 +125,7 @@ public partial class Manager
 
     private void RefreshTeamScore()
     {
+        RefreshRaceScore();
         if (teamScore == null) return;
         teamScore.text = $"<color={TeamHex(0)}>{TeamNames[0]} {TeamKills(0)}</color>  -  <color={TeamHex(1)}>{TeamKills(1)} {TeamNames[1]}</color>";
     }

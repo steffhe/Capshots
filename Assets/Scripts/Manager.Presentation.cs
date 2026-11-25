@@ -158,15 +158,33 @@ public partial class Manager
         if (Player.Local != null && Player.Local.cameraParent != null) Player.Local.cameraParent.SetActive(false);
         mapcam.SetActive(true);
 
-        // 3. The awards, one after another, each with its winner's drone over the card
-        if (awards != null && awards.Count > 0)
+        // The mouse is free from here on, for the pause menu (to leave early) and then the vote
+        if (!TouchControls.UsingTouch)
         {
-            AwardStage stage = AwardStage.Create(AwardEntries(), mapcam.GetComponentInChildren<Camera>(), GameObject.Find("Canvas").transform);
-            black.transform.SetAsLastSibling();
-            yield return FadeImage(black, 1f, 0f, 0.4f);
-            yield return stage.Play();
-            yield return FadeImage(black, 0f, 1f, CutFadeTime);
-            Destroy(stage.gameObject);
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
+
+        // 3. The awards, one after another, each with its winner's drone over the card. Every machine
+        // gives them the same time (from the host's count of cards), so the results and the vote
+        // still start and end together, even where the awards themselves arrive late.
+        int cards = Object != null && Object.IsValid ? AwardCards : 0;
+        if (cards == 0 && awards != null) cards = MatchAwards.GroupByPlayer(awards).Count;
+        if (cards > 0)
+        {
+            const float fadeIn = 0.4f;
+            float slotEnd = Time.unscaledTime + fadeIn + AwardStage.Duration(cards) + CutFadeTime;
+            while ((awards == null || awards.Count == 0) && Time.unscaledTime < slotEnd - CutFadeTime - 1f) yield return null;
+            if (awards != null && awards.Count > 0)
+            {
+                AwardStage stage = AwardStage.Create(AwardEntries(), mapcam.GetComponentInChildren<Camera>(), GameObject.Find("Canvas").transform);
+                black.transform.SetAsLastSibling();
+                yield return FadeImage(black, 1f, 0f, fadeIn);
+                yield return stage.Play(slotEnd - CutFadeTime);
+                yield return FadeImage(black, 0f, 1f, CutFadeTime);
+                Destroy(stage.gameObject);
+            }
+            while (Time.unscaledTime < slotEnd) yield return null;
         }
 
         // 4. Results (and the vote for the next map, when there is one)
