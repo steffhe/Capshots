@@ -27,6 +27,7 @@ public class Pause : MonoBehaviour
         // Adds the Settings button and panel to this pause menu
         SettingsMenu.Create(this);
         ShowRoomCode();
+        AddLobbyButtons();
 
         // The pause menu lives in the match scene, so this covers exactly the time spent in a match
         Browser.SetLeaveWarning(true);
@@ -38,6 +39,8 @@ public class Pause : MonoBehaviour
     // so anyone can leave there without waiting for them to finish.
     private void Update()
     {
+        if (paused) RefreshLobbyButtons();
+
         bool pointerLocked = Browser.IsPointerLocked;
         bool lockLost = wasPointerLocked && !pointerLocked;
         wasPointerLocked = pointerLocked;
@@ -92,18 +95,9 @@ public class Pause : MonoBehaviour
     // Under the room code: copies a link that opens the browser version straight into this match
     private void AddInviteButton(Transform buttons, int index, string code)
     {
-        Transform resume = buttons != null ? buttons.Find("Button (1)") : null;
-        if (resume == null) return;
-        GameObject copy = Instantiate(resume.gameObject, buttons);
-        copy.name = "Invite";
-        copy.transform.SetSiblingIndex(index);
-        UnityEngine.UI.Button button = copy.GetComponent<UnityEngine.UI.Button>();
-        UnityEngine.UI.Text label = copy.GetComponentInChildren<UnityEngine.UI.Text>(true);
-        if (button == null || label == null) { Destroy(copy); return; }
-        // Not Resume's own action
-        for (int i = 0; i < button.onClick.GetPersistentEventCount(); i++)
-            button.onClick.SetPersistentListenerState(i, UnityEngine.Events.UnityEventCallState.Off);
-        UITheme.StyleButton(button, UITheme.ButtonStyle.Secondary, 18);
+        UnityEngine.UI.Text label;
+        UnityEngine.UI.Button button = CopyMenuButton(buttons, "Invite", index, out label);
+        if (button == null) return;
         const string idle = "COPY INVITE LINK";
         label.text = idle;
         button.onClick.AddListener(() =>
@@ -114,6 +108,75 @@ public class Pause : MonoBehaviour
             inviteLabel = label;
             Invoke(nameof(ResetInviteLabel), 2f);
         });
+    }
+
+    // A secondary button in the menu's column, made from Resume (without Resume's own action)
+    private UnityEngine.UI.Button CopyMenuButton(Transform buttons, string name, int index, out UnityEngine.UI.Text label)
+    {
+        label = null;
+        Transform resume = buttons != null ? buttons.Find("Button (1)") : null;
+        if (resume == null) return null;
+        GameObject copy = Instantiate(resume.gameObject, buttons);
+        copy.name = name;
+        copy.transform.SetSiblingIndex(index);
+        UnityEngine.UI.Button button = copy.GetComponent<UnityEngine.UI.Button>();
+        label = copy.GetComponentInChildren<UnityEngine.UI.Text>(true);
+        if (button == null || label == null) { Destroy(copy); return null; }
+        for (int i = 0; i < button.onClick.GetPersistentEventCount(); i++)
+            button.onClick.SetPersistentListenerState(i, UnityEngine.Events.UnityEventCallState.Off);
+        UITheme.StyleButton(button, UITheme.ButtonStyle.Secondary, 18);
+        return button;
+    }
+
+    // In a lobby (Manager.Lobby.cs), right under Resume: Ready for everyone, and for the host a
+    // button that starts the match whoever is ready. Shown only while the lobby is on.
+    private GameObject readyButton, startButton;
+    private UnityEngine.UI.Text readyLabel;
+
+    private void AddLobbyButtons()
+    {
+        if (transform.childCount == 0) return;
+        Transform buttons = transform.GetChild(0).Find("Buttons");
+        Transform resume = buttons != null ? buttons.Find("Button (1)") : null;
+        if (resume == null) return;
+
+        UnityEngine.UI.Text startLabel;
+        UnityEngine.UI.Button start = CopyMenuButton(buttons, "Start Match", resume.GetSiblingIndex() + 1, out startLabel);
+        if (start != null)
+        {
+            UITheme.StyleButton(start, UITheme.ButtonStyle.Primary, 18);
+            startLabel.text = "START MATCH NOW";
+            start.onClick.AddListener(() =>
+            {
+                if (Manager.Instance != null) Manager.Instance.ForceStart();
+                if (paused) TogglePause();
+            });
+            startButton = start.gameObject;
+        }
+
+        UnityEngine.UI.Button ready = CopyMenuButton(buttons, "Ready", resume.GetSiblingIndex() + 1, out readyLabel);
+        if (ready != null)
+        {
+            ready.onClick.AddListener(() =>
+            {
+                if (Manager.Instance != null) Manager.Instance.ToggleReady();
+            });
+            readyButton = ready.gameObject;
+        }
+        RefreshLobbyButtons();
+    }
+
+    private void RefreshLobbyButtons()
+    {
+        Manager m = Manager.Instance;
+        bool inLobby = m != null && m.InLobby;
+        if (readyButton != null)
+        {
+            if (readyButton.activeSelf != inLobby) readyButton.SetActive(inLobby);
+            if (inLobby && readyLabel != null) readyLabel.text = m.LocalReady ? "CANCEL READY" : "READY UP";
+        }
+        bool canStart = inLobby && m.CanForceStart;
+        if (startButton != null && startButton.activeSelf != canStart) startButton.SetActive(canStart);
     }
 
     private UnityEngine.UI.Text inviteLabel;
@@ -128,6 +191,7 @@ public class Pause : MonoBehaviour
         toggledFrame = Time.frameCount;
 
         paused = !paused;
+        if (paused) RefreshLobbyButtons();
 
         transform.GetChild(0).gameObject.SetActive(paused);
         // Over everything else on the screen, the end screens included

@@ -16,6 +16,8 @@ public class PlayerInfo
     public int hat;
     // Round trip time in milliseconds, measured by the host. -1 if not known yet.
     public int ping = -1;
+    // Ready to start, in a lobby room's warmup (Manager.Lobby.cs)
+    public bool ready;
 
     public PlayerInfo (ProfileData p, int a, short k, short d)
     {
@@ -37,6 +39,8 @@ public struct PlayerStats : INetworkStruct
     public short Ping;
     // The hat they wear (see Hats)
     public byte Hat;
+    // Ready to start, in a lobby room's warmup (Manager.Lobby.cs)
+    public NetworkBool Ready;
 }
 
 // The match's game mode. (Not "GameMode", which is Fusion's host/client mode.)

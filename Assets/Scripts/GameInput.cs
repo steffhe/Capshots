@@ -20,7 +20,7 @@ public static class GameInput
 
     public static InputAction Move, Look, LookStick, Fire, Aim, Jump, Sprint, Crouch, Slide, Reload, Grenade;
     public static InputAction Weapon1, Weapon2, Weapon3, Weapon4, WeaponNext, WeaponPrev, WeaponScroll;
-    public static InputAction Scoreboard, Chat, PauseMenu;
+    public static InputAction Scoreboard, Chat, PauseMenu, Ready;
 
     // Actions shown in the settings menu for rebinding, with their display names
     public static readonly List<KeyValuePair<string, InputAction>> Rebindable = new List<KeyValuePair<string, InputAction>>();
@@ -75,6 +75,8 @@ public static class GameInput
         Chat = Button("Chat", "<Keyboard>/t", null);
         Chat.AddBinding("<Keyboard>/enter", groups: KeyboardMouseGroup);
         PauseMenu = Button("Pause", "<Keyboard>/escape", "<Gamepad>/start");
+        // In a created room's lobby: ready to start, or not after all (Manager.Lobby.cs)
+        Ready = Button("Ready", "<Keyboard>/f", "<Gamepad>/dpad/up");
 
         Rebindable.Add(new KeyValuePair<string, InputAction>("FIRE", Fire));
         Rebindable.Add(new KeyValuePair<string, InputAction>("AIM", Aim));
@@ -90,6 +92,7 @@ public static class GameInput
         Rebindable.Add(new KeyValuePair<string, InputAction>("WEAPON 4", Weapon4));
         Rebindable.Add(new KeyValuePair<string, InputAction>("SCOREBOARD", Scoreboard));
         Rebindable.Add(new KeyValuePair<string, InputAction>("CHAT", Chat));
+        Rebindable.Add(new KeyValuePair<string, InputAction>("READY (LOBBY)", Ready));
 
         LoadBindings();
         Map.Enable();
@@ -128,10 +131,18 @@ public static class GameInput
             // In a browser, Escape always releases the mouse, and the game pauses when that happens
             // (see Player.PauseWhenBrowserReleasesMouse). Here Escape only resumes, so the two can't fight.
             // With touch controls nothing locks the mouse, so there Escape on a keyboard pauses too.
-            if (!Pause.paused && !TouchControls.UsingTouch) return false;
+            // A controller's Start button isn't Escape, so it pauses as anywhere else.
+            if (!Pause.paused && !TouchControls.UsingTouch && !FromGamepad(PauseMenu)) return false;
 #endif
             return !IsRebinding && !ChatUI.IsTyping && ChatUI.ClosedFrame != Time.frameCount && PauseMenu.WasPressedThisFrame();
         }
+    }
+
+    // The action's last press came from a controller rather than the keyboard
+    private static bool FromGamepad(InputAction action)
+    {
+        InputControl control = action.activeControl;
+        return control != null && control.device is Gamepad;
     }
 
     // +1 next weapon, -1 previous, 0 none
