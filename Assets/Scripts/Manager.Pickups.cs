@@ -34,7 +34,9 @@ public partial class Manager
         if (pickups.Count == 0) return;
 
         Player[] players = FindObjectsByType<Player>(FindObjectsSortMode.None);
-        List<int> taken = null;
+        // Which box went to whom. The RPCs are sent after the loop: on the host an RPC to everyone
+        // runs at once, and it removes the box from pickups while they're still being gone through.
+        List<(int id, int actor)> taken = null;
 
         foreach (KeyValuePair<int, AmmoPickup> entry in pickups)
         {
@@ -50,14 +52,18 @@ public partial class Manager
                 if (weapon == null || !weapon.NeedsAmmo()) continue;
 
                 weapon.AddAmmoPickup();
-                if (taken == null) taken = new List<int>();
-                taken.Add(entry.Key);
-                RPC_PickupTaken(entry.Key, p.ActorId);
+                if (taken == null) taken = new List<(int, int)>();
+                taken.Add((entry.Key, p.ActorId));
                 break;
             }
         }
 
-        if (taken != null) foreach (int id in taken) RemovePickup(id, true);
+        if (taken == null) return;
+        foreach ((int id, int actor) in taken)
+        {
+            RPC_PickupTaken(id, actor);
+            RemovePickup(id, true);
+        }
     }
 
     [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
