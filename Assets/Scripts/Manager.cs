@@ -9,7 +9,7 @@ using Fusion;
 // A network object in each map scene. The host owns it: it keeps everyone's stats, runs the
 // match timer and spawns players; Fusion syncs that state to everyone else.
 // Other parts of this class are in Manager.Teams.cs, Manager.Scoreboard.cs, Manager.Spawning.cs,
-// Manager.Pickups.cs, Manager.Grenades.cs, Manager.Chat.cs and Manager.Xp.cs.
+// Manager.Pickups.cs, Manager.Grenades.cs, Manager.Chat.cs, Manager.Xp.cs and Manager.Lobby.cs.
 public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 {
     public static Manager Instance { get; private set; }
@@ -125,6 +125,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
             NetworkSession.SetOpen(Runner, true);
             State = GameState.Waiting;
             MatchTime = matchlength;
+            HostPlayer = Runner.LocalPlayer;
             Heartbeat = TickTimer.CreateFromSeconds(Runner, 1f);
             if (migrated != null) ResumeMatch(migrated);
             foreach (PlayerRef player in Runner.ActivePlayers) AddPlayer(player);
@@ -155,6 +156,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         GameSettings.HatChanged -= SendHat;
         GameSettings.ColoursChanged -= OnColoursChanged;
         ready = false;
+        if (lobbyPanel != null) Destroy(lobbyPanel.gameObject);
     }
 
     private void ReadMatchSettings()
@@ -167,6 +169,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         if (properties.TryGetValue("mode", out value)) mode = (MatchMode)(int)value;
         if (properties.TryGetValue("matchlength", out value)) matchlength = (int)value;
         if (properties.TryGetValue("bots", out value)) botSetting = (int)value;
+        if (properties.TryGetValue("lobby", out value)) IsLobby = (int)value != 0 && !NetworkSession.IsPractice(Runner) && string.IsNullOrEmpty(NextMapName);
         if (properties.TryGetValue("botskill", out value)) BotSkill = Mathf.Clamp((int)value, BotLogic.Easy, BotLogic.Hard);
         // A match needs some way to end
         if (!HasKillLimit && !HasTimeLimit) killcount = 20;
@@ -187,6 +190,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         bool showHud = alive && !matchEnded;
         if (Hud.activeSelf != showHud) Hud.SetActive(showHud);
         UpdateCapArrows();
+        UpdateLobby();
 
         if (state == GameState.Ending) return;
 
@@ -260,17 +264,20 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         CreateTeamScore();
         ChatUI.Create(GameObject.Find("Canvas").transform, myKills.font, this);
         TouchControls.Create(myKills.font);
+        CreateLobbyPanel(canvas);
 
         RefreshMyStats();
     }
 
     private void RefreshTimerUI()
     {
+        // The lobby's countdown line
+        RefreshLobbyPanel();
         if (timer == null) return;
 
         if (state == GameState.Waiting)
         {
-            timer.text = "WAITING";
+            timer.text = IsLobby ? "LOBBY" : "WAITING";
             return;
         }
 
@@ -296,6 +303,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         }
 
         RefreshTeamScore();
+        RefreshLobbyPanel();
         if (leaderboard.gameObject.activeSelf) Leaderboard(leaderboard);
     }
 
@@ -318,6 +326,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
             p.team = s.Team;
             p.ping = s.Ping;
             p.hat = s.Hat;
+            p.ready = s.Ready;
             list.Add(p);
         }
         list.Sort((a, b) => a.actor.CompareTo(b.actor));
@@ -474,7 +483,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         switch (State)
         {
             case GameState.Waiting:
-                if (EnoughPlayersToStart())
+                if (CanStartMatch())
                 {
                     MatchTime = startCountdown;
                     State = GameState.Starting;
@@ -482,7 +491,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
                 break;
 
             case GameState.Starting:
-                if (!EnoughPlayersToStart())
+                if (!CanStartMatch())
                 {
                     MatchTime = matchlength;
                     State = GameState.Waiting;
@@ -504,6 +513,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
                     }
                     MatchTime = matchlength;
                     State = GameState.Playing;
+                    forceStart = false;
                 }
                 break;
 
@@ -681,7 +691,9 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         switch (state)
         {
             case GameState.Waiting:
-                ShowMessage("WAITING FOR PLAYERS");
+                if (!IsLobby) ShowMessage("WAITING FOR PLAYERS");
+                // Someone in the lobby wasn't ready after all (or a new player came in)
+                else if (previousState == GameState.Starting) ShowMessage("COUNTDOWN STOPPED");
                 break;
             case GameState.Starting:
                 ShowMessage("MATCH STARTING");

@@ -203,6 +203,9 @@ public partial class Launcher : MonoBehaviour
         Dictionary<string, SessionProperty> properties = RoomProperties();
         // The room list shows the name typed in the create tab (the room code is the session's name)
         if (!string.IsNullOrWhiteSpace(roomnameField.text)) properties["title"] = roomnameField.text.Trim();
+        // A created room waits in a lobby until everyone is ready or the host starts it (Manager.Lobby.cs).
+        // Quick play and practice start by themselves.
+        properties["lobby"] = 1;
         StartGameResult result = await NetworkSession.Host((int)maxPlayersSlider.value, properties, maps[currentmap].scene);
         starting = false;
         if (!result.Ok)

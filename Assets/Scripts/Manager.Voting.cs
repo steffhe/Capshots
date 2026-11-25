@@ -125,6 +125,8 @@ public partial class Manager
         }
         properties["map"] = map;
         properties["mapname"] = maps[map].name;
+        // Everyone is already here: the next map starts as soon as enough are in, without the lobby
+        properties["lobby"] = 0;
         NetworkSession.UpdateMatchProperties(Runner, properties);
 
         StartCoroutine(LoadMapAfter(maps[map].scene, 0.6f));

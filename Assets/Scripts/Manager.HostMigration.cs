@@ -153,5 +153,7 @@ public partial class Manager
         stats.Kills = p.kills;
         stats.Deaths = p.deaths;
         if (IsTeamMode) stats.Team = p.team;
+        // Still ready in a lobby that starts over on the new host
+        stats.Ready = p.ready;
     }
 }
