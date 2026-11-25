@@ -43,8 +43,8 @@ public partial class Launcher : MonoBehaviour
     private int currentmap = 0;
 
     // In MatchMode's order
-    private static readonly string[] modeNames = { "FREE FOR ALL", "TEAM DEATHMATCH", "CAP GRAB" };
-    private static readonly string[] modeShortNames = { "FFA", "TDM", "CAP" };
+    private static readonly string[] modeNames = { "FREE FOR ALL", "TEAM DEATHMATCH", "CAP GRAB", "GUN GAME", "TEAM CAP GRAB" };
+    private static readonly string[] modeShortNames = { "FFA", "TDM", "CAP", "GUN", "TEAM CAP" };
     private int currentmode = 0;
     private Text modeValue;
 
@@ -62,7 +62,6 @@ public partial class Launcher : MonoBehaviour
 
     // How the match is won: the first to a number of kills, or the most kills when the time runs out.
     // The kills slider row sets whichever it is, and each keeps its own value.
-    private static readonly string[] winByNames = { "KILLS", "TIME" };
     private const int WinByKills = 0, WinByTime = 1;
     private const int MaxKillsToWin = 50, DefaultKillsToWin = 20;
     private const int MaxMatchMinutes = 20, DefaultMatchMinutes = 5;
@@ -181,7 +180,10 @@ public partial class Launcher : MonoBehaviour
         starting = true;
         PrepareProfile();
         LoadingScreen.Show("CREATING MATCH", maps[currentmap].name, LoadingScreen.ModeName(currentmode));
-        StartGameResult result = await NetworkSession.Host(roomnameField.text, (int)maxPlayersSlider.value, RoomProperties(), maps[currentmap].scene);
+        Dictionary<string, SessionProperty> properties = RoomProperties();
+        // The room list shows the name typed in the create tab (the room code is the session's name)
+        if (!string.IsNullOrWhiteSpace(roomnameField.text)) properties["title"] = roomnameField.text.Trim();
+        StartGameResult result = await NetworkSession.Host((int)maxPlayersSlider.value, properties, maps[currentmap].scene);
         starting = false;
         if (!result.Ok)
         {
@@ -202,6 +204,8 @@ public partial class Launcher : MonoBehaviour
         properties.Add("mode", currentmode);
         properties.Add("bots", currentbots);
         properties.Add("botskill", currentBotSkill);
+        // What the room list calls it, unless a name was typed in the create tab
+        properties.Add("title", (myProfile != null && !string.IsNullOrWhiteSpace(myProfile.username) ? myProfile.username : "PLAYER") + "'S MATCH");
         return properties;
     }
 
@@ -239,6 +243,8 @@ public partial class Launcher : MonoBehaviour
         {
             currentmode = i;
             RefreshModeText();
+            // What the match is won by depends on the mode (caps, kills or the gun ladder)
+            RefreshWinBy();
         });
     }
 
@@ -279,22 +285,31 @@ public partial class Launcher : MonoBehaviour
 
     public void ChangeWinBy()
     {
-        OptionPicker.Open(ButtonOf(winByValue), winByNames, currentWinBy, i =>
+        string[] names = { GunGamePicked ? "LADDER" : ScoreWord, "TIME" };
+        OptionPicker.Open(ButtonOf(winByValue), names, currentWinBy, i =>
         {
             currentWinBy = i;
             RefreshWinBy();
         });
     }
 
-    // The Win By button, and the slider row under it showing the kills to win or the match length
+    // What a score counts in the mode picked: caps in Cap Grab, kills otherwise
+    private string ScoreWord => currentmode == (int)MatchMode.CapGrab || currentmode == (int)MatchMode.TeamCapGrab ? "CAPS" : "KILLS";
+    private bool GunGamePicked => currentmode == (int)MatchMode.GunGame;
+
+    // The Win By button, and the slider row under it showing the kills (or caps) to win or the
+    // match length. Gun Game is always won at the top of its ladder, so there's no number to pick.
     private void RefreshWinBy()
     {
-        if (winByValue != null) winByValue.text = UITheme.Option("WIN BY", winByNames[currentWinBy]);
+        string winBy = currentWinBy == WinByTime ? "TIME" : GunGamePicked ? $"LADDER ({GunGameRules.KillsToWin} KILLS)" : ScoreWord;
+        if (winByValue != null) winByValue.text = UITheme.Option("WIN BY", winBy);
         if (killsToWinSlider == null) return;
 
         bool time = currentWinBy == WinByTime;
-        Text label = killsToWinSlider.transform.parent != null ? killsToWinSlider.transform.parent.Find("Text")?.GetComponent<Text>() : null;
-        if (label != null) label.text = time ? "MATCH LENGTH" : "KILLS TO WIN";
+        Transform sliderRow = killsToWinSlider.transform.parent;
+        if (sliderRow != null) sliderRow.gameObject.SetActive(time || !GunGamePicked);
+        Text label = sliderRow != null ? sliderRow.Find("Text")?.GetComponent<Text>() : null;
+        if (label != null) label.text = time ? "MATCH LENGTH" : ScoreWord + " TO WIN";
         // Without calling ChangeKillsToWinSlider, which would save the value under the other setting
         killsToWinSlider.minValue = 1;
         killsToWinSlider.maxValue = time ? MaxMatchMinutes : MaxKillsToWin;
@@ -553,8 +568,13 @@ public partial class Launcher : MonoBehaviour
                 if (goal != null) roomMap += "  ·  " + goal;
             }
 
-            GameObject newRoomButton = CreateRoomRow(a.Name, a.PlayerCount + " / " + a.MaxPlayers, roomMap);
-            newRoomButton.GetComponent<Button>().onClick.AddListener(delegate { JoinRoom(newRoomButton.transform); });
+            // Its title (or its name, for a match from an older build), and its room code
+            string title = a.Name;
+            if (a.Properties != null && a.Properties.TryGetValue("title", out SessionProperty t) && !string.IsNullOrWhiteSpace((string)t)) title = (string)t;
+            if (RoomCodes.IsValid(a.Name) && title != a.Name) title += $"  <color={UITheme.Hex(UITheme.MutedText)}>{a.Name}</color>";
+            string sessionName = a.Name;
+            GameObject newRoomButton = CreateRoomRow(title, a.PlayerCount + " / " + a.MaxPlayers, roomMap);
+            newRoomButton.GetComponent<Button>().onClick.AddListener(delegate { JoinSession(sessionName, title); });
             shown++;
         }
         ShowRoomsEmptyState(shown == 0);
@@ -564,37 +584,65 @@ public partial class Launcher : MonoBehaviour
     private static string MatchGoal(SessionInfo session)
     {
         var properties = session.Properties;
-        bool caps = properties.TryGetValue("mode", out SessionProperty mode) && (int)mode == (int)MatchMode.CapGrab;
+        int listedMode = properties.TryGetValue("mode", out SessionProperty mode) ? (int)mode : 0;
+        bool caps = listedMode == (int)MatchMode.CapGrab || listedMode == (int)MatchMode.TeamCapGrab;
+        if (listedMode == (int)MatchMode.GunGame) return "LADDER";
         if (properties.TryGetValue("killcount", out SessionProperty kills) && (int)kills > 0) return (int)kills + (caps ? " CAPS" : " KILLS");
         if (properties.TryGetValue("matchlength", out SessionProperty length) && (int)length > 0) return Mathf.Max(1, (int)length / 60) + " MIN";
         return null;
     }
 
-    // One row of the room list. JoinRoom reads the room's name back from the row's "Name" text.
+    // One row of the room list: its title (with its room code), players and map
     private GameObject CreateRoomRow(string roomName, string players, string map)
     {
         GameObject row = Instantiate(buttontRooms, RoomListContent);
-        row.transform.Find("Name").GetComponent<Text>().text = roomName;
+        Text nameText = row.transform.Find("Name").GetComponent<Text>();
+        nameText.supportRichText = true;
+        nameText.text = roomName;
         row.transform.Find("Players").GetComponent<Text>().text = players;
         row.transform.Find("Map/Name").GetComponent<Text>().text = map;
         StyleRoomRow(row);
         return row;
     }
 
-    public async void JoinRoom(Transform button)
+    // Joins a match from the room list: by its session name, showing its title
+    private async void JoinSession(string sessionName, string title)
     {
         if (starting) return;
         starting = true;
         PrepareProfile();
-        string roomName = button.Find("Name").GetComponent<Text>().text;
-        LoadingScreen.Show("JOINING " + roomName.ToUpperInvariant());
-        StartGameResult result = await NetworkSession.Join(roomName);
+        LoadingScreen.Show("JOINING " + StripTags(title).ToUpperInvariant());
+        StartGameResult result = await NetworkSession.Join(sessionName);
         starting = false;
         if (!result.Ok)
         {
-            Debug.LogWarning($"Couldn't join {roomName}: {result.ShutdownReason}");
+            Debug.LogWarning($"Couldn't join {sessionName}: {result.ShutdownReason}");
             LoadingScreen.Fail(result.ShutdownReason == ShutdownReason.GameIsFull ? "THAT MATCH IS FULL" : "COULDN'T JOIN THE MATCH");
         }
     }
+
+    // Joins the match whose room code was typed in the rooms tab
+    public async void JoinWithCode()
+    {
+        if (starting || joinCodeField == null) return;
+        string code = RoomCodes.Normalize(joinCodeField.text);
+        if (!RoomCodes.IsValid(code))
+        {
+            ShowRoomsEmptyState(roomList == null || roomList.Count == 0, $"<color=#ff5a4a>\"{joinCodeField.text.Trim().ToUpperInvariant()}\" ISN'T A ROOM CODE</color>\n<size=15>CODES ARE {RoomCodes.Length} LETTERS, LIKE KXQT</size>");
+            return;
+        }
+        starting = true;
+        PrepareProfile();
+        LoadingScreen.Show("JOINING " + code);
+        StartGameResult result = await NetworkSession.JoinByCode(code);
+        starting = false;
+        if (!result.Ok)
+        {
+            Debug.LogWarning($"Couldn't join {code}: {result.ShutdownReason}");
+            LoadingScreen.Fail(result.ShutdownReason == ShutdownReason.GameIsFull ? "THAT MATCH IS FULL" : $"NO OPEN MATCH WITH CODE {code}");
+        }
+    }
+
+    private static string StripTags(string text) => System.Text.RegularExpressions.Regex.Replace(text ?? "", "<.*?>", "");
 
 }

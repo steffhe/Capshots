@@ -297,6 +297,18 @@ public class PlayerCap : MonoBehaviour
         }
     }
 
+    private static readonly Color[] SafeColors =
+    {
+        new Color(0.90f, 0.62f, 0f),    // orange
+        new Color(0.34f, 0.71f, 0.91f), // sky blue
+        new Color(0f, 0.62f, 0.45f),    // bluish green
+        new Color(0.94f, 0.89f, 0.26f), // yellow
+        new Color(0f, 0.45f, 0.70f),    // blue
+        new Color(0.84f, 0.37f, 0f),    // vermillion
+        new Color(0.80f, 0.47f, 0.65f), // reddish purple
+        new Color(0.92f, 0.92f, 0.92f), // white
+    };
+
     // The cap colour for a player, the same on every client
     public static Color ColorFor(int actor)
     {
@@ -306,6 +318,8 @@ public class PlayerCap : MonoBehaviour
             int team = m.GetTeam(actor);
             if (team >= 0) return Manager.TeamColors[team % 2];
         }
+        // With the colour blind setting: the Okabe-Ito colours, which stay apart with any colour vision
+        if (GameSettings.Colourblind) return SafeColors[((actor % SafeColors.Length) + SafeColors.Length) % SafeColors.Length];
         // Golden-ratio steps round the colour wheel keep neighbouring actor numbers far apart in colour
         float hue = Mathf.Repeat(actor * 0.618034f, 1f);
         return Color.HSVToRGB(hue, 0.7f, 0.9f);

@@ -7,11 +7,24 @@ using UnityEngine.UI;
 public partial class Manager
 {
     public MatchMode mode = MatchMode.FreeForAll;
-    public bool IsTeamMode => mode == MatchMode.TeamDeathmatch;
+    public bool IsTeamMode => mode == MatchMode.TeamDeathmatch || mode == MatchMode.TeamCapGrab;
 
-    public static readonly string[] TeamNames = { "BLUE", "RED" };
-    public static readonly Color[] TeamColors = { new Color(0.3f, 0.6f, 1f), new Color(1f, 0.35f, 0.3f) };
-    public static string TeamHex(int team) => team == 0 ? "#4d99ff" : "#ff594d";
+    // Blue against red, or against orange with the colour blind setting (GameSettings.Colourblind)
+    private static readonly string[] StandardTeamNames = { "BLUE", "RED" };
+    private static readonly string[] ColourblindTeamNames = { "BLUE", "ORANGE" };
+    private static readonly Color[] StandardTeamColors = { new Color(0.3f, 0.6f, 1f), new Color(1f, 0.35f, 0.3f) };
+    private static readonly Color[] ColourblindTeamColors = { new Color(0.2f, 0.55f, 1f), new Color(1f, 0.62f, 0.1f) };
+    public static string[] TeamNames => GameSettings.Colourblind ? ColourblindTeamNames : StandardTeamNames;
+    public static Color[] TeamColors => GameSettings.Colourblind ? ColourblindTeamColors : StandardTeamColors;
+    public static string TeamHex(int team) => GameSettings.Colourblind ? (team == 0 ? "#338cff" : "#ff9e1a") : (team == 0 ? "#4d99ff" : "#ff594d");
+
+    // The colour setting changed mid-match: everyone's body, hands, gun pieces and hat refresh as
+    // they do when the teams change
+    private void OnColoursChanged()
+    {
+        TeamsVersion++;
+        RefreshTeamScore();
+    }
 
     // Goes up whenever the player list changes, so players know to refresh their team colours
     public static int TeamsVersion { get; private set; }

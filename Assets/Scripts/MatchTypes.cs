@@ -45,7 +45,11 @@ public enum MatchMode
     FreeForAll = 0,
     TeamDeathmatch = 1,
     // Free for all, but a kill only drops the victim's cap: grabbing it scores (Manager.CapGrab.cs)
-    CapGrab = 2
+    CapGrab = 2,
+    // Everyone climbs the same ladder of gun forms, two kills on each (Manager.GunGame.cs)
+    GunGame = 3,
+    // Cap Grab in teams: a teammate's cap picked up is denied (Manager.CapGrab.cs)
+    TeamCapGrab = 4
 }
 
 public enum GameState

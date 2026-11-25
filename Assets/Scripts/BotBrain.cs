@@ -75,14 +75,16 @@ public class BotBrain : MonoBehaviour
     // Holding the grenade button (cooking) until this time (Time.time)
     private float grenadeHeldUntil;
 
-    private const float BotGrenadeMinRange = 5f;
-    private const float BotGrenadeMaxRange = 14f;
 
     private int lastHealth;
     private Player lastAttacker;
 
     // How well it plays (the room's bot difficulty)
     private BotLogic.Skill skill = BotLogic.SkillFor(BotLogic.Normal);
+    // How this bot likes to fight (BotLogic.Personality): by its slot in the room
+    private BotLogic.Personality personality = BotLogic.Personality.Balanced;
+    private BotLogic.Style style = BotLogic.StyleFor(BotLogic.Personality.Balanced);
+    public BotLogic.Personality Personality => personality;
 
     // The layers a bot's view is blocked by: the same as a shot's (scenery), without player bodies
     private int sightMask;
@@ -93,6 +95,8 @@ public class BotBrain : MonoBehaviour
         weapon = body.GetComponent<Weapon>();
         manager = Manager.Instance;
         skill = BotLogic.SkillFor(manager != null ? manager.BotSkill : BotLogic.Normal);
+        personality = BotLogic.PersonalityFor(body.BotId.RawEncoded - Manager.BotRawBase);
+        style = BotLogic.StyleFor(personality);
         yaw = body.transform.eulerAngles.y;
         pitch = 0f;
         lastHealth = body.currentHealth;
@@ -144,7 +148,7 @@ public class BotBrain : MonoBehaviour
         // Gun form for the distance (not too often: changing form takes half a second)
         if (weapon != null && now >= nextGunChangeAt)
         {
-            int wanted = BotLogic.ChooseGun(weapon.loadout, targetDistance);
+            int wanted = BotLogic.ChooseGun(weapon.loadout, targetDistance, style.shotgunRange, style.sniperRange);
             if (wanted != weapon.EquippedIndex)
             {
                 data.WeaponSlot = (byte)(wanted + 1);
@@ -230,7 +234,7 @@ public class BotBrain : MonoBehaviour
         // Now and then a plasma grenade at an enemy in the middle distance, where the arc still reaches
         // them, while looking right at them
         if (fighting && !eyeInWall && weapon != null && weapon.GrenadeCount > 0 && now >= nextGrenadeAt
-            && targetDistance >= BotGrenadeMinRange && targetDistance <= BotGrenadeMaxRange)
+            && targetDistance >= style.grenadeMinRange && targetDistance <= style.grenadeMaxRange)
         {
             Vector2 exact = BotLogic.LookAngles(eye, AimPoint(target));
             bool lookingAtThem = Mathf.Abs(Mathf.DeltaAngle(yaw, exact.x)) < 4f && Mathf.Abs(Mathf.DeltaAngle(pitch, exact.y)) < 4f;
@@ -238,7 +242,7 @@ public class BotBrain : MonoBehaviour
             {
                 // Cooked for a moment, so it doesn't give them the full fuse to get away
                 grenadeHeldUntil = now + Random.Range(0.3f, 1.3f);
-                nextGrenadeAt = now + Random.Range(8f, 14f);
+                nextGrenadeAt = now + Random.Range(style.grenadeIntervalMin, style.grenadeIntervalMax);
             }
             // Not this time: think about it again in a moment
             else nextGrenadeAt = now + Random.Range(0.8f, 1.6f);
@@ -401,6 +405,8 @@ public class BotBrain : MonoBehaviour
         float preferred = 18f;
         if (gun != null && gun.pellets > 1) preferred = 4f;
         else if (scoped) preferred = 45f;
+        // A rusher gets in close, a sniper hangs back
+        preferred *= style.distanceScale;
 
         Vector3 travel = Vector3.zero;
         bool closingIn = distance > preferred * 1.3f && !scoped;
@@ -448,7 +454,7 @@ public class BotBrain : MonoBehaviour
             return;
         }
 
-        if (!skill.tactical || health >= 0.35f || now < nextCoverSearchAt) return;
+        if (!skill.tactical || !style.retreats || health >= 0.35f || now < nextCoverSearchAt) return;
         Player threat = target != null ? target : lastAttacker;
         if (threat == null || threat.Object == null || !threat.Object.IsValid || threat.IsDead) return;
         nextCoverSearchAt = now + 1f;

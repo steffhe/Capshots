@@ -148,6 +148,9 @@ public class Weapon : NetworkBehaviour
         {
             Energy = maxEnergy;
             Equipped = DefaultSlot;
+            // Gun Game: the form for this player's place on the ladder
+            Manager m = Manager.Instance;
+            if (m != null && m.IsGunGame) Equipped = m.GunGameSlot(player.ActorId, loadout, DefaultSlot);
             Grenades = PlasmaGrenadeRules.MaxCarried;
             StartingFormWindow = TickTimer.CreateFromSeconds(Runner, StartingFormSeconds);
         }
@@ -238,6 +241,9 @@ public class Weapon : NetworkBehaviour
         // Changing form cancels a cell swap or burst in progress, and takes a moment. The starting
         // form (the first change, before any shot) is picked up instantly instead.
         int slot = input.WeaponSlot - 1;
+        // Gun Game: the ladder decides the form, not the player
+        Manager gunGame = Manager.Instance;
+        if (gunGame != null && gunGame.IsGunGame) slot = gunGame.GunGameSlot(player.ActorId, loadout, Equipped);
         if (slot >= 0 && slot < loadout.Length && slot != Equipped)
         {
             bool startingForm = !HasChangedForm && ShotCount == 0 && StartingFormWindow.IsRunning && !StartingFormWindow.Expired(Runner);

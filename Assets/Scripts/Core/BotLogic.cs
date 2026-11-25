@@ -69,6 +69,68 @@ public static class BotLogic
 
     #endregion
 
+    #region Personality
+
+    // How a bot likes to fight, on top of its skill. Each bot in a room has one, so a bot match is a
+    // mix: Balanced is the all-rounder the bots were before; a Rusher closes in with the shotgun and
+    // never backs off; a Sniper keeps its distance with the scoped form and holds its ground; a
+    // Grenadier throws plasma grenades more often and from further away.
+    public enum Personality { Balanced = 0, Rusher = 1, Sniper = 2, Grenadier = 3 }
+    public static readonly string[] PersonalityNames = { "BALANCED", "RUSHER", "SNIPER", "GRENADIER" };
+
+    public struct Style
+    {
+        // Gun choice: shotgun closer than this, the scoped form further than this
+        public float shotgunRange, sniperRange;
+        // Its preferred distance to the target, as a share of the gun's usual one
+        public float distanceScale;
+        // Whether it ever backs off to heal (tactical skill levels only)
+        public bool retreats;
+        // Seconds between grenades, and the distances it throws them at
+        public float grenadeIntervalMin, grenadeIntervalMax, grenadeMinRange, grenadeMaxRange;
+    }
+
+    // Bots take the personalities in turn, by their slot in the room, so even two bots differ
+    public static Personality PersonalityFor(int botSlot)
+    {
+        int count = PersonalityNames.Length;
+        return (Personality)(((botSlot % count) + count) % count);
+    }
+
+    public static Style StyleFor(Personality personality)
+    {
+        Style style = new Style
+        {
+            shotgunRange = ShotgunRange, sniperRange = SniperRange, distanceScale = 1f, retreats = true,
+            grenadeIntervalMin = 8f, grenadeIntervalMax = 14f, grenadeMinRange = 5f, grenadeMaxRange = 14f,
+        };
+        switch (personality)
+        {
+            case Personality.Rusher:
+                style.shotgunRange = 16f;
+                style.sniperRange = float.MaxValue;
+                style.distanceScale = 0.5f;
+                style.retreats = false;
+                style.grenadeIntervalMin = 15f;
+                style.grenadeIntervalMax = 25f;
+                break;
+            case Personality.Sniper:
+                style.shotgunRange = 4f;
+                style.sniperRange = 15f;
+                style.distanceScale = 1.5f;
+                break;
+            case Personality.Grenadier:
+                style.grenadeIntervalMin = 4f;
+                style.grenadeIntervalMax = 7f;
+                style.grenadeMinRange = 4f;
+                style.grenadeMaxRange = 20f;
+                break;
+        }
+        return style;
+    }
+
+    #endregion
+
     #region Room filling
 
     // How many bots a room should have: the host's setting, but never more than the room has space
@@ -107,6 +169,12 @@ public static class BotLogic
     // distance < 0 means no target: the all-round form.
     public static int ChooseGun(Gun[] loadout, float distance)
     {
+        return ChooseGun(loadout, distance, ShotgunRange, SniperRange);
+    }
+
+    // The same, with a personality's own ranges for the shotgun and the scoped form
+    public static int ChooseGun(Gun[] loadout, float distance, float shotgunRange, float sniperRange)
+    {
         if (loadout == null || loadout.Length == 0) return 0;
 
         int shotgun = -1, sniper = -1, automatic = -1, plain = -1;
@@ -122,8 +190,8 @@ public static class BotLogic
 
         int allRound = automatic >= 0 ? automatic : plain >= 0 ? plain : 0;
         if (distance < 0f) return allRound;
-        if (distance < ShotgunRange && shotgun >= 0) return shotgun;
-        if (distance > SniperRange && sniper >= 0) return sniper;
+        if (distance < shotgunRange && shotgun >= 0) return shotgun;
+        if (distance > sniperRange && sniper >= 0) return sniper;
         return allRound;
     }
 

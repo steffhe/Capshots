@@ -827,7 +827,16 @@ public class Player : NetworkBehaviour
 
         Manager m = Manager.Instance;
         int team = m != null ? m.GetTeam(ActorId) : -1;
-        if (team < 0) return;
+        if (team < 0)
+        {
+            // No teams: the player's own colour (which the colour blind setting can change mid-match)
+            Color own = PlayerCap.ColorFor(ActorId);
+            foreach (PlayerCap cap in caps) if (cap != null) cap.SetColor(own);
+            foreach (DroneBody drone in drones) if (drone != null) drone.SetColor(own, false);
+            if (hands != null) hands.SetColor(own);
+            if (satellites != null) satellites.SetColor(own);
+            return;
+        }
 
         Color teamColor = Manager.TeamColors[team % 2];
         if (playerUsername != null) playerUsername.color = teamColor;

@@ -19,6 +19,8 @@ public partial class Launcher
     private Text xpText;
     private RectTransform xpFill;
     private Text roomsEmptyText;
+    // The rooms tab's "Join with code" field
+    private InputField joinCodeField;
 
     private void ApplyStyle()
     {
@@ -255,6 +257,73 @@ public partial class Launcher
 
         // Don't let any room rows from the scene template show before the first update
         foreach (Transform row in scroll.content) row.gameObject.SetActive(false);
+
+        BuildJoinCode(anchor, view.GetSiblingIndex() + 1);
+    }
+
+    // Under the list: a field for a friend's room code and a JOIN button
+    private void BuildJoinCode(Transform anchor, int index)
+    {
+        Button template = null;
+        foreach (Transform child in anchor)
+        {
+            template = child.GetComponent<Button>();
+            if (template != null) break;
+        }
+        if (template == null) return;
+
+        RectTransform block = new GameObject("Join Code", typeof(RectTransform)).GetComponent<RectTransform>();
+        block.SetParent(anchor, false);
+        block.SetSiblingIndex(index);
+        block.anchorMin = block.anchorMax = new Vector2(0f, 1f);
+        block.pivot = new Vector2(0.5f, 0.5f);
+        block.sizeDelta = new Vector2(RoomListWidth, 70f);
+
+        Text caption = UITheme.NewText("Caption", block, 14, UITheme.MutedText, TextAnchor.MiddleLeft);
+        UITheme.Row(caption.rectTransform, 0f, 18f);
+        caption.text = "HAVE A ROOM CODE?";
+
+        // A text field built from scratch (the menu's own fields carry the scene's listeners)
+        GameObject fieldObject = new GameObject("Code", typeof(RectTransform), typeof(Image), typeof(InputField));
+        fieldObject.transform.SetParent(block, false);
+        UITheme.Row((RectTransform)fieldObject.transform, 24f, 46f, 0f, 0.7f);
+        ((RectTransform)fieldObject.transform).offsetMax = new Vector2(-6f, ((RectTransform)fieldObject.transform).offsetMax.y);
+        Text text = UITheme.NewText("Text", fieldObject.transform, 20, UITheme.TextColor, TextAnchor.MiddleLeft);
+        Text hint = UITheme.NewText("Placeholder", fieldObject.transform, 20, UITheme.MutedText, TextAnchor.MiddleLeft);
+        hint.text = "KXQT";
+        joinCodeField = fieldObject.GetComponent<InputField>();
+        joinCodeField.targetGraphic = fieldObject.GetComponent<Image>();
+        joinCodeField.textComponent = text;
+        joinCodeField.placeholder = hint;
+        joinCodeField.characterLimit = RoomCodes.Length + 2;
+        // Letters only, shown in capitals as they're typed
+        joinCodeField.onValidateInput += (string current, int at, char c) => char.IsLetter(c) ? char.ToUpperInvariant(c) : '\0';
+        UITheme.StyleInput(joinCodeField, "ROOM CODE");
+        // Enter in the field joins (leaving the field any other way doesn't)
+        joinCodeField.onEndEdit.AddListener(_ =>
+        {
+            UnityEngine.InputSystem.Keyboard keyboard = UnityEngine.InputSystem.Keyboard.current;
+            if (keyboard != null && (keyboard.enterKey.isPressed || keyboard.numpadEnterKey.isPressed)) JoinWithCode();
+        });
+
+        GameObject buttonObject = Instantiate(template.gameObject, block);
+        buttonObject.name = "Join";
+        Button button = buttonObject.GetComponent<Button>();
+        // The copy would still do whatever the original does: switch that off
+        for (int i = 0; i < button.onClick.GetPersistentEventCount(); i++)
+        {
+            if (button.onClick.GetPersistentTarget(i) is Launcher)
+            {
+                button.onClick.SetPersistentListenerState(i, UnityEngine.Events.UnityEventCallState.Off);
+            }
+        }
+        button.onClick.AddListener(JoinWithCode);
+        Text label = buttonObject.GetComponentInChildren<Text>(true);
+        if (label != null) label.text = "JOIN";
+        RectTransform buttonRect = (RectTransform)buttonObject.transform;
+        UITheme.Row(buttonRect, 24f, 46f, 0.7f, 1f);
+        buttonRect.offsetMin = new Vector2(6f, buttonRect.offsetMin.y);
+        UITheme.StyleButton(button, UITheme.ButtonStyle.Primary, 20);
     }
 
     private void ShowRoomsEmptyState(bool empty, string message = null)

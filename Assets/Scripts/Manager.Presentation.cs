@@ -72,7 +72,8 @@ public partial class Manager
         Text rules = UITheme.NewText("Rules", root, 20, UITheme.AccentText, TextAnchor.MiddleCenter);
         UITheme.Row(rules.rectTransform, 104f, 28f);
         string goal;
-        if (HasKillLimit) goal = IsTeamMode ? $"FIRST TEAM TO {killcount} KILLS" : $"FIRST TO {killcount} {ScoreWord}";
+        if (IsGunGame) goal = $"{GunGameRules.KillsPerStep} KILLS WITH EACH GUN FORM TO WIN";
+        else if (HasKillLimit) goal = IsTeamMode ? $"FIRST TEAM TO {killcount} {ScoreWord}" : $"FIRST TO {killcount} {ScoreWord}";
         else goal = $"MOST {ScoreWord} IN {Mathf.Max(1, matchlength / 60)} MIN";
         if (HasKillLimit && HasTimeLimit) goal += $"   ·   {Mathf.Max(1, matchlength / 60)} MIN";
         rules.text = $"{LoadingScreen.ModeName((int)mode)}   ·   {goal}";
