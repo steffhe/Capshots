@@ -56,7 +56,7 @@ public class FeedbackUI : MonoBehaviour
     private readonly List<GameObject> killFeedEntries = new List<GameObject>();
 
     private AudioSource audioSource;
-    private AudioClip hitClip, headshotClip, killClip, capshotKillClip, hurtClip, pickupClip, deathClip, shieldClip, calloutClip;
+    private AudioClip hitClip, headshotClip, killClip, capshotKillClip, hurtClip, pickupClip, deathClip, shieldClip, calloutClip, levelUpClip;
 
     // Multi-kill and streak callouts, above the XP popup
     private RectTransform callout;
@@ -180,6 +180,7 @@ public class FeedbackUI : MonoBehaviour
         calloutClip = MakeClip("Callout", 0.7f, t =>
             (Tone(t, 660f) * (t < 0.08f ? 1f : 0f) + Tone(t, 880f) * (t >= 0.08f && t < 0.16f ? 1f : 0f) +
              (Tone(t, 1100f) + Tone(t, 1320f) * 0.6f + Tone(t, 1650f) * 0.35f) * (t >= 0.16f ? Decay(t - 0.16f, 4.5f) : 0f)) * 0.45f);
+        levelUpClip = MakeLevelUpClip();
         hurtClip = MakeClip("Hurt", 0.18f, t => (Tone(t, Mathf.Lerp(140f, 55f, t / 0.18f)) * 0.8f + Random.Range(-0.25f, 0.25f)) * Decay(t, 18f));
     }
 
@@ -239,6 +240,27 @@ public class FeedbackUI : MonoBehaviour
         if (ui.calloutRoutine != null) ui.StopCoroutine(ui.calloutRoutine);
         ui.calloutRoutine = ui.StartCoroutine(ui.ShowCallout());
         ui.Play(ui.calloutClip, 0.3f);
+    }
+
+    // The local player reached a new level: a fanfare, a moment later so it doesn't land on top of
+    // the kill (or results) sound that earned it
+    public static void LevelUp()
+    {
+        if (Instance == null) return;
+        Instance.StartCoroutine(Instance.PlayLater(Instance.levelUpClip, 0.5f, 0.25f));
+    }
+
+    private IEnumerator PlayLater(AudioClip clip, float clipVolume, float delay)
+    {
+        yield return new WaitForSecondsRealtime(delay);
+        Play(clip, clipVolume);
+    }
+
+    // An award comes up on the awards screen at the end of a match
+    public static void AwardShown()
+    {
+        if (Instance == null) return;
+        Instance.Play(Instance.killClip, 0.22f);
     }
 
     // Local player picked up ammo
@@ -626,6 +648,53 @@ public class FeedbackUI : MonoBehaviour
             float crackle = Random.value < 0.02f ? Random.Range(-0.5f, 0.5f) * Mathf.Sin(Mathf.PI * k) : 0f;
 
             return buzz * downEnvelope * 0.55f + thump * 0.9f + crackle;
+        });
+    }
+
+    // Levelling up: a quick run up a major arpeggio (C E G C), then a big bright chord that swells and
+    // rings out with a little vibrato, and a sparkle of high notes twinkling over it. Grander and
+    // longer than a streak callout, about 1.6 seconds.
+    private static AudioClip MakeLevelUpClip()
+    {
+        const float length = 1.6f;
+        const float step = 0.085f;
+        float[] run = { 523.25f, 659.25f, 783.99f, 1046.5f };
+        float chordAt = step * run.Length;
+        float[] chord = { 523.25f, 659.25f, 783.99f, 1046.5f, 1318.5f };
+        float[] sparkle = { 2093f, 2637f, 3136f, 2637f, 3520f, 4186f };
+        return MakeClip("Level Up", length, t =>
+        {
+            float v = 0f;
+            // The run: each note bright (a little square-ish) and short
+            int note = Mathf.FloorToInt(t / step);
+            if (note < run.Length)
+            {
+                float nt = t - note * step;
+                float f = run[note];
+                v += (Tone(t, f) + Tone(t, f * 2f) * 0.3f + Tone(t, f * 3f) * 0.12f) * Decay(nt, 14f) * 0.55f;
+            }
+            // The chord: swells in over a few hundredths of a second, then rings out
+            if (t >= chordAt)
+            {
+                float ct = t - chordAt;
+                float vibrato = 1f + 0.006f * Mathf.Sin(2f * Mathf.PI * 5.5f * ct) * Mathf.Clamp01(ct / 0.3f);
+                float swell = Mathf.Clamp01(ct / 0.04f) * Decay(ct, 2.2f);
+                float c = 0f;
+                for (int i = 0; i < chord.Length; i++)
+                {
+                    float f = chord[i] * vibrato;
+                    c += (Tone(ct, f) + Tone(ct, f * 2f) * 0.2f) * (i == 0 ? 1f : 0.7f);
+                }
+                v += c / chord.Length * swell * 0.9f;
+                // Sparkle: high pings, one after another
+                int ping = Mathf.FloorToInt(ct / 0.07f);
+                if (ping < sparkle.Length)
+                {
+                    float pt = ct - ping * 0.07f;
+                    v += Tone(pt, sparkle[ping]) * Decay(pt, 22f) * 0.18f;
+                }
+            }
+            return v * 0.8f;
         });
     }
 

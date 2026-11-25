@@ -6,7 +6,8 @@ using UnityEngine.UI;
 // End-of-match awards (MatchAwards): CAPSHOT KING, ON A ROLL, STICKY FINGERS, UNTOUCHABLE and
 // PUNCHING BAG. The host counts cap shots, grenade kills and best streaks while the match is played
 // (kills and deaths are on the scoreboard already), picks the awards when it ends and sends them to
-// everyone. They show as a row of cards along the top of the results screen.
+// everyone. They get a screen of their own before the results (AwardStage: each winner's drone over
+// their card), and stay as a row of cards along the top of the results screen.
 public partial class Manager
 {
     // Host only: what each player did this match, beyond kills and deaths
@@ -61,6 +62,27 @@ public partial class Manager
     {
         awards = MatchAwards.Unpack(packed);
         if (resultsShown) BuildAwards();
+    }
+
+    // For the awards screen: each award with its winner's colour and cap
+    private List<AwardStage.Entry> AwardEntries()
+    {
+        List<AwardStage.Entry> entries = new List<AwardStage.Entry>();
+        int me = LocalActor;
+        foreach (MatchAwards.Award award in awards)
+        {
+            entries.Add(new AwardStage.Entry
+            {
+                title = award.title,
+                detail = award.detail,
+                name = award.name,
+                color = PlayerCap.ColorFor(award.actor),
+                hat = GetPlayerHat(award.actor),
+                teamMode = IsTeamMode,
+                mine = award.actor == me,
+            });
+        }
+        return entries;
     }
 
     // A row of cards along the top of the results screen: the award, who won it and why

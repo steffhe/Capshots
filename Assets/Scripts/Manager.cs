@@ -242,7 +242,16 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         myKills = GameObject.Find("HUD/Stats/Kills").GetComponent<Text>();
         myDeaths = GameObject.Find("HUD/Stats/Deaths").GetComponent<Text>();
         timer = GameObject.Find("HUD/Timer/Text").GetComponent<Text>();
-        leaderboard = GameObject.Find("HUD").transform.Find("Leaderboard").transform;
+        // Out of the HUD (which hides while you're dead) so the scoreboard can be held up while waiting
+        // to respawn too. Right above the HUD, as before: under the chat, pause menu and results.
+        Transform hud = GameObject.Find("HUD").transform;
+        leaderboard = hud.Find("Leaderboard");
+        if (leaderboard != null)
+        {
+            leaderboard.SetParent(hud.parent, false);
+            leaderboard.SetSiblingIndex(hud.GetSiblingIndex() + 1);
+        }
+        else leaderboard = hud.parent.Find("Leaderboard");
         endgame = GameObject.Find("Canvas").transform.Find("End Game").transform;
         uiUsername = GameObject.Find("HUD/Username/Text").GetComponent<Text>();
         CreateXpPopup();

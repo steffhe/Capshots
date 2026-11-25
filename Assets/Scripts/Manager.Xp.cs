@@ -67,6 +67,8 @@ public partial class Manager
             if (hats != null) message += "\n" + hats;
             // Let everyone update this player's level on the scoreboard
             RPC_LevelUp(levelsGained);
+            // At the end of the match the fanfare plays as the results screen's level bar rolls over
+            if (!matchEnded) FeedbackUI.LevelUp();
         }
 
         if (uiUsername != null) uiUsername.text = UsernameWithLevel(profile);

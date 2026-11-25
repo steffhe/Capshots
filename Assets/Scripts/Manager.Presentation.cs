@@ -8,8 +8,9 @@ using UnityEngine.UI;
 // How a match opens and closes for the local player:
 // - Intro: the loading screen fades away and the map's name and rules slide in.
 // - Ending: everyone freezes where they stand, the world drains of colour and a big VICTORY /
-//   DEFEAT banner shows. Then the screen fades to the results (title, scoreboard, the XP earned
-//   filling the level bar, a countdown) and finally back out to the menu.
+//   DEFEAT banner shows. Then the screen fades to the match awards, one by one with each winner's
+//   drone (AwardStage), then to the results (title, scoreboard, the XP earned filling the level bar,
+//   the vote or a countdown) and finally on to the next map or back out to the menu.
 public partial class Manager
 {
     // How long everyone stays frozen on the result banner before the cut to the results
@@ -157,7 +158,18 @@ public partial class Manager
         if (Player.Local != null && Player.Local.cameraParent != null) Player.Local.cameraParent.SetActive(false);
         mapcam.SetActive(true);
 
-        // 3. Results (and the vote for the next map, when there is one)
+        // 3. The awards, one after another, each with its winner's drone over the card
+        if (awards != null && awards.Count > 0)
+        {
+            AwardStage stage = AwardStage.Create(AwardEntries(), mapcam.GetComponentInChildren<Camera>(), GameObject.Find("Canvas").transform);
+            black.transform.SetAsLastSibling();
+            yield return FadeImage(black, 1f, 0f, 0.4f);
+            yield return stage.Play();
+            yield return FadeImage(black, 0f, 1f, CutFadeTime);
+            Destroy(stage.gameObject);
+        }
+
+        // 4. Results (and the vote for the next map, when there is one)
         bool voting = VotingAvailable;
         float resultsTime = voting ? VoteTime : ResultsTime + (HasStateAuthority ? 1f : 0f);
         Text countdown = ShowResults(title, titleColor, kicker, subtitle);
@@ -173,7 +185,7 @@ public partial class Manager
             yield return null;
         }
 
-        // 4. The next map, loaded by the host for everyone (this coroutine ends with this scene)...
+        // 5. The next map, loaded by the host for everyone (this coroutine ends with this scene)...
         if (voting)
         {
             if (HasStateAuthority)
@@ -451,11 +463,14 @@ public partial class Manager
             float step = Mathf.Min(rate * Time.unscaledDeltaTime, xpGained - given);
             given += step;
             xp += step;
+            bool levelledUp = false;
             while (level < final.level && xp >= ProfileData.XpToNextLevel(level))
             {
                 xp -= ProfileData.XpToNextLevel(level);
                 level++;
+                levelledUp = true;
             }
+            if (levelledUp) FeedbackUI.LevelUp();
             Draw();
             yield return null;
         }

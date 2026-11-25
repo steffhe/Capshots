@@ -8,6 +8,9 @@ using UnityEngine;
 // (NeckSparks).
 public class DeadPlayer : MonoBehaviour
 {
+    // For Launch: a head with no hat (in Cap Grab the cap has dropped as a pickup instead)
+    public const int NoHat = -1;
+
     public float lifetime = 5f;
     // How long the body takes to shrink away at the end of its lifetime
     public float shrinkTime = 0.4f;
@@ -41,7 +44,8 @@ public class DeadPlayer : MonoBehaviour
     // Sets the ragdoll going.
     // velocity: the player's movement at death. hitDirection: the killing bullet's direction.
     // hitOffset: where the bullet hit, relative to the player's position. knockback: how hard (m/s) the hit throws the body.
-    // capColor: the colour of the hat on the head (see PlayerCap.ColorFor). hat: which hat (see Hats).
+    // capColor: the colour of the hat on the head (see PlayerCap.ColorFor). hat: which hat (see Hats),
+    // or NoHat.
     public void Launch(Vector3 velocity, Vector3 hitDirection, Vector3 hitOffset, float knockback, bool headshot, Color capColor, int hat = Hats.Cap)
     {
         body = GetComponent<Rigidbody>();
@@ -103,7 +107,7 @@ public class DeadPlayer : MonoBehaviour
         if (headCollider == null) return;
 
         head = headCollider.transform;
-        PlayerCap headCap = PlayerCap.Attach(head, capColor, true, hat);
+        PlayerCap headCap = hat == NoHat ? null : PlayerCap.Attach(head, capColor, true, hat);
 
         // Where the head joined the body: the bottom of the head, towards the body
         Vector3 scale = head.lossyScale;
@@ -132,9 +136,10 @@ public class DeadPlayer : MonoBehaviour
 
         // A headshot also knocks the cap off: it flies up and on ahead of the head, spinning, and being
         // light it flutters down. Otherwise it stays on the head and rolls away with it.
-        if (headshot && headCap != null)
+        // (In Cap Grab the cap pickup flies off instead: see CapPickup.)
+        if (headshot)
         {
-            KnockOffCap(headCap.transform, headVelocity, push, knockback);
+            if (headCap != null) KnockOffCap(headCap.transform, headVelocity, push, knockback);
             CapshotBurst.Spawn(head.position, push, capColor);
         }
 
