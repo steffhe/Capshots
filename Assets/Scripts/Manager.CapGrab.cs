@@ -14,7 +14,7 @@ public partial class Manager
     public int xpPerCap = 50;
     public int xpPerDeny = 25;
 
-    public bool IsCapGrab => mode == MatchMode.CapGrab;
+    public bool IsCapGrab => mode == MatchMode.CapGrab || mode == MatchMode.TeamCapGrab;
     // What the score counts, for the HUD, scoreboard and results
     public string ScoreWord => IsCapGrab ? "CAPS" : "KILLS";
 
@@ -38,7 +38,9 @@ public partial class Manager
     private void RPC_SpawnCap(int id, Vector3 position, int ownerActor, byte hat)
     {
         if (caps.ContainsKey(id)) return;
-        caps[id] = CapPickup.Create(id, position, ownerActor, hat, PlayerCap.ColorFor(ownerActor), CapLifetime, ownerActor == LocalActor);
+        // Yours (or, in teams, a teammate's): one to get back before the other side does
+        bool ours = ownerActor == LocalActor || SameTeam(ownerActor, LocalActor);
+        caps[id] = CapPickup.Create(id, position, ownerActor, hat, PlayerCap.ColorFor(ownerActor), CapLifetime, ours);
     }
 
     // Host only, every tick: the first living player on a cap takes it
@@ -63,7 +65,8 @@ public partial class Manager
                 if (p == null || p.Object == null || !p.Object.IsValid || p.IsDead) continue;
                 if (Vector3.Distance(p.transform.position, cap.BasePosition) > CapPickup.PickupRadius) continue;
 
-                bool denied = p.ActorId == cap.OwnerActor;
+                // Its owner, or in teams a teammate, takes it back: denied
+                bool denied = p.ActorId == cap.OwnerActor || SameTeam(p.ActorId, cap.OwnerActor);
                 // Only a match being played counts; in the warmup a cap is just picked up
                 if (!denied && State == GameState.Playing)
                 {
@@ -99,6 +102,18 @@ public partial class Manager
         {
             FeedbackUI.AddKillFeedNote($"{GetPlayerName(takerActor)} GRABBED YOUR CAP");
         }
+        else if (denied && counts && takerActor != ownerActor && ownerActor == me)
+        {
+            FeedbackUI.AddKillFeedNote($"{GetPlayerName(takerActor)} SAVED YOUR CAP");
+        }
+    }
+
+    // In a team mode, whether both are known to be on the same team
+    private bool SameTeam(int actorA, int actorB)
+    {
+        if (!IsTeamMode) return false;
+        int a = GetTeam(actorA), b = GetTeam(actorB);
+        return a >= 0 && a == b;
     }
 
     private void RemoveCap(int id)

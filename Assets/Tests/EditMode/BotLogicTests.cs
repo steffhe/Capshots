@@ -60,6 +60,41 @@ public class BotLogicTests
     }
 
     [Test]
+    public void Personalities_TakeTurnsBySlot()
+    {
+        Assert.AreEqual(BotLogic.Personality.Balanced, BotLogic.PersonalityFor(0));
+        Assert.AreEqual(BotLogic.Personality.Rusher, BotLogic.PersonalityFor(1));
+        Assert.AreEqual(BotLogic.Personality.Sniper, BotLogic.PersonalityFor(2));
+        Assert.AreEqual(BotLogic.Personality.Grenadier, BotLogic.PersonalityFor(3));
+        Assert.AreEqual(BotLogic.Personality.Balanced, BotLogic.PersonalityFor(4));
+        Assert.AreEqual(BotLogic.Personality.Grenadier, BotLogic.PersonalityFor(-1));
+    }
+
+    [Test]
+    public void Personalities_PickTheirOwnGunForms()
+    {
+        BotLogic.Style rusher = BotLogic.StyleFor(BotLogic.Personality.Rusher);
+        BotLogic.Style sniper = BotLogic.StyleFor(BotLogic.Personality.Sniper);
+        // At 12 m a rusher still wants the shotgun, and never the scoped form
+        Assert.AreEqual(0, BotLogic.ChooseGun(Loadout(), 12f, rusher.shotgunRange, rusher.sniperRange));
+        Assert.AreEqual(1, BotLogic.ChooseGun(Loadout(), 80f, rusher.shotgunRange, rusher.sniperRange));
+        // A sniper scopes in from 15 m
+        Assert.AreEqual(3, BotLogic.ChooseGun(Loadout(), 20f, sniper.shotgunRange, sniper.sniperRange));
+        Assert.IsFalse(rusher.retreats);
+        Assert.Less(BotLogic.StyleFor(BotLogic.Personality.Grenadier).grenadeIntervalMax, BotLogic.StyleFor(BotLogic.Personality.Balanced).grenadeIntervalMin);
+    }
+
+    [Test]
+    public void Balanced_IsHowBotsPlayedBefore()
+    {
+        BotLogic.Style balanced = BotLogic.StyleFor(BotLogic.Personality.Balanced);
+        Assert.AreEqual(BotLogic.ShotgunRange, balanced.shotgunRange);
+        Assert.AreEqual(BotLogic.SniperRange, balanced.sniperRange);
+        Assert.AreEqual(1f, balanced.distanceScale);
+        Assert.IsTrue(balanced.retreats);
+    }
+
+    [Test]
     public void ChooseGun_FallsBackWhenAFormIsMissing()
     {
         Gun[] pistolOnly = { MakeGun(0) };

@@ -136,6 +136,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         // a host migration, also who we were before, so the new host can give us our score back.
         RPC_Register(Launcher.myProfile.username, Launcher.myProfile.level, GameSettings.Hat, migrated != null ? migrated.localActor : -1);
         GameSettings.HatChanged += SendHat;
+        GameSettings.ColoursChanged += OnColoursChanged;
 
         state = State;
         currentMatchTime = MatchTime;
@@ -152,6 +153,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
     public override void Despawned(NetworkRunner runner, bool hasState)
     {
         GameSettings.HatChanged -= SendHat;
+        GameSettings.ColoursChanged -= OnColoursChanged;
         ready = false;
     }
 
@@ -168,6 +170,8 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         if (properties.TryGetValue("botskill", out value)) BotSkill = Mathf.Clamp((int)value, BotLogic.Easy, BotLogic.Hard);
         // A match needs some way to end
         if (!HasKillLimit && !HasTimeLimit) killcount = 20;
+        // Gun Game always ends at the top of the ladder (and maybe on time as well)
+        if (mode == MatchMode.GunGame) killcount = GunGameRules.KillsToWin;
     }
 
     private void Update()
@@ -312,6 +316,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         RecalculateMyIndex();
         TeamsVersion++;
         RefreshMyStats();
+        AnnounceGunGameStep();
         AnnounceTeam();
     }
 
@@ -527,8 +532,10 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         if (State == GameState.Playing)
         {
             ChangeStats(victim, 0, 1);
-            // In Cap Grab a kill only drops the cap: grabbing it is what scores (Manager.CapGrab.cs)
-            if (killer.IsRealPlayer && killer != victim && !IsCapGrab) ChangeStats(killer, 1, 0);
+            // In Cap Grab a kill only drops the cap: grabbing it is what scores (Manager.CapGrab.cs).
+            // In Gun Game only gun kills move you up the ladder (Manager.GunGame.cs).
+            bool scores = IsCapGrab ? false : IsGunGame ? GunGameRules.Counts(weaponName, PlasmaWeaponName) : true;
+            if (killer.IsRealPlayer && killer != victim && scores) ChangeStats(killer, 1, 0);
             CountStreaks(victim, killer, out multiKill, out streak, out endedStreak);
             CountForAwards(killer, victim, weaponName, headshot, streak);
         }

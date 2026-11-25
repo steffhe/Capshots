@@ -20,6 +20,7 @@ public class SettingsMenu : MenuPanel
     private Text xSensValue, ySensValue, fovValue, adsValue, volumeValue;
     private Slider xSensSlider, ySensSlider, fovSlider, adsSlider, volumeSlider;
     private Text qualityText;
+    private Text coloursText;
 
     private class BindingRow
     {
@@ -213,13 +214,23 @@ public class SettingsMenu : MenuPanel
         Place(quality, new Vector2(LeftColumn, y - 72f), new Vector2(ColumnWidth, 48f));
         qualityText = quality.GetComponentInChildren<Text>();
 
+        // Standard colours, or ones that stay apart with red-green colour blindness
+        GameObject colours = NewButton(rect, "", () =>
+        {
+            GameSettings.Colourblind = !GameSettings.Colourblind;
+            RefreshLabels();
+        });
+        UITheme.StyleSelector(colours.GetComponent<Button>());
+        Place(colours, new Vector2(LeftColumn, y - 132f), new Vector2(ColumnWidth, 48f));
+        coloursText = colours.GetComponentInChildren<Text>();
+
         GameObject reset = NewButton(rect, "RESET CONTROLS", () =>
         {
             GameInput.ResetBindings();
             RefreshBindings();
         });
-        // The same 12 gap under the graphics button as between the buttons elsewhere
-        Place(reset, new Vector2(LeftColumn, y - 132f), new Vector2(ColumnWidth, 48f));
+        // The same 12 gap between the buttons as elsewhere
+        Place(reset, new Vector2(LeftColumn, y - 192f), new Vector2(ColumnWidth, 48f));
 
         GameObject done = NewButton(rect, "DONE", CloseSettings);
         UITheme.StyleButton(done.GetComponent<Button>(), UITheme.ButtonStyle.Primary);
@@ -308,6 +319,7 @@ public class SettingsMenu : MenuPanel
         adsValue.text = GameSettings.AdsSensitivity.ToString("0.00") + "x";
         volumeValue.text = Mathf.RoundToInt(GameSettings.Volume * 100f) + "%";
         qualityText.text = UITheme.Option("GRAPHICS", GameSettings.QualityName.ToUpperInvariant());
+        if (coloursText != null) coloursText.text = UITheme.Option("COLOURS", GameSettings.Colourblind ? "COLOUR BLIND" : "STANDARD");
     }
 
     private void OpenSettings()

@@ -81,17 +81,50 @@ public class NetworkSession : MonoBehaviour, INetworkRunnerCallbacks
         }
     }
 
-    // Starts a new match as its host
-    public static Task<StartGameResult> Host(string sessionName, int maxPlayers, Dictionary<string, SessionProperty> properties, int sceneIndex)
+    // Starts a new match as its host. Its session name is a new room code (RoomCodes), which friends
+    // can type to join; what the room list shows is its "title" property.
+    public static async Task<StartGameResult> Host(int maxPlayers, Dictionary<string, SessionProperty> properties, int sceneIndex)
     {
-        return Start(GameMode.Host, string.IsNullOrWhiteSpace(sessionName) ? null : sessionName, maxPlayers, properties, sceneIndex);
+        StartGameResult result = null;
+        // A code someone else's match already has: try another
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            result = await Start(GameMode.Host, null, maxPlayers, properties, sceneIndex);
+            if (result.Ok || result.ShutdownReason != ShutdownReason.GameIdAlreadyExists) break;
+        }
+        return result;
     }
 
-    // Joins any open match, or hosts a new one with these settings if there is none
-    public static Task<StartGameResult> JoinRandomOrHost(int maxPlayers, Dictionary<string, SessionProperty> properties, int sceneIndex)
+    // Quick play: joins any open match, whatever its settings, or hosts a new one with these if
+    // there is none. (Joining with the settings would make them a filter: only matches with exactly
+    // the same map, mode, bots and limits would be found.)
+    public static async Task<StartGameResult> JoinRandomOrHost(int maxPlayers, Dictionary<string, SessionProperty> properties, int sceneIndex)
     {
-        return Start(GameMode.AutoHostOrClient, null, maxPlayers, properties, sceneIndex);
+        StartGameResult joined = await Start(GameMode.Client, null, 0, null, -1, false);
+        if (joined.Ok) return joined;
+        Debug.Log($"No open match to join ({joined.ShutdownReason}): hosting one");
+        return await Host(maxPlayers, properties, sceneIndex);
     }
+
+    // Joins the match with this room code
+    public static Task<StartGameResult> JoinByCode(string code)
+    {
+        return Start(GameMode.Client, code, 0, null, -1);
+    }
+
+    // The room code of the match being played (its session name), or null in practice or out of a match
+    public static string RoomCode
+    {
+        get
+        {
+            NetworkRunner r = Runner;
+            if (r == null || !r.IsRunning || r.IsSinglePlayer || !r.SessionInfo.IsValid) return null;
+            string name = r.SessionInfo.Name;
+            return RoomCodes.IsValid(name) ? name : null;
+        }
+    }
+
+    private static string NewRoomCode() => RoomCodes.New(n => UnityEngine.Random.Range(0, n));
 
     // Joins the named match
     public static Task<StartGameResult> Join(string sessionName)
@@ -139,7 +172,9 @@ public class NetworkSession : MonoBehaviour, INetworkRunnerCallbacks
         r.SessionInfo.IsVisible = open;
     }
 
-    private static async Task<StartGameResult> Start(GameMode mode, string sessionName, int maxPlayers, Dictionary<string, SessionProperty> properties, int sceneIndex)
+    // rejoinLobby: after a failed start in the menu, join the lobby again so the room list fills in
+    // (not when another start follows straight away, as in quick play)
+    private static async Task<StartGameResult> Start(GameMode mode, string sessionName, int maxPlayers, Dictionary<string, SessionProperty> properties, int sceneIndex, bool rejoinLobby = true)
     {
         NetworkSession session = Instance;
         // The runner that joined the lobby starts the match too; make a new one only if there is none
@@ -156,6 +191,8 @@ public class NetworkSession : MonoBehaviour, INetworkRunnerCallbacks
             SessionProperties = properties,
             SceneManager = startRunner.GetComponent<NetworkSceneManagerDefault>(),
             CustomPhotonAppSettings = AppSettings(),
+            // A match created without a name gets a room code as its name
+            SessionNameGenerator = NewRoomCode,
         };
         if (maxPlayers > 0) args.PlayerCount = maxPlayers;
         // Single-player mode makes no connection, so it needs no app settings or session name
@@ -174,7 +211,7 @@ public class NetworkSession : MonoBehaviour, INetworkRunnerCallbacks
             Debug.LogWarning($"Couldn't start the session: {result.ShutdownReason} {result.ErrorMessage}");
             // A failed start shuts the runner down, so get the room list back
             if (session.runner == startRunner) session.runner = null;
-            if (SceneManager.GetActiveScene().buildIndex == MenuScene) JoinLobby();
+            if (rejoinLobby && SceneManager.GetActiveScene().buildIndex == MenuScene) JoinLobby();
         }
         return result;
     }

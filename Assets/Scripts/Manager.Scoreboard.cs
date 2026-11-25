@@ -24,7 +24,12 @@ public partial class Manager
             string upper = label.text.Trim().ToUpperInvariant();
             if (upper == "KILLS" || upper == "CAPS") label.text = ScoreWord;
         }
-        lb.Find("Header/Map").GetComponent<Text>().text = CurrentMapName();
+        // The map, and the room code to give friends
+        string code = NetworkSession.RoomCode;
+        Text mapText = lb.Find("Header/Map").GetComponent<Text>();
+        mapText.supportRichText = true;
+        mapText.horizontalOverflow = HorizontalWrapMode.Overflow;
+        mapText.text = code != null ? $"{CurrentMapName()}   <color={UITheme.Hex(UITheme.MutedText)}>CODE</color> {code}" : CurrentMapName();
 
         GameObject playerCard = lb.GetChild(1).gameObject;
         playerCard.SetActive(false);

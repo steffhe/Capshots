@@ -97,6 +97,24 @@ public static class GameSettings
         }
     }
 
+    // Colours that people with red-green colour blindness can tell apart: blue against orange teams,
+    // and player colours from the Okabe-Ito palette (Manager.TeamColors, PlayerCap.ColorFor)
+    private const string ColourblindKey = "settings.colourblind";
+    public static bool Colourblind
+    {
+        get => PlayerPrefs.GetInt(ColourblindKey, 0) == 1;
+        set
+        {
+            if (value == Colourblind) return;
+            PlayerPrefs.SetInt(ColourblindKey, value ? 1 : 0);
+            PlayerPrefs.Save();
+            ColoursChanged?.Invoke();
+        }
+    }
+
+    // A match recolours everyone at once (Manager)
+    public static event System.Action ColoursChanged;
+
     public static string QualityName => QualitySettings.names.Length > 0 ? QualitySettings.names[Quality].ToUpper() : "-";
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
