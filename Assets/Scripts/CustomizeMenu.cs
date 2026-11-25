@@ -5,7 +5,9 @@ using UnityEngine.UI;
 
 // The Customize panel: the hat you wear and the gun form you spawn holding. Opened by the Customize
 // button under Settings, in the main menu and in the pause menu. Hats unlock as you level up (see
-// Hats): every hat is listed, the locked ones greyed out with the level that unlocks them.
+// Hats): every hat is listed, the locked ones greyed out with the level that unlocks them. In the
+// main menu, pointing at a locked hat (or tapping it) shows it on the player model as a see-through
+// grey preview; it can't be worn until it's unlocked.
 // In the main menu the panel sits on the left, where the menu column was, so the player model
 // stays in view wearing the hat picked. In a match, a new hat shows on your drone at once.
 public class CustomizeMenu : MenuPanel
@@ -29,6 +31,10 @@ public class CustomizeMenu : MenuPanel
         public Text status;
     }
     private readonly List<HatRow> hatRows = new List<HatRow>();
+    // The locked hat shown on the main menu's player model (-1: the hat worn), and the one last
+    // clicked, which stays shown when the pointer moves off it
+    private int previewing = -1;
+    private int pinned = -1;
 
     // Panel layout, in canvas units from the panel's centre
     private const float PanelWidth = 640f;
@@ -87,6 +93,8 @@ public class CustomizeMenu : MenuPanel
 
     private void Close()
     {
+        pinned = -1;
+        Preview(-1);
         if (panel != null) panel.SetActive(false);
         if (mainButtons != null) mainButtons.SetActive(true);
     }
@@ -166,7 +174,8 @@ public class CustomizeMenu : MenuPanel
     private void AddHatRow(RectTransform parent, int hat, float y, int column)
     {
         HatRow row = new HatRow { hat = hat };
-        GameObject button = NewButton(parent, "", () => GameSettings.Hat = row.hat);
+        GameObject button = NewButton(parent, "", () => ClickHat(row.hat));
+        if (inMainMenu) PointerHover.Add(button, () => { if (!IsUnlocked(row.hat)) Preview(row.hat); }, () => Preview(pinned));
         float width = (ColumnWidth - HatColumnGap) / 2f;
         float x = (column == 0 ? -1f : 1f) * (width + HatColumnGap) / 2f;
         Place(button, new Vector2(x, y), new Vector2(width, RowStep - 4f));
@@ -182,15 +191,49 @@ public class CustomizeMenu : MenuPanel
         hatRows.Add(row);
     }
 
+    private static bool IsUnlocked(int hat) => Hats.IsUnlocked(hat, Launcher.myProfile.level);
+
+    // An unlocked hat is put on; a locked one is previewed (in the main menu), and stays previewed
+    private void ClickHat(int hat)
+    {
+        if (IsUnlocked(hat))
+        {
+            pinned = -1;
+            Preview(-1);
+            GameSettings.Hat = hat;
+        }
+        else if (inMainMenu)
+        {
+            pinned = hat;
+            Preview(hat);
+        }
+    }
+
+    // Shows a locked hat on the main menu's player model as a grey preview, or (-1) the hat worn again
+    private void Preview(int hat)
+    {
+        if (!inMainMenu || hat == previewing) return;
+        previewing = hat;
+        PlayerCap.AttachToSceneHeads(PlayerCap.LogoColor, hat >= 0 ? hat : GameSettings.Hat, hat >= 0);
+        Refresh();
+    }
+
+    // A new hat put on dresses the player model in it (Launcher), replacing any preview
+    private void OnHatChanged()
+    {
+        previewing = pinned = -1;
+        Refresh();
+    }
+
     private void OnEnable()
     {
-        GameSettings.HatChanged += Refresh;
+        GameSettings.HatChanged += OnHatChanged;
         GameSettings.StartingGunChanged += Refresh;
     }
 
     private void OnDisable()
     {
-        GameSettings.HatChanged -= Refresh;
+        GameSettings.HatChanged -= OnHatChanged;
         GameSettings.StartingGunChanged -= Refresh;
     }
 
@@ -210,10 +253,11 @@ public class CustomizeMenu : MenuPanel
         {
             bool unlocked = Hats.IsUnlocked(row.hat, level);
             bool wearing = row.hat == worn;
-            row.button.interactable = unlocked;
+            // In the main menu a locked hat can still be clicked, to preview it
+            row.button.interactable = unlocked || inMainMenu;
             UITheme.StyleButtonBackground(row.button, wearing ? UITheme.ButtonStyle.Primary : UITheme.ButtonStyle.Secondary, 6f);
             row.name.color = unlocked ? UITheme.TextColor : UITheme.MutedText;
-            row.status.text = wearing ? "WEARING" : unlocked ? "" : "LEVEL " + Hats.UnlockLevel(row.hat);
+            row.status.text = wearing ? "WEARING" : unlocked ? "" : row.hat == previewing ? "PREVIEW" : "LEVEL " + Hats.UnlockLevel(row.hat);
             row.status.color = wearing ? UITheme.TextColor : UITheme.MutedText;
         }
 

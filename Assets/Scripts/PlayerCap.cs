@@ -21,6 +21,10 @@ public class PlayerCap : MonoBehaviour
     private const float HaloGlow = 1.8f;
     // How see-through glass is: its colour's alpha
     private const float GlassAlpha = 0.2f;
+    // A locked hat's preview (ShowLocked): see-through grey
+    private static readonly Color LockedGrey = new Color(0.62f, 0.62f, 0.64f);
+    private const float LockedAlpha = 0.35f;
+    private bool locked;
 
     private Renderer[] renderers;
     private Shade[] shades;
@@ -74,6 +78,7 @@ public class PlayerCap : MonoBehaviour
     public void SetColor(Color color)
     {
         if (renderers == null) return;
+        if (locked) color = LockedGrey;
         Color dark = Color.Lerp(color, Color.black, 0.35f);
         Color light = Color.Lerp(color, Color.white, 0.45f);
         MaterialPropertyBlock block = new MaterialPropertyBlock();
@@ -82,13 +87,30 @@ public class PlayerCap : MonoBehaviour
             if (renderers[i] == null) continue;
             Color c = shades[i] == Shade.Dark ? dark : shades[i] == Shade.Light ? light : color;
             Surface kind = surfaces != null ? surfaces[i] : Surface.Twill;
-            if (kind == Surface.Glass) c.a = GlassAlpha;
+            if (locked) c.a = LockedAlpha;
+            else if (kind == Surface.Glass) c.a = GlassAlpha;
             renderers[i].GetPropertyBlock(block);
             block.SetColor("_BaseColor", c); // URP
             block.SetColor("_Color", c);     // built-in shaders
-            block.SetColor("_EmissionColor", kind == Surface.Glow ? c * HaloGlow : Color.black);
+            block.SetColor("_EmissionColor", kind == Surface.Glow && !locked ? c * HaloGlow : Color.black);
             renderers[i].SetPropertyBlock(block);
         }
+    }
+
+    // Shows the hat as a see-through grey ghost of itself, without its glow: the Customize menu's
+    // preview of a hat that isn't unlocked yet. Its moving parts still move.
+    public void ShowLocked()
+    {
+        if (renderers == null || renderers.Length == 0) return;
+        locked = true;
+        Material glass = SurfaceMaterial(Surface.Glass, renderers[0].sharedMaterial);
+        foreach (Renderer r in renderers)
+        {
+            if (r == null) continue;
+            r.sharedMaterial = glass;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        }
+        SetColor(LockedGrey);
     }
 
     #region Hats
@@ -786,14 +808,16 @@ public class PlayerCap : MonoBehaviour
 
     // Puts a hat on every player head in the scene, e.g. the main menu's player model, which is a copy
     // of the player without the Player script. Run again, it swaps the hat they wear for this one.
-    public static void AttachToSceneHeads(Color color, int hat = Hats.Cap)
+    // locked: as the grey preview of a hat not unlocked yet (see ShowLocked).
+    public static void AttachToSceneHeads(Color color, int hat = Hats.Cap, bool locked = false)
     {
         foreach (Transform t in Object.FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
         {
             if (!t.CompareTag("Head")) continue;
             if (t.GetComponent<MeshFilter>() == null) continue; // only visible sphere heads
             foreach (PlayerCap old in t.GetComponentsInChildren<PlayerCap>(true)) Destroy(old.gameObject);
-            Attach(t, color, false, hat);
+            PlayerCap cap = Attach(t, color, false, hat);
+            if (locked && cap != null) cap.ShowLocked();
         }
     }
 
