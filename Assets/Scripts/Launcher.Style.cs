@@ -8,7 +8,14 @@ public partial class Launcher
 {
     private const float ColumnWidth = 300f;
     private const float RowHeight = 52f;
-    private const float RoomListWidth = 560f;
+    // The room list is as wide as the menu column, so every tab lines up on the same left edge
+    private const float RoomListWidth = ColumnWidth;
+    private const float RoomRowHeight = 58f;
+    private const float RoomListMaxHeight = 340f;
+    // The create tab's option rows are a little shorter, to fit its three groups
+    private const float CreateRowHeight = 44f;
+    // Extra space above Back, so it's never hit by mistake at the end of a list
+    private const float BackGap = 10f;
     // Each tab's column is raised this much from where the scene has it: the scene left about 290
     // units empty above the logo, and the create tab (which gained rows in code) reached to within
     // a few units of the bottom of the screen. Raised, its top is 140 from the top of the screen
@@ -102,6 +109,24 @@ public partial class Launcher
         return rect;
     }
 
+    // A small heading in the accent colour over a group of rows ("MATCH SETUP", "OPEN MATCHES")
+    private static Text SectionCaption(GameObject tab, int index, string caption)
+    {
+        RectTransform block = ColumnBlock(tab, caption, index, 18f);
+        Text text = UITheme.NewText("Text", block, 14, UITheme.AccentText, TextAnchor.LowerLeft);
+        text.text = caption;
+        return text;
+    }
+
+    // Space before a tab's Back button
+    private static void GapBeforeBack(GameObject tab)
+    {
+        Transform anchor = tab.transform.Find("Anchor");
+        Transform back = anchor != null ? anchor.Find("Back") : null;
+        if (back == null) return;
+        ColumnBlock(tab, "Back Gap", back.GetSiblingIndex(), BackGap);
+    }
+
     private static Text Caption(Transform text, string caption)
     {
         Text label = text != null ? text.GetComponent<Text>() : null;
@@ -132,14 +157,10 @@ public partial class Launcher
         Transform anchor = tabRooms.transform.Find("Anchor");
         if (scroll == null || anchor == null) return;
 
-        Text caption = Caption(tabRooms.transform.Find("Title"), "OPEN MATCHES");
-        if (caption != null)
-        {
-            caption.transform.SetParent(anchor, false);
-            caption.transform.SetSiblingIndex(1);
-            UITheme.Place(caption.rectTransform, new Vector2(0f, 1f), Vector2.zero, new Vector2(RoomListWidth, 20f));
-            caption.rectTransform.pivot = new Vector2(0.5f, 0.5f);
-        }
+        // The scene's own title goes: a section heading like the create tab's takes its place
+        Transform oldTitle = tabRooms.transform.Find("Title");
+        if (oldTitle != null) oldTitle.gameObject.SetActive(false);
+        Text caption = SectionCaption(tabRooms, 1, "OPEN MATCHES");
 
         RectTransform view = (RectTransform)scroll.transform;
         view.SetParent(anchor, false);
@@ -148,16 +169,19 @@ public partial class Launcher
         view.localScale = Vector3.one;
         view.anchorMin = view.anchorMax = new Vector2(0f, 1f);
         view.pivot = new Vector2(0.5f, 0.5f);
-        view.sizeDelta = new Vector2(RoomListWidth, 400f);
+        view.sizeDelta = new Vector2(RoomListWidth, RoomListMaxHeight);
+        roomListView = view;
+        // A dark card, so the list (and its empty message) reads over the bright street behind
         Image viewImage = view.GetComponent<Image>();
-        if (viewImage != null) viewImage.color = Color.clear;
+        UITheme.Round(viewImage, 10f);
+        if (viewImage != null) viewImage.color = UITheme.Panel;
 
         // Thin, quiet scrollbar
         const float scrollbarWidth = 6f;
         if (scroll.viewport != null)
         {
-            scroll.viewport.offsetMin = Vector2.zero;
-            scroll.viewport.offsetMax = new Vector2(-(scrollbarWidth + 8f), 0f);
+            scroll.viewport.offsetMin = new Vector2(6f, 6f);
+            scroll.viewport.offsetMax = new Vector2(-(scrollbarWidth + 8f), -6f);
         }
         Scrollbar bar = scroll.verticalScrollbar;
         if (bar != null)
@@ -208,8 +232,8 @@ public partial class Launcher
         scroll.content.anchoredPosition = Vector2.zero;
         scroll.content.sizeDelta = new Vector2(0f, scroll.content.sizeDelta.y);
 
-        roomsEmptyText = UITheme.NewText("Empty", view, 18, UITheme.MutedText, TextAnchor.MiddleCenter);
-        UITheme.Row(roomsEmptyText.rectTransform, 24f, 60f);
+        roomsEmptyText = UITheme.NewText("Empty", view, 16, UITheme.TextColor, TextAnchor.MiddleCenter);
+        UITheme.Inset(roomsEmptyText.rectTransform, 14f, 14f);
         roomsEmptyText.lineSpacing = 1.3f;
         ShowRoomsEmptyState(true, "LOOKING FOR MATCHES...");
 
@@ -217,6 +241,7 @@ public partial class Launcher
         foreach (Transform row in scroll.content) row.gameObject.SetActive(false);
 
         BuildJoinCode(anchor, view.GetSiblingIndex() + 1);
+        GapBeforeBack(tabRooms);
     }
 
     // Under the list: a field for a friend's room code and a JOIN button
@@ -237,7 +262,7 @@ public partial class Launcher
         block.pivot = new Vector2(0.5f, 0.5f);
         block.sizeDelta = new Vector2(RoomListWidth, 70f);
 
-        Text caption = UITheme.NewText("Caption", block, 14, UITheme.MutedText, TextAnchor.MiddleLeft);
+        Text caption = UITheme.NewText("Caption", block, 14, UITheme.AccentText, TextAnchor.LowerLeft);
         UITheme.Row(caption.rectTransform, 0f, 18f);
         caption.text = "HAVE A ROOM CODE?";
 
@@ -288,15 +313,28 @@ public partial class Launcher
     {
         if (roomsEmptyText == null) return;
         roomsEmptyText.gameObject.SetActive(empty);
-        roomsEmptyText.text = message ?? $"NO OPEN MATCHES YET\n<size=15><color={UITheme.Hex(new Color(1f, 1f, 1f, 0.4f))}>CREATE ONE AND YOUR FRIENDS CAN JOIN</color></size>";
+        roomsEmptyText.text = message ?? $"NO OPEN MATCHES YET\n<size=13><color={UITheme.Hex(UITheme.MutedText)}>CREATE ONE AND YOUR FRIENDS CAN JOIN</color></size>";
+        FitRoomList(empty);
     }
 
-    // Name on the left, map and mode in the middle, player count on the right
+    // The list's card is as tall as its rows (up to a limit, then it scrolls), or just tall enough
+    // for the empty message, so the room code and Back stay close under it
+    private RectTransform roomListView;
+    private void FitRoomList(bool empty)
+    {
+        if (roomListView == null) return;
+        int rows = 0;
+        foreach (Transform row in RoomListContent) if (row.gameObject.activeSelf) rows++;
+        float height = empty || rows == 0 ? 96f : Mathf.Min(RoomListMaxHeight, rows * (RoomRowHeight + 8f) + 4f);
+        roomListView.sizeDelta = new Vector2(RoomListWidth, height);
+    }
+
+    // Two lines: the match's name on top and its map, mode and goal under it, the player count on the right
     private static void StyleRoomRow(GameObject row)
     {
         RectTransform rect = (RectTransform)row.transform;
         rect.localScale = Vector3.one;
-        rect.sizeDelta = new Vector2(RoomListWidth, 56f);
+        rect.sizeDelta = new Vector2(RoomListWidth, RoomRowHeight);
         UITheme.StyleButtonBackground(row.GetComponent<Button>(), UITheme.ButtonStyle.Secondary);
         // The prefab shrinks its texts with their scale; size them with the font instead
         foreach (RectTransform child in row.GetComponentsInChildren<RectTransform>(true)) child.localScale = Vector3.one;
@@ -304,29 +342,34 @@ public partial class Launcher
         Text name = row.transform.Find("Name")?.GetComponent<Text>();
         if (name != null)
         {
-            UITheme.StyleText(name, 20, UITheme.TextColor, TextAnchor.MiddleLeft);
+            UITheme.StyleText(name, 17, UITheme.TextColor, TextAnchor.LowerLeft);
             name.horizontalOverflow = HorizontalWrapMode.Wrap;
             name.verticalOverflow = VerticalWrapMode.Truncate;
             // Rich text on: the room code after the title is greyed with a colour tag
             name.supportRichText = true;
             UITheme.Stretch(name.rectTransform);
-            name.rectTransform.anchorMax = new Vector2(0.52f, 1f);
-            name.rectTransform.offsetMin = new Vector2(18f, 0f);
+            name.rectTransform.anchorMin = new Vector2(0f, 0.5f);
+            name.rectTransform.anchorMax = new Vector2(0.78f, 1f);
+            name.rectTransform.offsetMin = new Vector2(14f, 1f);
+            name.rectTransform.offsetMax = new Vector2(0f, -4f);
         }
 
         RectTransform map = row.transform.Find("Map") as RectTransform;
         if (map != null)
         {
             UITheme.Stretch(map);
-            map.anchorMin = new Vector2(0.52f, 0f);
-            map.anchorMax = new Vector2(0.82f, 1f);
+            map.anchorMin = new Vector2(0f, 0f);
+            map.anchorMax = new Vector2(0.78f, 0.5f);
+            map.offsetMin = new Vector2(14f, 4f);
+            map.offsetMax = new Vector2(0f, -1f);
             Image mapImage = map.GetComponent<Image>();
             if (mapImage != null) mapImage.color = Color.clear;
             Text mapName = map.Find("Name")?.GetComponent<Text>();
             if (mapName != null)
             {
-                UITheme.StyleText(mapName, 16, UITheme.MutedText, TextAnchor.MiddleLeft);
-                mapName.horizontalOverflow = HorizontalWrapMode.Overflow;
+                UITheme.StyleText(mapName, 13, UITheme.MutedText, TextAnchor.UpperLeft);
+                mapName.horizontalOverflow = HorizontalWrapMode.Wrap;
+                mapName.verticalOverflow = VerticalWrapMode.Truncate;
                 UITheme.Stretch(mapName.rectTransform);
             }
         }
@@ -334,11 +377,11 @@ public partial class Launcher
         Text players = row.transform.Find("Players")?.GetComponent<Text>();
         if (players != null)
         {
-            UITheme.StyleText(players, 20, UITheme.AccentText, TextAnchor.MiddleRight);
+            UITheme.StyleText(players, 18, UITheme.AccentText, TextAnchor.MiddleRight);
             players.horizontalOverflow = HorizontalWrapMode.Overflow;
             UITheme.Stretch(players.rectTransform);
-            players.rectTransform.anchorMin = new Vector2(0.82f, 0f);
-            players.rectTransform.offsetMax = new Vector2(-18f, 0f);
+            players.rectTransform.anchorMin = new Vector2(0.78f, 0f);
+            players.rectTransform.offsetMax = new Vector2(-14f, 0f);
         }
     }
 
@@ -354,7 +397,7 @@ public partial class Launcher
         // Match name field under the logo
         if (roomnameField != null)
         {
-            RectTransform card = ColumnBlock(tabCreate, "Name Card", 1, 66f);
+            RectTransform card = ColumnBlock(tabCreate, "Name Card", 1, 62f);
             Text caption = Caption(tabCreate.transform.Find("CreateTesxt"), "MATCH NAME");
             if (caption != null)
             {
@@ -362,9 +405,10 @@ public partial class Launcher
                 UITheme.Row(caption.rectTransform, 0f, 18f);
             }
             roomnameField.transform.SetParent(card, false);
-            UITheme.Row((RectTransform)roomnameField.transform, 22f, 44f);
+            UITheme.Row((RectTransform)roomnameField.transform, 22f, 40f);
             UITheme.StyleInput(roomnameField, "OPTIONAL");
         }
+        RectTransform nameCard = anchor.Find("Name Card") as RectTransform;
 
         foreach (Transform child in anchor)
         {
@@ -373,12 +417,32 @@ public partial class Launcher
             if (label != null && (label == mapValue || label == modeValue || label == botsValue || label == botSkillValue || label == winByValue))
             {
                 UITheme.StyleSelector(button);
+                ((RectTransform)child).sizeDelta = new Vector2(ColumnWidth, CreateRowHeight);
             }
             else if (child.GetComponentInChildren<Slider>(true) != null)
             {
-                StyleSliderRow((RectTransform)child);
+                StyleSliderRow((RectTransform)child, CreateRowHeight);
             }
         }
+
+        // Three groups, each under a heading: the match (name, map, mode), its rules (what it's won
+        // by, the number for that, and how many can play) and the bots. Then Create, a gap, and Back.
+        VerticalLayoutGroup layout = anchor.GetComponent<VerticalLayoutGroup>();
+        if (layout != null) layout.spacing = 6f;
+        int index = 1;
+        SectionCaption(tabCreate, index++, "MATCH SETUP");
+        index = PlaceRow(nameCard, index);
+        index = PlaceRow(RowOf(mapValue), index);
+        index = PlaceRow(RowOf(modeValue), index);
+        SectionCaption(tabCreate, index++, "RULES");
+        index = PlaceRow(RowOf(winByValue), index);
+        index = PlaceRow(killsToWinSlider != null ? killsToWinSlider.transform.parent : null, index);
+        index = PlaceRow(maxPlayersSlider != null ? maxPlayersSlider.transform.parent : null, index);
+        SectionCaption(tabCreate, index++, "BOTS");
+        index = PlaceRow(RowOf(botsValue), index);
+        index = PlaceRow(RowOf(botSkillValue), index);
+        index = PlaceRow(anchor.Find("Create"), index);
+        GapBeforeBack(tabCreate);
 
         Transform create = anchor.Find("Create");
         if (create != null)
@@ -389,10 +453,20 @@ public partial class Launcher
         }
     }
 
-    // A slider row in the create tab: name on the left, slider, value on the right
-    private static void StyleSliderRow(RectTransform row)
+    private static Transform RowOf(Text label) => label != null ? label.transform.parent : null;
+
+    // Puts a row at this place in its column; returns the next place
+    private static int PlaceRow(Transform row, int index)
     {
-        row.sizeDelta = new Vector2(ColumnWidth, RowHeight);
+        if (row == null) return index;
+        row.SetSiblingIndex(index);
+        return index + 1;
+    }
+
+    // A slider row in the create tab: name on the left, slider, value on the right
+    private static void StyleSliderRow(RectTransform row, float height = RowHeight)
+    {
+        row.sizeDelta = new Vector2(ColumnWidth, height);
         Image background = row.GetComponent<Image>();
         UITheme.Round(background, 8f);
         if (background != null) background.color = UITheme.Surface;

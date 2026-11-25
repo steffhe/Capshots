@@ -563,7 +563,8 @@ public partial class Launcher : MonoBehaviour
 
     private void ClearRoomList()
     {
-        foreach (Transform a in RoomListContent) Destroy(a.gameObject);
+        // Hidden at once (Destroy waits for the end of the frame), so the list's height counts only the new rows
+        foreach (Transform a in RoomListContent) { a.gameObject.SetActive(false); Destroy(a.gameObject); }
     }
 
     // The room list's scroll content (found by component, since the menu layout is rearranged at runtime)
