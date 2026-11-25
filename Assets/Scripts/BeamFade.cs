@@ -1,6 +1,6 @@
 using UnityEngine;
 
-// Thins out and fades a laser beam, then removes it
+// Thins out and fades a laser beam, then puts it away (see ShotEffects)
 public class BeamFade : MonoBehaviour
 {
     private LineRenderer beam;
@@ -8,14 +8,26 @@ public class BeamFade : MonoBehaviour
     private MaterialPropertyBlock block;
     private Color color;
 
+    // The beam's line, for beams that come from ShotEffects
+    public LineRenderer Line
+    {
+        get
+        {
+            if (beam == null) beam = GetComponent<LineRenderer>();
+            return beam;
+        }
+    }
+
     public void Begin(LineRenderer line, float startWidth, float seconds)
     {
         beam = line;
         width = startWidth;
         duration = Mathf.Max(0.01f, seconds);
-        block = new MaterialPropertyBlock();
+        age = 0f;
+        if (block == null) block = new MaterialPropertyBlock();
         beam.GetPropertyBlock(block);
         color = block.GetColor("_BaseColor");
+        enabled = true;
     }
 
     void Update()
@@ -33,6 +45,6 @@ public class BeamFade : MonoBehaviour
         block.SetColor("_Color", c);
         beam.SetPropertyBlock(block);
 
-        if (t >= 1f) Destroy(gameObject);
+        if (t >= 1f) ShotEffects.Release(this);
     }
 }

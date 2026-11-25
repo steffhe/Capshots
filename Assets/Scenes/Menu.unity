@@ -8604,26 +8604,17 @@ MonoBehaviour:
   tabCreate: {fileID: 238817615}
   buttontRooms: {fileID: 3504429796427397827, guid: 92c0a473552c12f4481d805668592807, type: 3}
   maps:
-  - name: Battlefield
-    scene: 1
-    enabled: 0
-  - name: Arena
-    scene: 2
-    enabled: 0
   - name: Proving Ground
-    scene: 3
+    scene: 1
     enabled: 1
-  - name: Nuketown
-    scene: 4
-    enabled: 0
   - name: Downtown
-    scene: 5
+    scene: 2
     enabled: 1
   - name: Prototype
-    scene: 6
+    scene: 3
     enabled: 1
   - name: Office
-    scene: 7
+    scene: 4
     enabled: 1
 --- !u!4 &1909638675
 Transform:
