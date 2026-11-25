@@ -63,6 +63,11 @@ mergeInto(LibraryManager.library, {
   // stick axes, then its first 17 buttons (0 to 1; the triggers in between). Returns 0 if none is
   // connected, 1 for one with the browser's "standard" layout, 2 for any other.
   //
+  // Chrome on Android lays out every controller in the standard order, even one it doesn't know,
+  // which it reports as having no mapping ("") all the same. So there every controller counts as
+  // standard: otherwise an unknown one (some Bluetooth pads) would be read as a joystick, and
+  // nothing in the game would answer it.
+  //
   // Phones often list other devices as controllers too (Android's fingerprint sensor shows up as
   // one in Chrome), so the first in the list isn't always the real one. The controller in use is
   // the last one a button was pressed on; until then, the likeliest: one with the standard layout
@@ -70,6 +75,8 @@ mergeInto(LibraryManager.library, {
   ReadBrowserGamepad: function (values) {
     if (!navigator.getGamepads) return 0;
     var pads = navigator.getGamepads();
+    var android = /Android/i.test(navigator.userAgent);
+    var standard = function (p) { return p.mapping === "standard" || android; };
     // Which controllers had a button down last time: only a new press counts, so a device that
     // always reports a button held can't take over
     var held = Module.gamepadHeld || (Module.gamepadHeld = {});
@@ -81,7 +88,7 @@ mergeInto(LibraryManager.library, {
       for (var k = 0; k < p.buttons.length; k++) {
         if (p.buttons[k] && (p.buttons[k].pressed || p.buttons[k].value > 0.5)) { down = true; break; }
       }
-      var score = (p.mapping === "standard" ? 4 : 0) + (p.buttons.length >= 16 ? 2 : 0) + (p.axes.length >= 4 ? 1 : 0);
+      var score = (standard(p) ? 4 : 0) + (p.buttons.length >= 16 ? 2 : 0) + (p.axes.length >= 4 ? 1 : 0);
       if (down && !held[i] && (pressedOn < 0 || score > pressedScore)) { pressedOn = i; pressedScore = score; }
       held[i] = down;
       if (score > bestScore) { bestScore = score; best = i; }
@@ -94,7 +101,7 @@ mergeInto(LibraryManager.library, {
     // (touching the fingerprint sensor mustn't take over from the real controller)
     if (pressedOn >= 0 && pressedOn !== current && (!currentPad || pressedScore >= Module.gamepadScore)) current = pressedOn;
     var chosen = pads[current];
-    Module.gamepadScore = (chosen.mapping === "standard" ? 4 : 0) + (chosen.buttons.length >= 16 ? 2 : 0) + (chosen.axes.length >= 4 ? 1 : 0);
+    Module.gamepadScore = (standard(chosen) ? 4 : 0) + (chosen.buttons.length >= 16 ? 2 : 0) + (chosen.axes.length >= 4 ? 1 : 0);
     Module.gamepadIndex = current;
 
     var pad = pads[current];
@@ -107,7 +114,7 @@ mergeInto(LibraryManager.library, {
       if (button && button.pressed && b !== 6 && b !== 7) value = 1;
       HEAPF32[base + 4 + b] = value;
     }
-    return pad.mapping === "standard" ? 1 : 2;
+    return standard(pad) ? 1 : 2;
   },
 
   // Which of the browser's controllers ReadBrowserGamepad reads, or -1 for none
