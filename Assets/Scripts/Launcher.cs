@@ -208,7 +208,7 @@ public partial class Launcher : MonoBehaviour
         properties.Add("bots", currentbots);
         properties.Add("botskill", currentBotSkill);
         // What the room list calls it, unless a name was typed in the create tab
-        properties.Add("title", (myProfile != null && !string.IsNullOrWhiteSpace(myProfile.username) ? myProfile.username : "PLAYER") + "'S MATCH");
+        properties.Add("title", ((myProfile != null && !string.IsNullOrWhiteSpace(myProfile.username) ? myProfile.username : "PLAYER") + "'S MATCH").ToUpperInvariant());
         return properties;
     }
 

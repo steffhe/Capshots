@@ -41,6 +41,7 @@ public class DroneHands : MonoBehaviour
     // The gun whose sights were last tinted, and the teams version they were tinted for
     private GameObject tintedGun;
     private int tintedTeamsVersion = -1;
+    private Color tintedColor;
 
     // The spent cell, flicked away: where it was let go and how it flies, in the player's space
     private Vector3 tossStart, tossVelocity;
@@ -89,20 +90,17 @@ public class DroneHands : MonoBehaviour
         Paint(cellRenderer, accent, accent * CellGlow);
     }
 
-    // The sight dots glow in the team's colour in team modes, and in the player's own colour otherwise
+    // The colour the sights glow in: the player's colour, which in team modes is their team's. A
+    // display model's sights take its hands' colour.
+    private Color SightColor() => player != null && player.ActorId >= 0 ? PlayerCap.ColorFor(player.ActorId) : color;
+
+    // The sight dots and the scope's reticle glow in the player's colour, the same in every mode
     private void TintSights(GameObject gun)
     {
         tintedGun = gun;
         tintedTeamsVersion = Manager.TeamsVersion;
-
-        // A display model's sights take its hands' colour
-        Color c = player != null ? PlayerCap.ColorFor(player.ActorId) : color;
-        Manager m = Manager.Instance;
-        if (player != null && m != null && m.IsTeamMode)
-        {
-            int team = m.GetTeam(player.ActorId);
-            if (team >= 0) c = Manager.TeamColors[team % 2];
-        }
+        Color c = SightColor();
+        tintedColor = c;
 
         foreach (Renderer r in gun.GetComponentsInChildren<Renderer>(true))
         {
@@ -116,7 +114,7 @@ public class DroneHands : MonoBehaviour
     }
 
     private const float ReticleGlowStrength = 3f;
-    private const string ReticleGlowName = "Reticle Glow";
+    public const string ReticleGlowName = "Reticle Glow";
 
     // The glowing parts of a scope's reticle, made the first time: a glowing copy of each fine line
     // (the line itself is hidden) and a dot in the middle. Copies rather than a change of material,
@@ -326,7 +324,9 @@ public class DroneHands : MonoBehaviour
         if ((player == null || weapon == null) && displayGun == null) return;
         GameObject gun = weapon != null ? weapon.GunModel : displayGun;
         if (gun != shownGun) FitTo(gun);
-        if (gun != null && (gun != tintedGun || tintedTeamsVersion != Manager.TeamsVersion)) TintSights(gun);
+        // Again whenever the colour changes too: right after spawning the player's colour may not be
+        // known yet, and in a mode without teams nothing else would ever paint the sights again
+        if (gun != null && (gun != tintedGun || tintedTeamsVersion != Manager.TeamsVersion || tintedColor != SightColor())) TintSights(gun);
 
         bool show = gunDesign != null && (player == null || !player.IsDead);
         for (int i = 0; i < 2; i++) if (hands[i].gameObject.activeSelf != show) hands[i].gameObject.SetActive(show);

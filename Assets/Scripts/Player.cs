@@ -1033,6 +1033,9 @@ public class Player : NetworkBehaviour
         if (r.GetComponent<TextMeshPro>() != null) return false;
         // The gun's floating pieces see to their own (GunSatellites)
         if (r.GetComponentInParent<GunSatellites>() != null) return false;
+        // The scope's reticle keeps glowing: it's only seen through the scope, by its owner, and a
+        // see-through copy would lose its glow
+        if (r.name == DroneHands.ReticleGlowName) return false;
         Material[] materials = r.sharedMaterials;
         if (materials.Length == 0) return false;
         foreach (Material m in materials)
