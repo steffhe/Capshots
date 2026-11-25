@@ -37,6 +37,7 @@ public partial class Manager
         List<PlayerInfo> sorted = SortPlayers(playerInfo);
 
         bool alternateColors = false;
+        int me = LocalActor;
         foreach(PlayerInfo a in sorted)
         {
             GameObject newcard = Instantiate(playerCard, lb) as GameObject;
@@ -54,7 +55,9 @@ public partial class Manager
             Text usernameText = newcard.transform.Find("Username").GetComponent<Text>();
             usernameText.supportRichText = true;
             usernameText.horizontalOverflow = HorizontalWrapMode.Overflow;
-            usernameText.text = a.profile.username + PingLabel(a.actor);
+            bool mine = a.actor == me;
+            usernameText.text = a.profile.username + (mine ? $"  <color={UITheme.Hex(UITheme.AccentText)}>YOU</color>" : "") + PingLabel(a.actor);
+            if (mine) HighlightCard(newcard);
             newcard.transform.Find("Score Value").GetComponent<Text>().text = (a.kills * 100).ToString();
             newcard.transform.Find("Kills Value").GetComponent<Text>().text = a.kills.ToString();
             newcard.transform.Find("Deaths Value").GetComponent<Text>().text = a.deaths.ToString();
@@ -64,6 +67,20 @@ public partial class Manager
 
         lb.gameObject.SetActive(true);
 
+    }
+
+    // Your own row: a brighter background (in teams, a stronger team tint) and a light outline, so
+    // you can find yourself at a glance
+    private void HighlightCard(GameObject card)
+    {
+        Image image = card.GetComponent<Image>();
+        if (image == null) return;
+        Color c = image.color;
+        image.color = IsTeamMode ? new Color(c.r, c.g, c.b, 0.7f) : new Color(UITheme.Accent.r, UITheme.Accent.g, UITheme.Accent.b, 0.75f);
+        Outline outline = card.AddComponent<Outline>();
+        outline.effectColor = new Color(1f, 1f, 1f, 0.85f);
+        outline.effectDistance = new Vector2(2f, -2f);
+        outline.useGraphicAlpha = false;
     }
 
     private List<PlayerInfo> SortPlayers (List<PlayerInfo> info)

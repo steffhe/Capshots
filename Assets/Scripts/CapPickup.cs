@@ -4,17 +4,28 @@ using UnityEngine;
 // floating at head height and turning slowly over a glowing ring, with a column of light above it so
 // it can be found from across the map. It blinks for its last few seconds, then vanishes. Every
 // client makes its own copy when the host says a cap dropped; the host decides who takes it.
+// On a cap shot it doesn't just appear: it's knocked off the head, flies up tumbling and flutters
+// down to where it rests (the same path on every machine), and only then can it be taken.
 public class CapPickup : MonoBehaviour
 {
     public const float PickupRadius = 1.4f;
     private const float FloatHeight = 0.9f;
     private const float BlinkTime = 3f;
     private const float CollectTime = 0.3f;
+    // A cap shot off a head: how long it flies, how high above the head it goes, and how long the
+    // ring and column of light take to come up once it lands
+    public const float FlightTime = 1.1f;
+    private const float FlightHeight = 2.6f;
+    private const float AppearTime = 0.3f;
 
     public int Id { get; private set; }
     public int OwnerActor { get; private set; }
     // Where it rests on the ground, without its bobbing
     public Vector3 BasePosition { get; private set; }
+    // The hat itself, e.g. for the death camera to watch it fly
+    public Transform Pivot => pivot;
+    // Down where it can be taken (always, unless it was shot off a head and is still flying)
+    public bool Landed => Time.time >= landsAt;
 
     private Transform pivot;
     private Renderer[] renderers;
@@ -25,9 +36,17 @@ public class CapPickup : MonoBehaviour
     private float collectedAt = -1f;
     private float phase;
     private MaterialPropertyBlock block;
+    // A flight off a head: where from, when it lands, and which way it tumbles
+    private bool flying;
+    private Vector3 flightFrom;
+    private float launchedAt, landsAt = -1f;
+    private Vector3 tumbleAxis = Vector3.right;
+    private float glowIntensity;
 
     // mine: the local player's own cap, whose column of light is white, so it's easy to tell apart
-    public static CapPickup Create(int id, Vector3 position, int ownerActor, int hat, Color color, float lifetime, bool mine)
+    // flyFrom: knocked off a head there by a cap shot, so it flies to position first (and its time on
+    // the ground starts when it lands)
+    public static CapPickup Create(int id, Vector3 position, int ownerActor, int hat, Color color, float lifetime, bool mine, Vector3? flyFrom = null)
     {
         GameObject root = new GameObject("Cap Pickup " + id);
         root.transform.position = position;
@@ -39,6 +58,7 @@ public class CapPickup : MonoBehaviour
         pickup.expiresAt = Time.time + lifetime;
         pickup.phase = Random.value * 10f;
         pickup.Build(hat, mine);
+        if (flyFrom.HasValue) pickup.Launch(flyFrom.Value, lifetime);
         return pickup;
     }
 
@@ -64,10 +84,50 @@ public class CapPickup : MonoBehaviour
         glow.type = LightType.Point;
         glow.color = color;
         glow.range = 3f;
-        glow.intensity = 1.6f;
+        glow.intensity = glowIntensity = 1.6f;
         glow.shadows = LightShadows.None;
 
         renderers = GetComponentsInChildren<Renderer>(true);
+    }
+
+    private void Launch(Vector3 from, float lifetime)
+    {
+        flying = true;
+        flightFrom = from;
+        launchedAt = Time.time;
+        landsAt = launchedAt + FlightTime;
+        expiresAt = landsAt + lifetime;
+        // End over end along the way it flies (or any way, flying straight up)
+        Vector3 travel = BasePosition - from;
+        travel.y = 0f;
+        Vector3 axis = Vector3.Cross(Vector3.up, travel);
+        tumbleAxis = axis.sqrMagnitude > 0.0001f ? axis.normalized : Quaternion.Euler(0f, Random.value * 360f, 0f) * Vector3.right;
+        // The ground marks come up once it lands
+        ring.enabled = beam.enabled = false;
+        glow.intensity = 0f;
+        Fly(launchedAt);
+    }
+
+    // Where the hat is on its way down: up quickly, slowing at the top, then fluttering down slower,
+    // swaying a little and turning end over end, three times, to land upright
+    private void Fly(float time)
+    {
+        float s = Mathf.Clamp01((time - launchedAt) / FlightTime);
+        Vector3 rest = transform.position + Vector3.up * FloatHeight;
+        // Most of the way across early on, like something thrown
+        float across = 1f - (1f - s) * (1f - s);
+        Vector3 p = Vector3.Lerp(flightFrom, rest, across);
+        // The arc peaks about 40% of the way through: fast up, slow down
+        float k = Mathf.Pow(s, 0.75f) * 2f - 1f;
+        p.y += FlightHeight * (1f - k * k);
+        // Swaying as it falls, settling at the end
+        float sway = Mathf.Sin(s * Mathf.PI * 3f) * 0.18f * s * (1f - s) * 4f;
+        p += tumbleAxis * sway;
+        pivot.position = p;
+        float tumble = 1080f * (1f - (1f - s) * (1f - s) * (1f - s));
+        pivot.rotation = Quaternion.AngleAxis(tumble, tumbleAxis) * Quaternion.Euler(0f, s * 720f, 0f);
+        // A bit smaller off the head, growing to the pickup's size
+        pivot.localScale = Vector3.one * Mathf.Lerp(0.6f, 0.7f, s);
     }
 
     private Renderer Glow(PrimitiveType type, Vector3 position, Vector3 scale)
@@ -118,6 +178,21 @@ public class CapPickup : MonoBehaviour
             if (glow != null) glow.intensity = 3f * (1f - t);
             return;
         }
+
+        if (flying)
+        {
+            if (time < landsAt)
+            {
+                Fly(time);
+                return;
+            }
+            // Landed: the ring, column of light and glow come up
+            flying = false;
+            pivot.localRotation = Quaternion.identity;
+            pivot.localScale = Vector3.one * 0.7f;
+            ring.enabled = beam.enabled = true;
+        }
+        if (glow != null && time < landsAt + AppearTime) glow.intensity = glowIntensity * Mathf.Clamp01((time - landsAt) / AppearTime);
 
         if (time >= expiresAt)
         {

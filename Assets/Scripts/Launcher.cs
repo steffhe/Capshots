@@ -44,6 +44,9 @@ public partial class Launcher : MonoBehaviour
 
     // In MatchMode's order
     private static readonly string[] modeNames = { "FREE FOR ALL", "TEAM DEATHMATCH", "CAP GRAB", "GUN GAME", "TEAM CAP GRAB" };
+    // The order the mode list shows them in (MatchMode values, which can't change: rooms send them),
+    // with Team Cap Grab right under Cap Grab
+    private static readonly MatchMode[] modeOrder = { MatchMode.FreeForAll, MatchMode.TeamDeathmatch, MatchMode.CapGrab, MatchMode.TeamCapGrab, MatchMode.GunGame };
     private static readonly string[] modeShortNames = { "FFA", "TDM", "CAP", "GUN", "TEAM CAP" };
     private int currentmode = 0;
     private Text modeValue;
@@ -239,9 +242,16 @@ public partial class Launcher : MonoBehaviour
 
     public void ChangeMode()
     {
-        OptionPicker.Open(ButtonOf(modeValue), modeNames, currentmode, i =>
+        string[] names = new string[modeOrder.Length];
+        int selected = 0;
+        for (int i = 0; i < modeOrder.Length; i++)
         {
-            currentmode = i;
+            names[i] = modeNames[(int)modeOrder[i]];
+            if ((int)modeOrder[i] == currentmode) selected = i;
+        }
+        OptionPicker.Open(ButtonOf(modeValue), names, selected, i =>
+        {
+            currentmode = (int)modeOrder[i];
             RefreshModeText();
             // What the match is won by depends on the mode (caps, kills or the gun ladder)
             RefreshWinBy();

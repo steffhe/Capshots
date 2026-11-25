@@ -115,14 +115,15 @@ public partial class Manager
 
     // Host only: tells every client to spawn its own ragdoll for a player who just died. The ragdolls
     // aren't networked objects: each client simulates its copy locally, so they never fight a network sync.
-    // actor: the dead player's PlayerId, which picks their hat and its colour
-    public void SpawnRagdoll(Vector3 position, Quaternion rotation, Vector3 velocity, Vector3 hitDirection, Vector3 hitOffset, float knockback, bool headshot, int actor)
+    // actor: the dead player's PlayerId, which picks their hat and its colour. capDrops: Cap Grab is
+    // dropping their cap as a pickup (DropCap), so the body has none: the pickup is the cap.
+    public void SpawnRagdoll(Vector3 position, Quaternion rotation, Vector3 velocity, Vector3 hitDirection, Vector3 hitOffset, float knockback, bool headshot, int actor, bool capDrops = false)
     {
-        RPC_SpawnRagdoll(position, rotation, velocity, hitDirection, hitOffset, knockback, headshot, actor);
+        RPC_SpawnRagdoll(position, rotation, velocity, hitDirection, hitOffset, knockback, headshot, actor, capDrops);
     }
 
     [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
-    private void RPC_SpawnRagdoll(Vector3 position, Quaternion rotation, Vector3 velocity, Vector3 hitDirection, Vector3 hitOffset, float knockback, NetworkBool headshot, int actor)
+    private void RPC_SpawnRagdoll(Vector3 position, Quaternion rotation, Vector3 velocity, Vector3 hitDirection, Vector3 hitOffset, float knockback, NetworkBool headshot, int actor, NetworkBool capDrops)
     {
         GameObject prefab = Resources.Load<GameObject>("Dead Player");
         if (prefab == null) return;
@@ -132,7 +133,7 @@ public partial class Manager
         if (dead != null)
         {
             dead.Dress(PlayerCap.ColorFor(actor), IsTeamMode);
-            dead.Launch(velocity, hitDirection, hitOffset, knockback, headshot, PlayerCap.ColorFor(actor), GetPlayerHat(actor));
+            dead.Launch(velocity, hitDirection, hitOffset, knockback, headshot, PlayerCap.ColorFor(actor), capDrops ? DeadPlayer.NoHat : GetPlayerHat(actor));
             // Your own body: the death camera watches it fly
             if (actor == LocalActor) DeathCam.Follow(dead.FocusPoint);
         }

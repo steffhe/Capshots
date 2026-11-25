@@ -121,6 +121,8 @@ public class Player : NetworkBehaviour
 
     // The player this client controls, or null while dead
     public static Player Local { get; private set; }
+    // The middle of the head, this far above the player's position (the prefab's proportions)
+    public const float HeadHeight = 0.55f;
 
     // Every body in the match (people and bots), alive or not yet despawned
     public static readonly List<Player> All = new List<Player>();
@@ -781,9 +783,12 @@ public class Player : NetworkBehaviour
 
         if (manager != null)
         {
-            manager.SpawnRagdoll(transform.position, transform.rotation, Velocity, hitDirection.normalized, hitOffset, knockback, headshot, ActorId);
-            manager.DropAmmo(GroundPosition());
-            manager.DropCap(GroundPosition(), ActorId);
+            Vector3 ground = GroundPosition();
+            // In Cap Grab the cap leaves the body: knocked flying on a cap shot, gone otherwise
+            bool capDrops = manager.CapDrops(ground);
+            manager.SpawnRagdoll(transform.position, transform.rotation, Velocity, hitDirection.normalized, hitOffset, knockback, headshot, ActorId, capDrops);
+            manager.DropAmmo(ground);
+            if (capDrops) manager.DropCap(ground, ActorId, headshot, transform.position + Vector3.up * HeadHeight, hitDirection);
             manager.PlayerKilled(Owner, attacker, weaponName, headshot);
         }
 

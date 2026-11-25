@@ -2,8 +2,8 @@ using System.Collections.Generic;
 using Fusion;
 using UnityEngine;
 
-// Cap Grab: free for all, but a kill doesn't score on its own. The victim's cap drops where they
-// died (CapPickup) and whoever walks over it first gets it: an enemy's cap scores a point, your
+// Cap Grab: free for all, but a kill doesn't score on its own. The victim's cap comes off (it drops
+// where they died, or on a cap shot flies off their head and lands nearby: CapPickup) and whoever walks over it first gets it: an enemy's cap scores a point, your
 // own cap back denies it to them. Caps vanish after a while. The score is kept in the scoreboard's
 // kills (shown as CAPS), so the win checks, sorting and awards work unchanged.
 //
@@ -23,24 +23,56 @@ public partial class Manager
     private readonly Dictionary<int, float> capExpiry = new Dictionary<int, float>();
     private int capCounter;
 
-    // Host only: a player died here; in Cap Grab their cap drops for everyone
-    public void DropCap(Vector3 position, int ownerActor)
+    // Host only: whether a player dying here drops their cap (Cap Grab, the match not over, and not
+    // fallen off the map, where nobody could reach it)
+    public bool CapDrops(Vector3 position)
     {
-        if (!IsCapGrab || !HasStateAuthority || State == GameState.Ending) return;
-        // Fell off the map: nothing to drop where anyone could reach it
-        if (position.y < killHeight + 2f) return;
+        return IsCapGrab && HasStateAuthority && State != GameState.Ending && position.y >= killHeight + 2f;
+    }
+
+    // Host only: a player died here; in Cap Grab their cap drops for everyone. On an ordinary kill it
+    // just appears on the ground where they fell (the body has none). On a cap shot it's knocked off
+    // their head: it flies up from head (along the shot's direction, a little) and lands as the pickup.
+    public void DropCap(Vector3 position, int ownerActor, bool capshot = false, Vector3 head = default, Vector3 shotDirection = default)
+    {
+        if (!CapDrops(position)) return;
+        if (capshot) position = CapLanding(position, shotDirection);
         int id = ++capCounter;
-        capExpiry[id] = Runner.SimulationTime + CapLifetime;
-        RPC_SpawnCap(id, position, ownerActor, (byte)GetPlayerHat(ownerActor));
+        // A flying cap can't be taken until it lands, and its time on the ground starts then
+        capExpiry[id] = Runner.SimulationTime + CapLifetime + (capshot ? CapPickup.FlightTime : 0f);
+        RPC_SpawnCap(id, position, ownerActor, (byte)GetPlayerHat(ownerActor), capshot, head);
+    }
+
+    // Where a knocked-off cap comes down: a little way on along the shot, if there's open floor there
+    // at about the same height, else where its owner fell
+    private Vector3 CapLanding(Vector3 ground, Vector3 shotDirection)
+    {
+        Vector3 flat = new Vector3(shotDirection.x, 0f, shotDirection.z);
+        if (flat.sqrMagnitude < 0.001f) return ground;
+        flat.Normalize();
+        const float distance = 1.6f;
+        Vector3 from = ground + Vector3.up * 1f;
+        // The world only: not players, their guns or hitboxes (the victim's body is still here)
+        int world = Physics.DefaultRaycastLayers & ~((1 << Layers.LocalPlayer) | (1 << Layers.RemotePlayer) | (1 << Layers.Gun) | (1 << Layers.LocalGun) | (1 << Layers.Hitbox));
+        // Something in the way (a wall, a desk, glass): it drops where they fell
+        if (Physics.SphereCast(from, 0.2f, flat, out _, distance, world, QueryTriggerInteraction.Ignore)) return ground;
+        Vector3 above = from + flat * distance;
+        if (!Physics.Raycast(above, Vector3.down, out RaycastHit hit, 3f, world, QueryTriggerInteraction.Ignore)) return ground;
+        // Off a ledge or up onto something: not somewhere to walk over easily
+        if (Mathf.Abs(hit.point.y + 0.4f - ground.y) > 0.5f) return ground;
+        return hit.point + Vector3.up * 0.4f;
     }
 
     [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
-    private void RPC_SpawnCap(int id, Vector3 position, int ownerActor, byte hat)
+    private void RPC_SpawnCap(int id, Vector3 position, int ownerActor, byte hat, NetworkBool flies, Vector3 from)
     {
         if (caps.ContainsKey(id)) return;
         // Yours (or, in teams, a teammate's): one to get back before the other side does
         bool ours = ownerActor == LocalActor || SameTeam(ownerActor, LocalActor);
-        caps[id] = CapPickup.Create(id, position, ownerActor, hat, PlayerCap.ColorFor(ownerActor), CapLifetime, ours);
+        CapPickup cap = CapPickup.Create(id, position, ownerActor, hat, PlayerCap.ColorFor(ownerActor), CapLifetime, ours, flies ? from : (Vector3?)null);
+        caps[id] = cap;
+        // Your own cap shot off: the death camera watches the cap fly instead of the head
+        if (flies && ownerActor == LocalActor) DeathCam.Follow(cap.Pivot);
     }
 
     // Host only, every tick: the first living player on a cap takes it
@@ -59,6 +91,8 @@ public partial class Manager
                 done.Add(id);
                 continue;
             }
+            // Still flying off a head
+            if (!cap.Landed) continue;
 
             foreach (Player p in Player.All)
             {

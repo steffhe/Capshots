@@ -165,6 +165,56 @@ public class PlayerCap : MonoBehaviour
         // Two blades, each twisted a little like a real propeller
         Primitive("Blade", PrimitiveType.Cube, Shade.Main, new Vector3(0.5f * r, 0f, 0f), new Vector3(0.95f * r, 0.03f * r, 0.24f * r), new Vector3(12f, 0f, 0f), false, rotor.transform);
         Primitive("Blade", PrimitiveType.Cube, Shade.Main, new Vector3(-0.5f * r, 0f, 0f), new Vector3(0.95f * r, 0.03f * r, 0.24f * r), new Vector3(-12f, 0f, 0f), false, rotor.transform);
+
+        // On a ragdoll the propeller gets a collider too, or a head landing upside down would sink
+        // it into the floor. Not on the blades themselves: they spin, and a collider turning inside
+        // a rigidbody every frame makes it jitter. Instead a thin, still disc as wide as the blades
+        // sweep, and the stem under it, so the hat rests on its propeller like a real one would.
+        if (solid)
+        {
+            GameObject disc = new GameObject("Propeller Collider");
+            disc.layer = gameObject.layer;
+            disc.transform.SetParent(transform, false);
+            disc.transform.localPosition = rotor.transform.localPosition;
+            MeshCollider discCollider = disc.AddComponent<MeshCollider>();
+            discCollider.sharedMesh = PropellerDisc();
+            discCollider.convex = true;
+            disc.transform.localScale = new Vector3(1.95f * r, 0.08f * r, 1.95f * r);
+            BoxCollider stem = gameObject.AddComponent<BoxCollider>();
+            stem.center = new Vector3(0f, 1.2f * r, 0f);
+            stem.size = new Vector3(0.12f * r, 0.2f * r, 0.12f * r);
+        }
+    }
+
+    // A flat 12-sided disc 1 across and 1 tall, for the propeller's collider
+    private static Mesh propellerDisc;
+    private static Mesh PropellerDisc()
+    {
+        if (propellerDisc != null) return propellerDisc;
+        const int sides = 12;
+        Vector3[] vertices = new Vector3[sides * 2];
+        int[] triangles = new int[(sides - 2) * 6 + sides * 6];
+        int t = 0;
+        for (int i = 0; i < sides; i++)
+        {
+            float a = i * Mathf.PI * 2f / sides;
+            Vector3 rim = new Vector3(Mathf.Cos(a) * 0.5f, 0f, Mathf.Sin(a) * 0.5f);
+            vertices[i] = rim + Vector3.up * 0.5f;
+            vertices[i + sides] = rim - Vector3.up * 0.5f;
+        }
+        for (int i = 1; i < sides - 1; i++)
+        {
+            triangles[t++] = 0; triangles[t++] = i + 1; triangles[t++] = i;
+            triangles[t++] = sides; triangles[t++] = sides + i; triangles[t++] = sides + i + 1;
+        }
+        for (int i = 0; i < sides; i++)
+        {
+            int j = (i + 1) % sides;
+            triangles[t++] = i; triangles[t++] = j; triangles[t++] = i + sides;
+            triangles[t++] = j; triangles[t++] = j + sides; triangles[t++] = i + sides;
+        }
+        propellerDisc = new Mesh { name = "Propeller Disc Collider", vertices = vertices, triangles = triangles };
+        return propellerDisc;
     }
 
     // A top hat, sitting up on the head: a tall crown with a band, on a flat brim
