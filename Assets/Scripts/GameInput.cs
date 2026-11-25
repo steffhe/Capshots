@@ -131,10 +131,18 @@ public static class GameInput
             // In a browser, Escape always releases the mouse, and the game pauses when that happens
             // (see Player.PauseWhenBrowserReleasesMouse). Here Escape only resumes, so the two can't fight.
             // With touch controls nothing locks the mouse, so there Escape on a keyboard pauses too.
-            if (!Pause.paused && !TouchControls.UsingTouch) return false;
+            // A controller's Start button isn't Escape, so it pauses as anywhere else.
+            if (!Pause.paused && !TouchControls.UsingTouch && !FromGamepad(PauseMenu)) return false;
 #endif
             return !IsRebinding && !ChatUI.IsTyping && ChatUI.ClosedFrame != Time.frameCount && PauseMenu.WasPressedThisFrame();
         }
+    }
+
+    // The action's last press came from a controller rather than the keyboard
+    private static bool FromGamepad(InputAction action)
+    {
+        InputControl control = action.activeControl;
+        return control != null && control.device is Gamepad;
     }
 
     // +1 next weapon, -1 previous, 0 none

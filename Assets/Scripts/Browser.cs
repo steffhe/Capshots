@@ -14,6 +14,12 @@ public static class Browser
     [DllImport("__Internal")] private static extern int GetBrowserPointerType();
     [DllImport("__Internal")] private static extern void ClearBrowserUrlQuery();
     [DllImport("__Internal")] private static extern void CopyBrowserText(string text);
+    [DllImport("__Internal")] private static extern int ReadBrowserGamepad(float[] values);
+    [DllImport("__Internal")] private static extern string GetBrowserGamepadName();
+
+    // The first connected controller, from the browser's Gamepad API (see BrowserGamepad)
+    public static int ReadGamepad(float[] values) => ReadBrowserGamepad(values);
+    public static string GamepadName => GetBrowserGamepadName();
 
     public static void ClearUrlQuery() => ClearBrowserUrlQuery();
     public static void CopyText(string text) => CopyBrowserText(text);
@@ -47,7 +53,12 @@ public static class Browser
     public static int LastPointerType => PointerNone;
     public static void ClearUrlQuery() { }
     public static void CopyText(string text) => GUIUtility.systemCopyBuffer = text;
+    public static int ReadGamepad(float[] values) => GamepadNone;
+    public static string GamepadName => "";
 #endif
+
+    // What ReadGamepad found: no controller, one with the browser's "standard" layout, or another
+    public const int GamepadNone = 0, GamepadStandard = 1, GamepadOther = 2;
 
     // Where the browser version is published, for invite links from the Windows version
     public const string PublishedUrl = "https://steffhe.github.io/Capshots/";
