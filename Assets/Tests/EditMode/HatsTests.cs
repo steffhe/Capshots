@@ -43,6 +43,8 @@ public class HatsTests
         CollectionAssert.AreEqual(new[] { Hats.Beanie, Hats.ChefsHat, Hats.BucketHat, Hats.Antenna, Hats.GraduationCap, Hats.HardHat }, Hats.UnlockedBetween(3, 9));
         CollectionAssert.IsEmpty(Hats.UnlockedBetween(20, 21));
         CollectionAssert.IsEmpty(Hats.UnlockedBetween(5, 5));
+        Assert.IsTrue(Hats.AnyUnlockedBetween(3, 9));
+        Assert.IsFalse(Hats.AnyUnlockedBetween(20, 21));
     }
 
     [Test]

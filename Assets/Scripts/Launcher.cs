@@ -74,6 +74,7 @@ public partial class Launcher : MonoBehaviour
 
     public void Awake()
     {
+        Instance = this;
         Maps = maps;
         Manager.NextMapName = null;
         myProfile = Data.LoadProfile();
@@ -93,6 +94,7 @@ public partial class Launcher : MonoBehaviour
         DroneBody.DressSceneModels(PlayerCap.LogoColor);
         ShowWordmark();
         ApplyStyle();
+        BuildHome();
         // The settings panel, built from the styled menu's own button, slider and label
         if (settingsButton != null)
         {
@@ -137,6 +139,8 @@ public partial class Launcher : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (Instance == this) Instance = null;
+        if (MenuNavigation.Home == quickPlayButton) MenuNavigation.Home = null;
         GameSettings.HatChanged -= DressMenuModel;
     }
 
@@ -528,6 +532,7 @@ public partial class Launcher : MonoBehaviour
     {
         TabCloseAll();
         tabMain.SetActive(true);
+        MenuNavigation.Focus(quickPlayButton);
     }
     public void TabOpenRooms()
     {

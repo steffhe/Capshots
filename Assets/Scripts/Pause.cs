@@ -41,6 +41,14 @@ public class Pause : MonoBehaviour
     {
         if (paused) RefreshLobbyButtons();
 
+        // A controller's B resumes, unless it's closing an option list or the Settings or Customize
+        // panel (which take it themselves, whichever runs first this frame)
+        if (paused && toggledFrame != Time.frameCount && !OptionPicker.Showing && !PanelOpen() && MenuNavigation.TakeBack())
+        {
+            TogglePause();
+            return;
+        }
+
         bool pointerLocked = Browser.IsPointerLocked;
         bool lockLost = wasPointerLocked && !pointerLocked;
         wasPointerLocked = pointerLocked;
@@ -63,6 +71,15 @@ public class Pause : MonoBehaviour
         // Not on the end screens, which free the mouse themselves.
         if (!ended && lockLost && !paused && !TouchControls.UsingTouch) TogglePause();
 #endif
+    }
+
+    private bool PanelOpen()
+    {
+        foreach (MenuPanel panel in GetComponents<MenuPanel>())
+        {
+            if (panel.IsOpen) return true;
+        }
+        return false;
     }
 
     private bool MatchEnded => manager != null && (manager.Ending || manager.MatchOver);

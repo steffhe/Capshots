@@ -35,6 +35,13 @@ public class CustomizeMenu : MenuPanel
     // clicked, which stays shown when the pointer moves off it
     private int previewing = -1;
     private int pinned = -1;
+    // The level hats were last looked at, before this opening: hats unlocked since are marked NEW
+    private int seenLevel;
+    // What was selected when the panel opened (its button), to go back to with a controller
+    private Selectable returnTo;
+
+    // Whether the panel is showing (the pause menu's B button leaves it to close itself)
+    public override bool IsOpen => panel != null && panel.activeSelf;
 
     // Panel layout, in canvas units from the panel's centre
     private const float PanelWidth = 640f;
@@ -86,9 +93,19 @@ public class CustomizeMenu : MenuPanel
             if (buttonTemplate == null || labelTemplate == null || anchor == null) return;
             BuildPanel();
         }
+        returnTo = MenuNavigation.Current;
         if (mainButtons != null) mainButtons.SetActive(false);
         panel.SetActive(true);
+        // Looking at the hats: the ones unlocked since last time are marked NEW this time, and the
+        // Customize button's NEW badge goes
+        seenLevel = GameSettings.HatsSeenLevel;
+        GameSettings.HatsSeenLevel = Mathf.Max(seenLevel, Launcher.myProfile.level);
         Refresh();
+        // With a controller: start on the hat worn
+        foreach (HatRow row in hatRows)
+        {
+            if (row.hat == GameSettings.Hat) MenuNavigation.Focus(row.button);
+        }
     }
 
     private void Close()
@@ -97,6 +114,7 @@ public class CustomizeMenu : MenuPanel
         Preview(-1);
         if (panel != null) panel.SetActive(false);
         if (mainButtons != null) mainButtons.SetActive(true);
+        MenuNavigation.Focus(returnTo);
     }
 
     private void Update()
@@ -104,6 +122,10 @@ public class CustomizeMenu : MenuPanel
         if (panel == null || !panel.activeSelf) return;
         // Unpausing hides the whole pause menu: go back to the main pause buttons for next time
         if (!anchor.gameObject.activeInHierarchy) { Close(); return; }
+        // The controller's B closes the panel, in the main menu and the pause menu
+        if (!OptionPicker.Showing && MenuNavigation.TakeBack()) { Close(); return; }
+        // With a controller, a locked hat is previewed while it's selected (as pointing at it does)
+        if (inMainMenu && MenuNavigation.UsingGamepad) PreviewSelected();
         // In the main menu, Esc closes the panel (in a match it unpauses, closing it as above)
         if (inMainMenu && !OptionPicker.Showing)
         {
@@ -191,6 +213,17 @@ public class CustomizeMenu : MenuPanel
         hatRows.Add(row);
     }
 
+    private void PreviewSelected()
+    {
+        GameObject selected = UnityEngine.EventSystems.EventSystem.current != null ? UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject : null;
+        foreach (HatRow row in hatRows)
+        {
+            if (row.button.gameObject != selected) continue;
+            Preview(IsUnlocked(row.hat) ? pinned : row.hat);
+            return;
+        }
+    }
+
     private static bool IsUnlocked(int hat) => Hats.IsUnlocked(hat, Launcher.myProfile.level);
 
     // An unlocked hat is put on; a locked one is previewed (in the main menu), and stays previewed
@@ -257,8 +290,9 @@ public class CustomizeMenu : MenuPanel
             row.button.interactable = unlocked || inMainMenu;
             UITheme.StyleButtonBackground(row.button, wearing ? UITheme.ButtonStyle.Primary : UITheme.ButtonStyle.Secondary, 6f);
             row.name.color = unlocked ? UITheme.TextColor : UITheme.MutedText;
-            row.status.text = wearing ? "WEARING" : unlocked ? "" : row.hat == previewing ? "PREVIEW" : "LEVEL " + Hats.UnlockLevel(row.hat);
-            row.status.color = wearing ? UITheme.TextColor : UITheme.MutedText;
+            bool isNew = unlocked && Hats.UnlockLevel(row.hat) > seenLevel;
+            row.status.text = wearing ? "WEARING" : isNew ? "NEW!" : unlocked ? "" : row.hat == previewing ? "PREVIEW" : "LEVEL " + Hats.UnlockLevel(row.hat);
+            row.status.color = wearing ? UITheme.TextColor : isNew ? UITheme.AccentText : UITheme.MutedText;
         }
 
         int next = Hats.NextUnlock(level);

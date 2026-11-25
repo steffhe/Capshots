@@ -59,6 +59,16 @@ public static class Hats
         return unlocked;
     }
 
+    // Whether going from one level to another unlocks any hat (UnlockedBetween, without the list)
+    public static bool AnyUnlockedBetween(int oldLevel, int newLevel)
+    {
+        for (int i = 0; i < unlockLevels.Length; i++)
+        {
+            if (unlockLevels[i] > oldLevel && unlockLevels[i] <= newLevel) return true;
+        }
+        return false;
+    }
+
     // The next hat still to unlock at this level, or -1 if they're all unlocked
     public static int NextUnlock(int level)
     {

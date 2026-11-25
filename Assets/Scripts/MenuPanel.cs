@@ -7,6 +7,9 @@ using UnityEngine.UI;
 // editing, and styled with UITheme.
 public abstract class MenuPanel : MonoBehaviour
 {
+    // Whether the panel is showing
+    public abstract bool IsOpen { get; }
+
     protected GameObject buttonTemplate;
     protected Slider sliderTemplate;
     protected Text labelTemplate;

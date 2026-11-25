@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 
-// Main menu look: a dark sidebar behind the menu column, a profile card with level and XP,
+// Main menu look: a dark sidebar behind the menu column, a profile card with level and XP (Launcher.Home.cs),
 // a styled room list and option rows in the create tab. Applied at runtime on top of the menu
 // scene's original layout, so the scene needn't change.
 public partial class Launcher
@@ -112,48 +112,6 @@ public partial class Launcher
     }
 
     #region Main tab
-
-    // Name field, level and an XP bar, under the logo
-    private void BuildProfileCard()
-    {
-        Transform profile = tabMain.transform.Find("Profile");
-        if (profile == null || usernameField == null) return;
-
-        RectTransform card = ColumnBlock(tabMain, "Profile Card", 1, 104f);
-
-        Text caption = Caption(profile.Find("ProfileText"), "PLAYER NAME");
-        if (caption != null)
-        {
-            caption.transform.SetParent(card, false);
-            UITheme.Row(caption.rectTransform, 0f, 18f);
-        }
-
-        usernameField.transform.SetParent(card, false);
-        UITheme.Row((RectTransform)usernameField.transform, 22f, 44f);
-        UITheme.StyleInput(usernameField, "ENTER YOUR NAME");
-
-        levelText = profile.Find("Level")?.GetComponent<Text>();
-        if (levelText != null)
-        {
-            levelText.transform.SetParent(card, false);
-            UITheme.StyleText(levelText, 16, UITheme.TextColor, TextAnchor.MiddleLeft);
-            UITheme.Row(levelText.rectTransform, 74f, 20f, 0f, 0.5f);
-        }
-
-        xpText = profile.Find("XP")?.GetComponent<Text>();
-        if (xpText != null)
-        {
-            xpText.transform.SetParent(card, false);
-            UITheme.StyleText(xpText, 14, UITheme.MutedText, TextAnchor.MiddleRight);
-            UITheme.Row(xpText.rectTransform, 74f, 20f, 0.5f, 1f);
-        }
-
-        Image track = UITheme.NewImage("XP Bar", card, UITheme.Track, 3f);
-        UITheme.Row(track.rectTransform, 98f, 6f);
-        Image fill = UITheme.NewImage("Fill", track.transform, UITheme.AccentText, 3f);
-        xpFill = fill.rectTransform;
-        UITheme.Stretch(xpFill);
-    }
 
     private void RefreshProfileCard()
     {
