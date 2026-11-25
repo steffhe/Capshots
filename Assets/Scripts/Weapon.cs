@@ -1047,6 +1047,8 @@ public class Weapon : NetworkBehaviour
         if (hitWorld && !BoundaryField.Ripple(endPoint))
         {
             ShotEffects.Mark(bulletholePrefab, endPoint, hitNormal);
+            // Fewer for each shotgun pellet, so a blast isn't a fountain
+            ShotEffects.Sparks(endPoint, hitNormal, ShotColor(), gun.pellets > 1 ? 2 : 5);
         }
 
         if (!first) return;

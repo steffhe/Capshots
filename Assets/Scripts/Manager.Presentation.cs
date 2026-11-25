@@ -112,7 +112,8 @@ public partial class Manager
     // Host: removes everyone's body once they've all cut away to the results
     private void DespawnPlayers()
     {
-        foreach (Player p in FindObjectsByType<Player>())
+        // A copy, since despawning takes a player out of Player.All
+        foreach (Player p in Player.All.ToArray())
         {
             if (p.Object != null && p.Object.IsValid) Runner.Despawn(p.Object);
         }

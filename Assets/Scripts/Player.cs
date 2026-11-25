@@ -1103,7 +1103,7 @@ public class Player : NetworkBehaviour
     public static Player FindPlayer(PlayerRef player)
     {
         if (player == PlayerRef.None) return null;
-        foreach (Player p in FindObjectsByType<Player>(FindObjectsSortMode.None))
+        foreach (Player p in All)
         {
             if (p.Object != null && p.Object.IsValid && p.Owner == player) return p;
         }

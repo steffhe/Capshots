@@ -132,7 +132,7 @@ public class PlayerCap : MonoBehaviour
             case Hats.Halo: BuildHalo(r); break;
             case Hats.Headset: BuildHeadset(r); break;
             case Hats.TrafficCone: BuildTrafficCone(r); break;
-            case Hats.ChefsHat: BuildChefsHat(r); break;
+            case Hats.Toadstool: BuildToadstool(r); break;
             case Hats.Antenna: BuildAntenna(r); break;
             case Hats.Plunger: BuildPlunger(r); break;
             case Hats.CowboyHat: BuildCowboyHat(r); break;
@@ -568,44 +568,54 @@ public class PlayerCap : MonoBehaviour
         Stripe("Stripe", Shade.Light, at.y + 0.04f * r, radius * r, top, height * r, 1.12f * r, 1.34f * r, 1f, cone);
     }
 
-    // A chef's hat: a band round the head, a tall pleated column above it that widens a little going
-    // up, and a soft puffy top billowing out just past the column. The column and top sway and
-    // jiggle a little as the player moves.
-    private void BuildChefsHat(float r)
+    // A toadstool: a wide, squat mushroom cap sitting on the head like the drone is its stalk, with a
+    // rolled rim, pale spots scattered over the top and fine gills fanning out underneath (seen when
+    // it's knocked off and lands upside down). It wobbles a little as the player moves.
+    private void BuildToadstool(float r)
     {
-        const float bandY = 0.22f, bandHeight = 0.24f, radius = 1.0f;
-        const float columnHeight = 1.15f, flare = 1.06f;
-        surface = Surface.Twill;
-        Line(Generated("Band", Frustum(1.02f, false), Shade.Main, new Vector3(0f, bandY * r, 0f), new Vector3(radius * r, bandHeight * r, radius * r), Vector3.zero, true), Frustum(1.02f, false, true));
-        Generated("Band Edge", Torus(0.04f), Shade.Main, new Vector3(0f, (bandY + bandHeight) * r, 0f), Vector3.one * (radius * 1.025f * r), Vector3.zero, false);
+        // The cap's dome: its base this high up the head, this wide and this tall (of the head's radius)
+        const float baseY = 0.55f, width = 1.55f, height = 1.1f;
+        surface = Surface.Felt;
 
         // A ragdoll's hat stays still: its colliders can't move inside the falling hat
-        float columnY = (bandY + bandHeight) * r;
-        Transform top = transform;
-        Vector3 at = new Vector3(0f, columnY, 0f);
+        Transform cap = transform;
+        Vector3 at = new Vector3(0f, baseY * r, 0f);
         if (!solid)
         {
-            top = Pivot("Column", at);
-            HatDangle.Add(top.gameObject, Vector3.up, columnHeight * r, 1400f, 0.01f, 9f);
+            cap = Pivot("Cap", at);
+            HatDangle.Add(cap.gameObject, Vector3.up, height * r, 1800f, 0.01f, 7f);
             at = Vector3.zero;
         }
-        float columnRadius = radius * 1.005f;
-        Line(Generated("Column", Frustum(flare, false), Shade.Light, at - new Vector3(0f, 0.01f * r, 0f), new Vector3(columnRadius * r, columnHeight * r, columnRadius * r), Vector3.zero, true, top), Frustum(flare, false, true));
-        // The pleats: soft folds all the way up the column
-        Ribs("Pleat", Shade.Light, at.y - 0.01f * r, columnRadius * 0.99f * r, flare, columnHeight * r, 16, 0.1f * r, top, true);
 
-        // The puffy top: a wide soft dome, with billows round its edge and one in the middle
-        float topY = at.y + columnHeight * r;
-        float topRadius = columnRadius * flare;
-        Primitive("Puff", PrimitiveType.Sphere, Shade.Light, new Vector3(0f, topY + 0.3f * r, 0f), new Vector3(2.2f * topRadius * r, 1.25f * r, 2.2f * topRadius * r), Vector3.zero, true, top);
-        const int billows = 7;
-        for (int i = 0; i < billows; i++)
+        Generated("Cap", Dome(), Shade.Main, at, new Vector3(width * r, height * r, width * r), Vector3.zero, true, cap);
+        // The rim rolls under a little
+        Generated("Rim", Torus(0.05f), Shade.Main, at, Vector3.one * (width * 0.985f * r), Vector3.zero, false, cap);
+        // Underneath: a pale disc closing the cap, tucked up inside the rim so it doesn't show from the
+        // side, with gills fanning out from the middle below it
+        Primitive("Underside", PrimitiveType.Cylinder, Shade.Light, at + new Vector3(0f, 0.03f * r, 0f), new Vector3(2f * width * 0.97f * r, 0.01f * r, 2f * width * 0.97f * r), Vector3.zero, false, cap);
+        const int gills = 28;
+        for (int i = 0; i < gills; i++)
         {
-            float a = (i + 0.5f) * Mathf.PI * 2f / billows;
-            Vector3 way = new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a));
-            Primitive("Billow", PrimitiveType.Sphere, Shade.Light, way * (0.55f * topRadius * r) + Vector3.up * (topY + 0.55f * r), new Vector3(0.9f * r, 0.85f * r, 0.9f * r), Vector3.zero, false, top);
+            Quaternion around = Quaternion.Euler(0f, 360f * i / gills, 0f);
+            Primitive("Gill", PrimitiveType.Cube, Shade.Dark, at + around * Vector3.forward * (1.15f * r) - new Vector3(0f, 0.03f * r, 0f), new Vector3(0.025f * r, 0.04f * r, 0.7f * r), around.eulerAngles, false, cap);
         }
-        Primitive("Billow", PrimitiveType.Sphere, Shade.Light, new Vector3(0f, topY + 0.8f * r, 0f), new Vector3(1.0f * r, 0.7f * r, 1.0f * r), Vector3.zero, false, top);
+
+        // The spots: (degrees round from the front, degrees down from the top, size), scattered rather
+        // than in neat rings
+        Vector3[] spots =
+        {
+            new Vector3(0f, 0f, 0.6f), new Vector3(35f, 40f, 0.48f), new Vector3(150f, 45f, 0.52f),
+            new Vector3(262f, 36f, 0.45f), new Vector3(95f, 64f, 0.38f), new Vector3(205f, 68f, 0.4f),
+            new Vector3(318f, 62f, 0.38f), new Vector3(10f, 76f, 0.28f), new Vector3(122f, 80f, 0.26f),
+        };
+        foreach (Vector3 spot in spots)
+        {
+            float around = spot.x * Mathf.Deg2Rad, down = spot.y * Mathf.Deg2Rad;
+            // A point on the squashed dome, and the way out of its surface there
+            Vector3 onDome = new Vector3(Mathf.Sin(down) * Mathf.Sin(around) * width, Mathf.Cos(down) * height, Mathf.Sin(down) * Mathf.Cos(around) * width);
+            Vector3 normal = new Vector3(onDome.x / (width * width), onDome.y / (height * height), onDome.z / (width * width)).normalized;
+            Primitive("Spot", PrimitiveType.Sphere, Shade.Light, at + onDome * r, new Vector3(spot.z * r, 0.09f * r, spot.z * r), Quaternion.FromToRotation(Vector3.up, normal).eulerAngles, false, cap);
+        }
     }
 
     // Rabbit-ear antennas: a round metal base on top of the head with a blinking light, and two

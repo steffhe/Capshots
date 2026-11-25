@@ -8,7 +8,7 @@ using System.Collections.Generic;
 public static class Hats
 {
     public const int Cap = 0, Headset = 1, BackwardsCap = 2, TrafficCone = 3, Beanie = 4,
-        ChefsHat = 5, BucketHat = 6, Antenna = 7, GraduationCap = 8, HardHat = 9, Plunger = 10,
+        Toadstool = 5, BucketHat = 6, Antenna = 7, GraduationCap = 8, HardHat = 9, Plunger = 10,
         MilitaryBeret = 11, PropellerBeanie = 12, BirthdayCake = 13, CowboyHat = 14, Siren = 15, TopHat = 16,
         RadarDish = 17, Sombrero = 18, JesterHat = 19, VikingHelmet = 20, PirateHat = 21,
         PlasmaGlobe = 22, Fishbowl = 23, Crown = 24, Ufo = 25, WizardHat = 26, DevilHorns = 27, Atom = 28, Halo = 29;
@@ -16,7 +16,7 @@ public static class Hats
     private static readonly string[] names =
     {
         "CAP", "GAMER HEADSET", "BACKWARDS CAP", "TRAFFIC CONE", "BEANIE",
-        "CHEF'S HAT", "BUCKET HAT", "ANTENNA", "GRADUATION CAP", "HARD HAT", "PLUNGER",
+        "TOADSTOOL", "BUCKET HAT", "ANTENNA", "GRADUATION CAP", "HARD HAT", "PLUNGER",
         "MILITARY BERET", "PROPELLER BEANIE", "BIRTHDAY CAKE", "COWBOY HAT", "SIREN", "TOP HAT",
         "RADAR DISH", "SOMBRERO", "JESTER HAT", "VIKING HELMET", "PIRATE HAT",
         "PLASMA GLOBE", "FISHBOWL", "CROWN", "UFO", "WIZARD HAT", "DEVIL HORNS", "ATOM", "HALO",
