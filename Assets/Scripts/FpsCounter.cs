@@ -1,0 +1,89 @@
+using UnityEngine;
+using UnityEngine.UI;
+
+// A small frame rate readout in the top right corner, turned on in Settings (GameSettings.ShowFps).
+// Shows the frames per second and the average and slowest frame time over the last half second,
+// so you can tell a steady low frame rate from one that stutters. Lives for the whole session,
+// over every scene and menu.
+public class FpsCounter : MonoBehaviour
+{
+    private const float Interval = 0.5f;
+
+    private static FpsCounter instance;
+    private Canvas canvas;
+    private Text text;
+    private int frames;
+    private float elapsed, slowest;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    private static void Create()
+    {
+        if (instance != null) return;
+        var go = new GameObject("FPS Counter");
+        DontDestroyOnLoad(go);
+        instance = go.AddComponent<FpsCounter>();
+    }
+
+    private void Awake()
+    {
+        canvas = gameObject.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 1001; // Above everything, the loading screen included
+        CanvasScaler scaler = gameObject.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920f, 1080f);
+        scaler.matchWidthOrHeight = 0.5f;
+
+        var label = new GameObject("Text", typeof(RectTransform), typeof(Text), typeof(Shadow));
+        label.transform.SetParent(transform, false);
+        text = label.GetComponent<Text>();
+        text.font = UITheme.Font != null ? UITheme.Font : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        text.fontSize = 16;
+        text.color = Color.white;
+        text.alignment = TextAnchor.UpperRight;
+        text.raycastTarget = false;
+        text.horizontalOverflow = HorizontalWrapMode.Overflow;
+        text.verticalOverflow = VerticalWrapMode.Overflow;
+        label.GetComponent<Shadow>().effectColor = new Color(0f, 0f, 0f, 0.8f);
+        RectTransform rect = text.rectTransform;
+        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(1f, 1f);
+        rect.anchoredPosition = new Vector2(-8f, -2f);
+        rect.sizeDelta = new Vector2(400f, 20f);
+
+        canvas.enabled = GameSettings.ShowFps;
+        GameSettings.ShowFpsChanged += Refresh;
+    }
+
+    private void OnDestroy()
+    {
+        GameSettings.ShowFpsChanged -= Refresh;
+    }
+
+    private void Refresh()
+    {
+        canvas.enabled = GameSettings.ShowFps;
+        frames = 0;
+        elapsed = slowest = 0f;
+    }
+
+    private void Update()
+    {
+        if (!canvas.enabled) return;
+
+        // The font comes from the first menu that loads, after this was made
+        if (UITheme.Font != null && text.font != UITheme.Font) text.font = UITheme.Font;
+
+        float dt = Time.unscaledDeltaTime;
+        frames++;
+        elapsed += dt;
+        if (dt > slowest) slowest = dt;
+        if (elapsed < Interval) return;
+
+        float fps = frames / elapsed;
+        float average = elapsed / frames * 1000f;
+        Color colour = fps >= 55f ? new Color(0.5f, 1f, 0.5f) : fps >= 30f ? new Color(1f, 0.85f, 0.3f) : new Color(1f, 0.4f, 0.4f);
+        text.text = $"<color=#{ColorUtility.ToHtmlStringRGB(colour)}>{Mathf.RoundToInt(fps)} FPS</color>   {average:0.0} ms   <color=#FFFFFF99>MAX {slowest * 1000f:0} ms</color>";
+        frames = 0;
+        elapsed = slowest = 0f;
+    }
+}

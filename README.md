@@ -40,7 +40,7 @@ To play together, each player runs the game, picks a username and either creates
 - Players drop an ammo box when they die; walk over it to refill your gun's energy and get a used grenade back
 - Scoreboard with kills, deaths and ping, your own row highlighted. It works while you wait to respawn too. In free for all modes with a limit, the line under the timer shows the race: your score against the leader's (or, while you lead, the next player's)
 - Text chat
-- Settings menu, in the main menu and the pause menu: field of view, aim sensitivity, volume, graphics quality, colours and key rebinding. **Colours → Colour blind** swaps red-green for colours people with colour blindness can tell apart: blue against orange teams, and player colours from the Okabe-Ito palette
+- Settings menu, in the main menu and the pause menu: field of view, aim sensitivity, volume, graphics quality, colours, an FPS counter and key rebinding. **FPS counter** shows the frame rate in the top right corner, with the average and slowest frame time over the last half second, colour-coded green (55 FPS or more), yellow (30 or more) or red. **Colours → Colour blind** swaps red-green for colours people with colour blindness can tell apart: blue against orange teams, and player colours from the Okabe-Ito palette
 - Customize menu, below Settings: your cap and starting gun
 - Gamepad support (Unity Input System), with light aim assist for gamepad and touch players: turning slows a little while the crosshair is over an enemy you can see (never a pull, and never for a mouse)
 - The first time you play, a card lists the controls (as you've bound them, or the gamepad's) for a few seconds

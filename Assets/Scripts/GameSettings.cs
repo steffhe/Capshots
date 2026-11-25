@@ -115,6 +115,22 @@ public static class GameSettings
     // A match recolours everyone at once (Manager)
     public static event System.Action ColoursChanged;
 
+    // A frame rate readout in the top right corner (FpsCounter)
+    private const string ShowFpsKey = "settings.showFps";
+    public static bool ShowFps
+    {
+        get => PlayerPrefs.GetInt(ShowFpsKey, 0) == 1;
+        set
+        {
+            if (value == ShowFps) return;
+            PlayerPrefs.SetInt(ShowFpsKey, value ? 1 : 0);
+            PlayerPrefs.Save();
+            ShowFpsChanged?.Invoke();
+        }
+    }
+
+    public static event System.Action ShowFpsChanged;
+
     public static string QualityName => QualitySettings.names.Length > 0 ? QualitySettings.names[Quality].ToUpper() : "-";
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
