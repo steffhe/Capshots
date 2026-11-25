@@ -119,11 +119,16 @@
       canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
 
       var buildUrl = "Build";
+      // The build's files keep the same names from release to release, and GitHub Pages lets
+      // browsers keep them for 10 minutes. A browser that kept some files from the last release
+      // and fetched the rest new mixed two builds, which crashes on start ("memory access out of
+      // bounds"). The version on the end of each address makes every release's files new ones.
+      var version = "?v=" + encodeURIComponent({{{ JSON.stringify(PRODUCT_VERSION) }}});
       var config = {
         arguments: [],
-        dataUrl: buildUrl + "/{{{ DATA_FILENAME }}}",
-        frameworkUrl: buildUrl + "/{{{ FRAMEWORK_FILENAME }}}",
-        codeUrl: buildUrl + "/{{{ CODE_FILENAME }}}",
+        dataUrl: buildUrl + "/{{{ DATA_FILENAME }}}" + version,
+        frameworkUrl: buildUrl + "/{{{ FRAMEWORK_FILENAME }}}" + version,
+        codeUrl: buildUrl + "/{{{ CODE_FILENAME }}}" + version,
 #if USE_THREADS
         workerUrl: buildUrl + "/{{{ WORKER_FILENAME }}}",
 #endif
@@ -144,7 +149,7 @@
       };
 
       var script = document.createElement("script");
-      script.src = buildUrl + "/{{{ LOADER_FILENAME }}}";
+      script.src = buildUrl + "/{{{ LOADER_FILENAME }}}" + version;
       script.onload = function () {
         createUnityInstance(canvas, config, function (progress) {
           document.getElementById("loading-fill").style.width = (100 * progress) + "%";
