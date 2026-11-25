@@ -434,40 +434,91 @@ public class PlayerCap : MonoBehaviour
         Stripe("Band", Shade.Light, sit * r, crownRadius * r, crownTop, crownHeight * r, 0.05f * r, 0.22f * r);
     }
 
-    // A pirate's bicorne: a tall, flat half-round hat worn sideways over a skullcap, with a skull and
-    // crossbones on the front
+    // A pirate's tricorne: a low crown inside three upturned flaps that make a triangle round it,
+    // each with a light trim along its top, and a big skull and crossbones on the front flap
     private void BuildPirateHat(float r)
     {
+        const float sit = 0.72f;   // where the flaps start, up the head
+        const float inset = 0.72f; // from the middle out to each flap
+        const float lean = 14f;    // how far the flaps lean out
+        float length = 2f * inset * Mathf.Tan(60f * Mathf.Deg2Rad) + 0.1f; // long enough to meet at the corners
+
         surface = Surface.Felt;
-        Crown(Vector3.one * (1.07f * r));
-        Generated("Bicorne", Dome(), Shade.Main, new Vector3(0f, 0.42f * r, 0f), new Vector3(1.4f * r, 0.95f * r, 0.55f * r), Vector3.zero, true);
-        // Its front face is about 0.46 of the head's radius forward, at the skull's height
-        surface = Surface.Plastic;
-        Primitive("Skull", PrimitiveType.Sphere, Shade.Light, new Vector3(0f, 1.0f * r, 0.47f * r), new Vector3(0.22f * r, 0.22f * r, 0.08f * r), Vector3.zero, false);
-        for (int side = -1; side <= 1; side += 2)
+        Generated("Crown", Frustum(0.78f, true), Shade.Dark, new Vector3(0f, (sit - 0.06f) * r, 0f), new Vector3(0.74f * r, 0.62f * r, 0.74f * r), Vector3.zero, true);
+        for (int i = 0; i < 3; i++)
         {
-            Primitive("Bone", PrimitiveType.Cube, Shade.Light, new Vector3(0f, 0.84f * r, 0.46f * r), new Vector3(0.42f * r, 0.06f * r, 0.04f * r), new Vector3(0f, 0f, 35f * side), false);
+            // The first flap faces forwards, the others back to the sides; the front one is taller
+            float height = i == 0 ? 0.78f : 0.58f;
+            Quaternion turn = Quaternion.Euler(0f, i * 120f, 0f) * Quaternion.Euler(lean, 0f, 0f);
+            Vector3 foot = Quaternion.Euler(0f, i * 120f, 0f) * Vector3.forward * (inset * r) + Vector3.up * (sit * r);
+            Vector3 middle = foot + turn * Vector3.up * (0.5f * height * r);
+            surface = Surface.Felt;
+            Primitive("Flap", PrimitiveType.Cube, Shade.Main, middle, new Vector3(length * r, height * r, 0.06f * r), turn.eulerAngles, true);
+            surface = Surface.Satin;
+            Primitive("Trim", PrimitiveType.Cube, Shade.Light, foot + turn * Vector3.up * (height * r), new Vector3(length * r, 0.06f * r, 0.09f * r), turn.eulerAngles, false);
+
+            if (i != 0) continue;
+            // The skull and crossbones, on the front of the front flap
+            surface = Surface.Plastic;
+            Vector3 face = middle + turn * new Vector3(0f, 0.05f * r, 0.05f * r);
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Primitive("Bone", PrimitiveType.Cube, Shade.Light, face + turn * new Vector3(0f, -0.04f * r, -0.01f * r), new Vector3(0.62f * r, 0.08f * r, 0.03f * r), (turn * Quaternion.Euler(0f, 0f, 32f * side)).eulerAngles, false);
+                Primitive("Bone End", PrimitiveType.Sphere, Shade.Light, face + turn * new Vector3(0.27f * r * side, -0.04f * r + 0.17f * r, 0f), Vector3.one * (0.09f * r), Vector3.zero, false);
+                Primitive("Bone End", PrimitiveType.Sphere, Shade.Light, face + turn * new Vector3(0.27f * r * side, -0.04f * r - 0.17f * r, 0f), Vector3.one * (0.09f * r), Vector3.zero, false);
+            }
+            Primitive("Skull", PrimitiveType.Sphere, Shade.Light, face + turn * new Vector3(0f, 0.05f * r, 0.02f * r), new Vector3(0.3f * r, 0.28f * r, 0.1f * r), turn.eulerAngles, false);
+            Primitive("Jaw", PrimitiveType.Cube, Shade.Light, face + turn * new Vector3(0f, -0.1f * r, 0.02f * r), new Vector3(0.16f * r, 0.09f * r, 0.07f * r), turn.eulerAngles, false);
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Primitive("Eye", PrimitiveType.Sphere, Shade.Dark, face + turn * new Vector3(0.065f * r * side, 0.06f * r, 0.065f * r), new Vector3(0.08f * r, 0.08f * r, 0.03f * r), turn.eulerAngles, false);
+            }
         }
     }
 
-    // An astronaut's fishbowl: a clear glass sphere round the whole head, a metal collar round its
-    // bottom, and a little fish swimming round in the space over the head
+    // An astronaut's fishbowl: a big clear glass bowl round the whole head, a metal collar round its
+    // bottom, three fish swimming round in the water over the head (at their own heights and
+    // speeds, one the other way round), and a few bubbles bobbing up
     private void BuildFishbowl(float r)
     {
         surface = Surface.Glass;
-        Primitive("Bowl", PrimitiveType.Sphere, Shade.Light, new Vector3(0f, 0.12f * r, 0f), Vector3.one * (2.56f * r), Vector3.zero, true);
+        Primitive("Bowl", PrimitiveType.Sphere, Shade.Light, new Vector3(0f, 0.3f * r, 0f), Vector3.one * (2.9f * r), Vector3.zero, true);
         surface = Surface.Metal;
-        Generated("Collar", Torus(0.22f), Shade.Dark, new Vector3(0f, -0.8f * r, 0f), Vector3.one * (0.86f * r), Vector3.zero, false);
+        Generated("Collar", Torus(0.22f), Shade.Dark, new Vector3(0f, -0.8f * r, 0f), Vector3.one * (0.94f * r), Vector3.zero, false);
 
-        GameObject swim = new GameObject("Swim");
-        swim.layer = gameObject.layer;
-        swim.transform.SetParent(transform, false);
-        swim.transform.localPosition = new Vector3(0f, 1.18f * r, 0f);
-        swim.AddComponent<HatSpinner>().SetSteady(50f);
-        // Facing along its circle: the swim turns clockwise seen from above, so at +x it heads to -z
+        Fish(r, 1.22f, 0.56f, 1.15f, 55f, Shade.Main);
+        Fish(r, 1.0f, 0.72f, 0.95f, -40f, Shade.Light);
+        Fish(r, 1.48f, 0.3f, 0.85f, 75f, Shade.Dark);
+
         surface = Surface.Plastic;
-        Primitive("Fish", PrimitiveType.Sphere, Shade.Main, new Vector3(0.28f * r, 0f, 0f), new Vector3(0.1f * r, 0.13f * r, 0.2f * r), Vector3.zero, false, swim.transform);
-        Primitive("Tail", PrimitiveType.Cube, Shade.Light, new Vector3(0.28f * r, 0f, 0.13f * r), new Vector3(0.02f * r, 0.12f * r, 0.08f * r), new Vector3(45f, 0f, 0f), false, swim.transform);
+        // Near the middle, inside the smallest fish's circle
+        Vector3[] bubbles = { new Vector3(0.06f, 1.62f, 0.08f), new Vector3(-0.08f, 1.3f, -0.04f), new Vector3(0.03f, 1.1f, -0.1f) };
+        for (int i = 0; i < bubbles.Length; i++)
+        {
+            Renderer bubble = Primitive("Bubble", PrimitiveType.Sphere, Shade.Light, bubbles[i] * r, Vector3.one * ((0.05f + 0.02f * i) * r), Vector3.zero, false);
+            HatMotion.Add(bubble.gameObject, HatMotion.Kind.Bob, Vector3.up, 0.5f + 0.2f * i, 0.06f * r);
+        }
+    }
+
+    // One fish going round the fishbowl: height and radius of its circle (of the head's radius), its
+    // size, and its speed in degrees a second (positive: clockwise seen from above)
+    private void Fish(float r, float height, float radius, float size, float speed, Shade shade)
+    {
+        Transform swim = Pivot("Swim", new Vector3(0f, height * r, 0f));
+        swim.gameObject.AddComponent<HatSpinner>().SetSteady(speed);
+        Transform fish = Pivot("Fish", new Vector3(radius * r, 0f, 0f), Vector3.zero, swim);
+        HatMotion.Add(fish.gameObject, HatMotion.Kind.Bob, Vector3.up, 0.7f, 0.03f * r);
+        // Facing along its circle: going clockwise, at +x it heads to -z
+        float ahead = speed > 0f ? -1f : 1f;
+        float s = size * r;
+        surface = Surface.Plastic;
+        Primitive("Body", PrimitiveType.Sphere, shade, Vector3.zero, new Vector3(0.16f * s, 0.22f * s, 0.36f * s), Vector3.zero, false, fish);
+        Primitive("Tail", PrimitiveType.Cube, shade, new Vector3(0f, 0f, -ahead * 0.22f * s), new Vector3(0.03f * s, 0.17f * s, 0.17f * s), new Vector3(45f, 0f, 0f), false, fish);
+        Primitive("Fin", PrimitiveType.Cube, shade, new Vector3(0f, 0.11f * s, 0.02f * s * ahead), new Vector3(0.02f * s, 0.09f * s, 0.14f * s), new Vector3(-20f * ahead, 0f, 0f), false, fish);
+        for (int side = -1; side <= 1; side += 2)
+        {
+            Primitive("Eye", PrimitiveType.Sphere, Shade.Dark, new Vector3(0.07f * s * side, 0.04f * s, ahead * 0.12f * s), Vector3.one * (0.05f * s), Vector3.zero, false, fish);
+        }
     }
 
     // A wizard's hat: a wide brim and a tall cone whose tip bends back, with a band and glowing stars
