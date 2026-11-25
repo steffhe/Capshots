@@ -41,7 +41,7 @@ public class HatsTests
     {
         // Levels 3 to 9 pass the beanie (4), chef's hat (5), bucket hat (6), antenna (7), graduation cap (8) and hard hat (9)
         CollectionAssert.AreEqual(new[] { Hats.Beanie, Hats.ChefsHat, Hats.BucketHat, Hats.Antenna, Hats.GraduationCap, Hats.HardHat }, Hats.UnlockedBetween(3, 9));
-        CollectionAssert.IsEmpty(Hats.UnlockedBetween(28, 29));
+        CollectionAssert.IsEmpty(Hats.UnlockedBetween(20, 21));
         CollectionAssert.IsEmpty(Hats.UnlockedBetween(5, 5));
     }
 

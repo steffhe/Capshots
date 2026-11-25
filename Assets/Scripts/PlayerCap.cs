@@ -126,6 +126,7 @@ public class PlayerCap : MonoBehaviour
             case Hats.JesterHat: BuildJesterHat(r); break;
             case Hats.PlasmaGlobe: BuildPlasmaGlobe(r); break;
             case Hats.Ufo: BuildUfo(r); break;
+            case Hats.Atom: BuildAtom(r); break;
             default: BuildCap(r, 1f); break;
         }
     }
@@ -652,6 +653,28 @@ public class PlayerCap : MonoBehaviour
         // The beam: a cone widening downwards, from inside the hull to inside the head
         Generated("Beam", Frustum(0.3f, false), Shade.Light, new Vector3(0f, -0.85f * r, 0f), new Vector3(0.7f * r, 0.8f * r, 0.7f * r), Vector3.zero, false, saucer);
         StillBox(new Vector3(0f, 1.5f * r, 0f), new Vector3(1.5f * r, 0.35f * r, 1.5f * r));
+    }
+
+    // An atom floating over the head: a glowing core with three tilted rings round it, a glowing
+    // electron going round each ring at its own speed, and the whole atom slowly turning
+    private void BuildAtom(float r)
+    {
+        const float centre = 1.55f, ring = 0.45f;
+        Transform atom = Pivot("Atom", new Vector3(0f, centre * r, 0f));
+        HatMotion.Add(atom.gameObject, HatMotion.Kind.Spin, Vector3.up, 30f);
+        surface = Surface.Glow;
+        Primitive("Core", PrimitiveType.Sphere, Shade.Light, Vector3.zero, Vector3.one * (0.22f * r), Vector3.zero, false, atom);
+        float[] speeds = { 220f, -280f, 340f };
+        for (int i = 0; i < speeds.Length; i++)
+        {
+            // Each ring tipped 65 degrees, turned a third of the way round from the last
+            Transform plane = Pivot("Ring Plane", Vector3.zero, new Vector3(0f, i * 60f, 65f), atom);
+            Generated("Ring", Torus(0.08f), Shade.Main, Vector3.zero, Vector3.one * (ring * r), Vector3.zero, false, plane);
+            Transform orbit = Pivot("Orbit", Vector3.zero, Vector3.zero, plane);
+            orbit.gameObject.AddComponent<HatSpinner>().SetSteady(speeds[i]);
+            Primitive("Electron", PrimitiveType.Sphere, Shade.Light, new Vector3(ring * r, 0f, 0f), Vector3.one * (0.1f * r), Vector3.zero, false, orbit);
+        }
+        StillBox(new Vector3(0f, centre * r, 0f), Vector3.one * (2f * ring * r));
     }
 
     // Devil horns: a short horn on each side of the top of the head, leaning out then curving up to a point

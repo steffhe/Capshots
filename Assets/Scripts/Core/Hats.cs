@@ -11,7 +11,7 @@ public static class Hats
         ChefsHat = 5, BucketHat = 6, Antenna = 7, GraduationCap = 8, HardHat = 9, Plunger = 10,
         WindUpKey = 11, PropellerBeanie = 12, BirthdayCake = 13, CowboyHat = 14, Siren = 15, TopHat = 16,
         RadarDish = 17, Sombrero = 18, JesterHat = 19, VikingHelmet = 20, PirateHat = 21,
-        PlasmaGlobe = 22, Fishbowl = 23, Crown = 24, Ufo = 25, WizardHat = 26, DevilHorns = 27, Halo = 28;
+        PlasmaGlobe = 22, Fishbowl = 23, Crown = 24, Ufo = 25, WizardHat = 26, DevilHorns = 27, Atom = 28, Halo = 29;
 
     private static readonly string[] names =
     {
@@ -19,7 +19,7 @@ public static class Hats
         "CHEF'S HAT", "BUCKET HAT", "ANTENNA", "GRADUATION CAP", "HARD HAT", "PLUNGER",
         "WIND-UP KEY", "PROPELLER BEANIE", "BIRTHDAY CAKE", "COWBOY HAT", "SIREN", "TOP HAT",
         "RADAR DISH", "SOMBRERO", "JESTER HAT", "VIKING HELMET", "PIRATE HAT",
-        "PLASMA GLOBE", "FISHBOWL", "CROWN", "UFO", "WIZARD HAT", "DEVIL HORNS", "HALO",
+        "PLASMA GLOBE", "FISHBOWL", "CROWN", "UFO", "WIZARD HAT", "DEVIL HORNS", "ATOM", "HALO",
     };
 
     // Early hats come within the first few matches; later ones are long-term goals
@@ -29,7 +29,7 @@ public static class Hats
         5, 6, 7, 8, 9, 10,
         11, 12, 13, 14, 15, 16,
         17, 18, 19, 20, 22,
-        23, 24, 25, 26, 27, 28, 30,
+        23, 24, 25, 26, 27, 28, 29, 30,
     };
 
     // Bots wear one of the hats unlocked by level 9, so they look like players who've played a little
