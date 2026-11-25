@@ -9,6 +9,8 @@ public class ProfileData
     public float ysens;
     // The hat picked to wear (see Hats). Worn only while unlocked at this level, otherwise the cap.
     public int hat;
+    // The face picked for the drone's screen (see Faces). Shown only while unlocked, otherwise the classic.
+    public int face;
 
     public ProfileData()
     {

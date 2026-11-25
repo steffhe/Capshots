@@ -9,7 +9,8 @@ using UnityEngine.SceneManagement;
 
 // Dev tool: renders every hat on a drone head to a contact sheet (Temp/HatCaptures/hats-*.png, one
 // sheet per view, hats in Hats order, left to right then top to bottom), so hat changes can be
-// reviewed without playing. Run it from Tools > Capture Hats, or create Temp/capture-hats.trigger
+// reviewed without playing, and every face (faces-front.png). Run it from Tools > Capture Hats, or
+// create Temp/capture-hats.trigger
 // containing an output folder. Everything is built in a preview scene, so nothing open is touched.
 static class HatCapture
 {
@@ -141,6 +142,38 @@ static class HatCapture
                 sheet.Apply();
                 File.WriteAllBytes(Path.Combine(outDir, "hats-" + view.name + ".png"), sheet.EncodeToPNG());
             }
+
+            // The faces (see Faces), straight on, each on a drone in the cap: faces-front.png
+            int faceRows = (Faces.Count + Columns - 1) / Columns;
+            var faceSheet = new Texture2D(Cell * Columns, Cell * faceRows, TextureFormat.RGBA32, false);
+            made.Add(faceSheet);
+            for (int face = 0; face < Faces.Count; face++)
+            {
+                GameObject body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                SceneManager.MoveGameObjectToScene(body, scene);
+                GameObject head = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                head.transform.SetParent(body.transform, false);
+                head.transform.localPosition = new Vector3(0f, 1.15f, 0f);
+                head.transform.localScale = Vector3.one * 0.7f;
+                try
+                {
+                    Color color = PlayerCap.ColorFor(face + 1);
+                    DroneBody.Dress(body.transform, head.transform, color, false, false, face);
+                    PlayerCap.Attach(head.transform, color, false, Hats.Cap);
+                    Quaternion look = Quaternion.Euler(4f, 180f + 12f, 0f);
+                    cam.transform.position = head.transform.position - look * Vector3.forward * 2.2f;
+                    cam.transform.rotation = look;
+                    cam.Render();
+                    RenderTexture previous = RenderTexture.active;
+                    RenderTexture.active = rt;
+                    faceSheet.ReadPixels(new Rect(0, 0, Cell, Cell), face % Columns * Cell, (faceRows - 1 - face / Columns) * Cell);
+                    RenderTexture.active = previous;
+                }
+                catch (Exception e) { log.Add(Faces.Name(face) + ": " + e); }
+                finally { UnityEngine.Object.DestroyImmediate(body); }
+            }
+            faceSheet.Apply();
+            File.WriteAllBytes(Path.Combine(outDir, "faces-front.png"), faceSheet.EncodeToPNG());
         }
         catch (Exception e) { log.Add(e.ToString()); }
         finally

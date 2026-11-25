@@ -3,8 +3,9 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
-// The Customize panel: the hat you wear and the gun form you spawn holding. Opened by the Customize
-// button under Settings, in the main menu and in the pause menu. Hats unlock as you level up (see
+// The Customize panel: the hat you wear, the face on your drone's screen (see Faces) and the gun form
+// you spawn holding. Opened by the Customize button under Settings, in the main menu and in the
+// pause menu. Hats unlock as you level up (see
 // Hats): every hat is listed, the locked ones greyed out with the level that unlocks them. In the
 // main menu, pointing at a locked hat (or tapping it) shows it on the player model as a see-through
 // grey preview; it can't be worn until it's unlocked.
@@ -19,6 +20,7 @@ public class CustomizeMenu : MenuPanel
     private bool inMainMenu;
 
     private Text startingGunText;
+    private Text faceText;
     private Text levelText;
     private Text nextUnlockText;
     // The player body's gun, for the forms the starting gun can be
@@ -171,14 +173,24 @@ public class CustomizeMenu : MenuPanel
         float top = PanelHeight / 2f;
         NewLabel(content, "CUSTOMIZE", new Vector2(0f, top - 48f), ColumnWidth, 34, TextAnchor.MiddleCenter);
 
-        // Starting gun
-        NewLabel(content, "STARTING GUN", new Vector2(0f, top - 106f), ColumnWidth, 16, TextAnchor.MiddleLeft).color = UITheme.AccentText;
+        // Starting gun and face, side by side, each a list to pick from
+        float half = (ColumnWidth - HatColumnGap) / 2f;
+        float left = -(half + HatColumnGap) / 2f, right = (half + HatColumnGap) / 2f;
+        NewLabel(content, "STARTING GUN", new Vector2(left, top - 106f), half, 16, TextAnchor.MiddleLeft).color = UITheme.AccentText;
         Button startingGunButton = null;
         GameObject startingGun = NewButton(content, "", () => PickStartingGun(startingGunButton));
         startingGunButton = startingGun.GetComponent<Button>();
-        UITheme.StyleSelector(startingGunButton);
-        Place(startingGun, new Vector2(0f, top - 146f), new Vector2(ColumnWidth, 48f));
+        UITheme.StyleSelector(startingGunButton, 18);
+        Place(startingGun, new Vector2(left, top - 146f), new Vector2(half, 48f));
         startingGunText = startingGun.GetComponentInChildren<Text>();
+
+        NewLabel(content, "FACE", new Vector2(right, top - 106f), half, 16, TextAnchor.MiddleLeft).color = UITheme.AccentText;
+        Button faceButton = null;
+        GameObject face = NewButton(content, "", () => PickFace(faceButton));
+        faceButton = face.GetComponent<Button>();
+        UITheme.StyleSelector(faceButton, 18);
+        Place(face, new Vector2(right, top - 146f), new Vector2(half, 48f));
+        faceText = face.GetComponentInChildren<Text>();
 
         // Hats: every one, in unlock order, in two columns
         float y = top - 204f;
@@ -279,12 +291,14 @@ public class CustomizeMenu : MenuPanel
     {
         GameSettings.HatChanged += OnHatChanged;
         GameSettings.StartingGunChanged += Refresh;
+        GameSettings.FaceChanged += Refresh;
     }
 
     private void OnDisable()
     {
         GameSettings.HatChanged -= OnHatChanged;
         GameSettings.StartingGunChanged -= Refresh;
+        GameSettings.FaceChanged -= Refresh;
     }
 
     private void Refresh()
@@ -293,7 +307,8 @@ public class CustomizeMenu : MenuPanel
 
         Weapon weapon = PlayerWeapon();
         string gun = weapon != null ? weapon.loadout[weapon.PreferredStartingSlot].gunName : "-";
-        startingGunText.text = UITheme.Option("STARTING GUN", gun.ToUpperInvariant());
+        startingGunText.text = gun.ToUpperInvariant();
+        faceText.text = Faces.Name(GameSettings.Face);
 
         int level = Launcher.myProfile.level;
         int worn = GameSettings.Hat;
@@ -329,6 +344,19 @@ public class CustomizeMenu : MenuPanel
         {
             GameSettings.StartingGun = weapon.loadout[i].gunName;
         });
+    }
+
+    // A list of every face, in unlock order: the locked ones say the level they unlock at, and
+    // picking one of them does nothing
+    private void PickFace(Button button)
+    {
+        int level = Launcher.myProfile.level;
+        string[] options = new string[Faces.Count];
+        for (int i = 0; i < options.Length; i++)
+        {
+            options[i] = Faces.IsUnlocked(i, level) ? Faces.Name(i) : UITheme.Option(Faces.Name(i), "LEVEL " + Faces.UnlockLevel(i));
+        }
+        OptionPicker.Open(button, options, GameSettings.Face, i => GameSettings.Face = i);
     }
 
     private Weapon PlayerWeapon()

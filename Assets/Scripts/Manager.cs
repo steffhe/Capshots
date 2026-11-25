@@ -135,8 +135,9 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
         // Tell the host our name and level for the scoreboard, and the hat everyone sees us in. After
         // a host migration, also who we were before, so the new host can give us our score back.
-        RPC_Register(Launcher.myProfile.username, Launcher.myProfile.level, GameSettings.Hat, migrated != null ? migrated.localActor : -1);
+        RPC_Register(Launcher.myProfile.username, Launcher.myProfile.level, GameSettings.Hat, GameSettings.Face, migrated != null ? migrated.localActor : -1);
         GameSettings.HatChanged += SendHat;
+        GameSettings.FaceChanged += SendFace;
         GameSettings.ColoursChanged += OnColoursChanged;
 
         state = State;
@@ -154,6 +155,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
     public override void Despawned(NetworkRunner runner, bool hasState)
     {
         GameSettings.HatChanged -= SendHat;
+        GameSettings.FaceChanged -= SendFace;
         GameSettings.ColoursChanged -= OnColoursChanged;
         ready = false;
         if (lobbyPanel != null) Destroy(lobbyPanel.gameObject);
@@ -326,6 +328,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
             p.team = s.Team;
             p.ping = s.Ping;
             p.hat = s.Hat;
+            p.face = s.Face;
             p.ready = s.Ready;
             list.Add(p);
         }
@@ -413,9 +416,32 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         ScheduleSpawn(player);
     }
 
-    // Each player tells the host its name, level and hat once it has joined
+    // The face on a player's drone (see Faces); the classic face for anyone not on the list
+    public int GetPlayerFace(int actor)
+    {
+        int index = FindPlayerIndex(actor);
+        return index >= 0 && Faces.IsValid(playerInfo[index].face) ? playerInfo[index].face : Faces.Classic;
+    }
+
+    // A new face picked in the pause menu's Customize panel: everyone sees it at once
+    private void SendFace()
+    {
+        if (Object != null && Object.IsValid) RPC_SetFace(GameSettings.Face);
+    }
+
     [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
-    private void RPC_Register(string username, int level, int hat, int oldActor, RpcInfo info = default)
+    private void RPC_SetFace(int face, RpcInfo info = default)
+    {
+        PlayerRef player = info.Source.IsRealPlayer ? info.Source : Runner.LocalPlayer;
+        PlayerStats stats;
+        if (!Faces.IsValid(face) || !Stats.TryGet(player, out stats)) return;
+        stats.Face = (byte)face;
+        Stats.Set(player, stats);
+    }
+
+    // Each player tells the host its name, level, hat and face once it has joined
+    [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+    private void RPC_Register(string username, int level, int hat, int face, int oldActor, RpcInfo info = default)
     {
         PlayerRef player = info.Source.IsRealPlayer ? info.Source : Runner.LocalPlayer;
         if (!Stats.ContainsKey(player)) AddPlayer(player);
@@ -425,6 +451,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         stats.Username = string.IsNullOrWhiteSpace(username) ? "PLAYER " + player.PlayerId : username;
         stats.Level = Mathf.Max(1, level);
         stats.Hat = (byte)Hats.Wearable(hat, level);
+        stats.Face = (byte)Faces.Wearable(face, level);
         RestoreReturningPlayer(ref stats, oldActor);
         Stats.Set(player, stats);
     }

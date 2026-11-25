@@ -80,6 +80,7 @@ public partial class Manager
                 name = first.name,
                 color = PlayerCap.ColorFor(first.actor),
                 hat = GetPlayerHat(first.actor),
+                face = GetPlayerFace(first.actor),
                 teamMode = IsTeamMode,
                 mine = first.actor == me,
             };
