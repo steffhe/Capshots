@@ -5,7 +5,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 // Settings panel inside the pause menu: look sensitivity, ADS sensitivity, field of view, volume,
-// graphics quality and key bindings. Built at runtime from copies of the pause menu's own button,
+// graphics quality, colours, the FPS counter and key bindings. Built at runtime from copies of the pause menu's own button,
 // slider and label (styled by UITheme.StylePause), so the Pause prefab doesn't need editing.
 // It also adds the pause menu's Customize button and panel (CustomizeMenu), under Settings.
 // The main menu has the same panel (CreateForMainMenu), built from copies of its own button,
@@ -21,6 +21,7 @@ public class SettingsMenu : MenuPanel
     private Slider xSensSlider, ySensSlider, fovSlider, adsSlider, volumeSlider;
     private Text qualityText;
     private Text coloursText;
+    private Text fpsText;
 
     private class BindingRow
     {
@@ -165,7 +166,7 @@ public class SettingsMenu : MenuPanel
         NewLabel(rect, "GENERAL", new Vector2(LeftColumn, HeaderY), ColumnWidth, 16, TextAnchor.MiddleLeft).color = UITheme.AccentText;
 
         float y = HeaderY - 44f;
-        const float rowStep = 62f;
+        const float rowStep = 54f;
         xSensSlider = SliderRow(rect, "LOOK SENSITIVITY X", ref xSensValue, y, GameSettings.MinSensitivity, GameSettings.MaxSensitivity, true, GameSettings.XSensitivity, v =>
         {
             GameSettings.XSensitivity = v;
@@ -211,7 +212,7 @@ public class SettingsMenu : MenuPanel
         });
         qualityButton = quality.GetComponent<Button>();
         UITheme.StyleSelector(quality.GetComponent<Button>());
-        Place(quality, new Vector2(LeftColumn, y - 72f), new Vector2(ColumnWidth, 48f));
+        Place(quality, new Vector2(LeftColumn, y - 70f), new Vector2(ColumnWidth, 48f));
         qualityText = quality.GetComponentInChildren<Text>();
 
         // Standard colours, or ones that stay apart with red-green colour blindness
@@ -221,8 +222,18 @@ public class SettingsMenu : MenuPanel
             RefreshLabels();
         });
         UITheme.StyleSelector(colours.GetComponent<Button>());
-        Place(colours, new Vector2(LeftColumn, y - 132f), new Vector2(ColumnWidth, 48f));
+        Place(colours, new Vector2(LeftColumn, y - 130f), new Vector2(ColumnWidth, 48f));
         coloursText = colours.GetComponentInChildren<Text>();
+
+        // The frame rate readout in the corner (FpsCounter)
+        GameObject fps = NewButton(rect, "", () =>
+        {
+            GameSettings.ShowFps = !GameSettings.ShowFps;
+            RefreshLabels();
+        });
+        UITheme.StyleSelector(fps.GetComponent<Button>());
+        Place(fps, new Vector2(LeftColumn, y - 190f), new Vector2(ColumnWidth, 48f));
+        fpsText = fps.GetComponentInChildren<Text>();
 
         GameObject reset = NewButton(rect, "RESET CONTROLS", () =>
         {
@@ -230,7 +241,7 @@ public class SettingsMenu : MenuPanel
             RefreshBindings();
         });
         // The same 12 gap between the buttons as elsewhere
-        Place(reset, new Vector2(LeftColumn, y - 192f), new Vector2(ColumnWidth, 48f));
+        Place(reset, new Vector2(LeftColumn, y - 250f), new Vector2(ColumnWidth, 48f));
 
         GameObject done = NewButton(rect, "DONE", CloseSettings);
         UITheme.StyleButton(done.GetComponent<Button>(), UITheme.ButtonStyle.Primary);
@@ -319,6 +330,7 @@ public class SettingsMenu : MenuPanel
         adsValue.text = GameSettings.AdsSensitivity.ToString("0.00") + "x";
         volumeValue.text = Mathf.RoundToInt(GameSettings.Volume * 100f) + "%";
         qualityText.text = UITheme.Option("GRAPHICS", GameSettings.QualityName.ToUpperInvariant());
+        if (fpsText != null) fpsText.text = UITheme.Option("FPS COUNTER", GameSettings.ShowFps ? "ON" : "OFF");
         if (coloursText != null) coloursText.text = UITheme.Option("COLOURS", GameSettings.Colourblind ? "COLOUR BLIND" : "STANDARD");
     }
 

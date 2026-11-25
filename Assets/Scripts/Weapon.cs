@@ -539,6 +539,11 @@ public class Weapon : NetworkBehaviour
         // Shooting gives up spawn protection
         player.EndSpawnProtection();
 
+        // Re-running a tick to correct a prediction: the shot's state (cooldown, energy, count) is
+        // set above, and its hits, damage and effects only ever happen the first time, so the
+        // raycasts below would be wasted. The host never re-runs ticks.
+        if (!Runner.IsForward) return;
+
         Vector3 origin = player.EyePosition;
         Quaternion view = Quaternion.Euler(-input.Pitch, input.Yaw, 0f);
         float spread = CurrentBloom();

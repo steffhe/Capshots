@@ -53,6 +53,9 @@ public class OfficeGlass : MonoBehaviour
     private int glassMask;
     private Material shardMaterial;
     private Mesh shardMesh;
+    // This frame's shards, drawn together in one instanced call (a draw call each is a lot in a browser)
+    private readonly Matrix4x4[] shardMatrices = new Matrix4x4[MaxShards];
+    private bool instanceShards;
 
     private static AudioClip crackClip, shatterClip;
     private static Texture2D crackTexture;
@@ -80,6 +83,8 @@ public class OfficeGlass : MonoBehaviour
         if (cracked.HasProperty("_BaseMap")) cracked.SetTexture("_BaseMap", CrackTexture());
 
         shardMaterial = new Material(glass) { name = "Office glass shard" };
+        instanceShards = SystemInfo.supportsInstancing;
+        shardMaterial.enableInstancing = instanceShards;
         if (shardMaterial.HasProperty("_BaseColor")) shardMaterial.SetColor("_BaseColor", new Color(tint.r, tint.g, tint.b, 0.5f));
         shardMesh = new Mesh { name = "Glass shard" };
         builder.Clear();
@@ -275,6 +280,7 @@ public class OfficeGlass : MonoBehaviour
     {
         if (shards.Count == 0) return;
         const float floor = 0.01f;
+        int drawn = 0;
         for (int i = shards.Count - 1; i >= 0; i--)
         {
             Shard s = shards[i];
@@ -309,8 +315,12 @@ public class OfficeGlass : MonoBehaviour
             // Shrinks away over its last second
             float scale = Mathf.Clamp01(s.life - s.age);
             Matrix4x4 matrix = Matrix4x4.TRS(s.position, s.rotation, s.size * scale);
-            Graphics.DrawMesh(shardMesh, matrix, shardMaterial, gameObject.layer, null, 0, null, ShadowCastingMode.Off, false);
+            if (instanceShards) shardMatrices[drawn++] = matrix;
+            else Graphics.DrawMesh(shardMesh, matrix, shardMaterial, gameObject.layer, null, 0, null, ShadowCastingMode.Off, false);
         }
+
+        // MaxShards stays under the 1023 instances one call can draw
+        if (drawn > 0) Graphics.DrawMeshInstanced(shardMesh, 0, shardMaterial, shardMatrices, drawn, null, ShadowCastingMode.Off, false, gameObject.layer);
     }
 
     #endregion
