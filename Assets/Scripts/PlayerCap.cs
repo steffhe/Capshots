@@ -118,6 +118,14 @@ public class PlayerCap : MonoBehaviour
             case Hats.Fishbowl: BuildFishbowl(r); break;
             case Hats.WizardHat: BuildWizardHat(r); break;
             case Hats.DevilHorns: BuildDevilHorns(r); break;
+            case Hats.GraduationCap: BuildGraduationCap(r); break;
+            case Hats.WindUpKey: BuildWindUpKey(r); break;
+            case Hats.BirthdayCake: BuildBirthdayCake(r); break;
+            case Hats.Siren: BuildSiren(r); break;
+            case Hats.RadarDish: BuildRadarDish(r); break;
+            case Hats.JesterHat: BuildJesterHat(r); break;
+            case Hats.PlasmaGlobe: BuildPlasmaGlobe(r); break;
+            case Hats.Ufo: BuildUfo(r); break;
             default: BuildCap(r, 1f); break;
         }
     }
@@ -462,6 +470,190 @@ public class PlayerCap : MonoBehaviour
         }
     }
 
+    // A graduation cap: a skullcap under a flat square board, set diamond-wise, with a cord from the
+    // button in the middle to a corner and a tassel hanging off it that swings as the player moves
+    private void BuildGraduationCap(float r)
+    {
+        const float board = 1.12f;
+        surface = Surface.Felt;
+        Crown(Vector3.one * (1.07f * r));
+        Primitive("Board", PrimitiveType.Cube, Shade.Dark, new Vector3(0f, board * r, 0f), new Vector3(1.9f * r, 0.06f * r, 1.9f * r), new Vector3(0f, 45f, 0f), true);
+        surface = Surface.Satin;
+        float top = (board + 0.03f) * r;
+        Primitive("Button", PrimitiveType.Sphere, Shade.Light, new Vector3(0f, top, 0f), new Vector3(0.14f * r, 0.06f * r, 0.14f * r), Vector3.zero, false);
+        // The board's corner on the right is 1.34 of the head's radius out
+        const float corner = 1.3f;
+        Primitive("Cord", PrimitiveType.Cube, Shade.Light, new Vector3(0.5f * corner * r, top + 0.01f * r, 0f), new Vector3(corner * r, 0.02f * r, 0.03f * r), Vector3.zero, false);
+
+        Transform tassel = Pivot("Tassel", new Vector3(corner * r, top, 0f));
+        HatDangle.Add(tassel.gameObject, Vector3.down, 0.5f * r, 0f, 1f, 2f);
+        Primitive("String", PrimitiveType.Cylinder, Shade.Light, new Vector3(0f, -0.15f * r, 0f), new Vector3(0.03f * r, 0.15f * r, 0.03f * r), Vector3.zero, false, tassel);
+        Generated("Tassel", Frustum(0.35f, true), Shade.Light, new Vector3(0f, -0.52f * r, 0f), new Vector3(0.1f * r, 0.24f * r, 0.1f * r), Vector3.zero, false, tassel);
+    }
+
+    // A wind-up key sticking out of the back of the head, turning round and round like a clockwork toy's
+    private void BuildWindUpKey(float r)
+    {
+        surface = Surface.Metal;
+        // Where it goes into the head: on the back, a little above the middle
+        Vector3 hole = new Vector3(0f, 0.35f * r, -0.93f * r);
+        Primitive("Collar", PrimitiveType.Cylinder, Shade.Dark, hole, new Vector3(0.24f * r, 0.04f * r, 0.24f * r), new Vector3(90f, 0f, 0f), false);
+        Transform key = Pivot("Key", hole);
+        HatMotion.Add(key.gameObject, HatMotion.Kind.Spin, Vector3.forward, 90f);
+        Primitive("Shaft", PrimitiveType.Cylinder, Shade.Main, new Vector3(0f, 0f, -0.25f * r), new Vector3(0.1f * r, 0.25f * r, 0.1f * r), new Vector3(90f, 0f, 0f), false, key);
+        Primitive("Grip", PrimitiveType.Cube, Shade.Main, new Vector3(0f, 0f, -0.55f * r), new Vector3(0.3f * r, 0.1f * r, 0.08f * r), Vector3.zero, false, key);
+        for (int side = -1; side <= 1; side += 2)
+        {
+            // The two loops of the key's bow, standing up
+            Generated("Bow", Torus(0.35f), Shade.Main, new Vector3(0.3f * side * r, 0f, -0.55f * r), Vector3.one * (0.2f * r), new Vector3(90f, 0f, 0f), false, key);
+        }
+        StillBox(new Vector3(0f, 0.35f * r, -1.25f * r), new Vector3(0.95f * r, 0.45f * r, 0.6f * r));
+    }
+
+    // A birthday cake on the head: a round cake with icing dripping down its edge and a candle on top
+    // whose flame flickers and leans as the player moves. It goes out when the hat is knocked off
+    // (a dead player's hat).
+    private void BuildBirthdayCake(float r)
+    {
+        const float sit = 0.75f, height = 0.4f, radius = 0.7f;
+        surface = Surface.Satin;
+        Primitive("Cake", PrimitiveType.Cylinder, Shade.Main, new Vector3(0f, (sit + 0.5f * height) * r, 0f), new Vector3(2f * radius * r, 0.5f * height * r, 2f * radius * r), Vector3.zero, true);
+        float top = (sit + height) * r;
+        Primitive("Icing", PrimitiveType.Cylinder, Shade.Light, new Vector3(0f, top, 0f), new Vector3(2.06f * radius * r, 0.03f * r, 2.06f * radius * r), Vector3.zero, false);
+        const int drips = 10;
+        for (int i = 0; i < drips; i++)
+        {
+            float a = (i + 0.3f) * Mathf.PI * 2f / drips;
+            float drop = (i % 3 == 0 ? 0.16f : 0.1f) * r;
+            Primitive("Drip", PrimitiveType.Sphere, Shade.Light, new Vector3(Mathf.Sin(a) * radius * r, top - drop * 0.5f, Mathf.Cos(a) * radius * r), new Vector3(0.13f * r, drop + 0.04f * r, 0.13f * r), Vector3.zero, false);
+        }
+        surface = Surface.Plastic;
+        const float candle = 0.36f;
+        Primitive("Candle", PrimitiveType.Cylinder, Shade.Light, new Vector3(0f, top + 0.5f * candle * r, 0f), new Vector3(0.11f * r, 0.5f * candle * r, 0.11f * r), Vector3.zero, false);
+        Primitive("Stripe", PrimitiveType.Cylinder, Shade.Dark, new Vector3(0f, top + 0.55f * candle * r, 0f), new Vector3(0.115f * r, 0.03f * r, 0.115f * r), Vector3.zero, false);
+        float wick = top + (candle + 0.04f) * r;
+        Primitive("Wick", PrimitiveType.Cube, Shade.Dark, new Vector3(0f, wick, 0f), new Vector3(0.02f * r, 0.08f * r, 0.02f * r), Vector3.zero, false);
+        if (solid) return;
+
+        // The flame leans away from the way the player moves, and flickers
+        Transform flame = Pivot("Flame", new Vector3(0f, wick, 0f));
+        HatDangle.Add(flame.gameObject, Vector3.up, 0.15f * r, 250f, 0f, 6f);
+        surface = Surface.Glow;
+        Renderer fire = Primitive("Fire", PrimitiveType.Sphere, Shade.Light, new Vector3(0f, 0.12f * r, 0f), new Vector3(0.11f * r, 0.22f * r, 0.11f * r), Vector3.zero, false, flame);
+        HatMotion.Add(fire.gameObject, HatMotion.Kind.Flicker, Vector3.up, 6f, 0.5f);
+    }
+
+    // A police siren: a glass dome on a metal base, with a glowing lamp inside and two lights going
+    // round it, faster the faster the player moves
+    private void BuildSiren(float r)
+    {
+        const float dome = 1.22f;
+        surface = Surface.Metal;
+        Primitive("Base", PrimitiveType.Cylinder, Shade.Dark, new Vector3(0f, 0.98f * r, 0f), new Vector3(0.6f * r, 0.06f * r, 0.6f * r), Vector3.zero, true);
+        Transform lights = Pivot("Lights", new Vector3(0f, dome * r, 0f));
+        lights.gameObject.AddComponent<HatSpinner>();
+        surface = Surface.Glow;
+        Primitive("Lamp", PrimitiveType.Sphere, Shade.Main, Vector3.zero, Vector3.one * (0.16f * r), Vector3.zero, false, lights);
+        for (int side = -1; side <= 1; side += 2)
+        {
+            Primitive("Light", PrimitiveType.Cube, Shade.Light, new Vector3(0.14f * side * r, 0f, 0f), new Vector3(0.05f * r, 0.3f * r, 0.22f * r), Vector3.zero, false, lights);
+        }
+        surface = Surface.Glass;
+        Primitive("Dome", PrimitiveType.Sphere, Shade.Light, new Vector3(0f, dome * r, 0f), new Vector3(0.52f * r, 0.6f * r, 0.52f * r), Vector3.zero, true);
+    }
+
+    // A radar dish on a short mast, sweeping slowly from side to side, with a glowing receiver in front
+    private void BuildRadarDish(float r)
+    {
+        const float mastTop = 1.25f;
+        surface = Surface.Metal;
+        Primitive("Mast", PrimitiveType.Cylinder, Shade.Dark, new Vector3(0f, 0.5f * (0.96f + mastTop) * r, 0f), new Vector3(0.08f * r, 0.5f * (mastTop - 0.96f) * r, 0.08f * r), Vector3.zero, false);
+        Transform sweep = Pivot("Sweep", new Vector3(0f, mastTop * r, 0f));
+        HatMotion.Add(sweep.gameObject, HatMotion.Kind.Sweep, Vector3.up, 0.15f, 70f);
+        // The dish faces forwards and 20 degrees up: its back bulges back and down
+        Vector3 dish = new Vector3(0f, 0.3f * r, 0.2f * r);
+        Vector3 facing = Quaternion.Euler(-20f, 0f, 0f) * Vector3.forward;
+        Generated("Dish", Dome(), Shade.Main, dish, new Vector3(0.45f * r, 0.22f * r, 0.45f * r), new Vector3(-110f, 0f, 0f), false, sweep);
+        Vector3 back = dish - facing * (0.22f * r);
+        Primitive("Arm", PrimitiveType.Cylinder, Shade.Dark, back * 0.5f, new Vector3(0.06f * r, 0.5f * back.magnitude, 0.06f * r), Quaternion.FromToRotation(Vector3.up, back).eulerAngles, false, sweep);
+        Primitive("Feed", PrimitiveType.Cylinder, Shade.Dark, dish + facing * (0.15f * r), new Vector3(0.04f * r, 0.15f * r, 0.04f * r), new Vector3(70f, 0f, 0f), false, sweep);
+        surface = Surface.Glow;
+        Primitive("Receiver", PrimitiveType.Sphere, Shade.Light, dish + facing * (0.3f * r), Vector3.one * (0.09f * r), Vector3.zero, false, sweep);
+        StillBox(new Vector3(0f, 1.4f * r, 0f), new Vector3(0.9f * r, 0.6f * r, 0.9f * r));
+    }
+
+    // A jester's hat: a cap with three floppy prongs, each with a bell on the end, that bounce and
+    // swing as the player moves
+    private void BuildJesterHat(float r)
+    {
+        surface = Surface.Felt;
+        Crown(Vector3.one * (1.07f * r));
+        Vector3[] ways = { new Vector3(-1f, 0.7f, 0f), new Vector3(1f, 0.7f, 0f), new Vector3(0f, 1f, -0.35f) };
+        Shade[] prongShades = { Shade.Main, Shade.Main, Shade.Dark };
+        const float length = 0.8f;
+        for (int i = 0; i < ways.Length; i++)
+        {
+            Vector3 way = ways[i].normalized;
+            Transform prong = Pivot("Prong", way * (0.95f * r), Quaternion.FromToRotation(Vector3.up, way).eulerAngles);
+            HatDangle.Add(prong.gameObject, way, length * r, 140f, 0.6f, 2.5f);
+            surface = Surface.Felt;
+            Generated("Prong", Frustum(0.2f, false), prongShades[i], Vector3.zero, new Vector3(0.26f * r, length * r, 0.26f * r), Vector3.zero, false, prong);
+            surface = Surface.Metal;
+            Primitive("Bell", PrimitiveType.Sphere, Shade.Light, new Vector3(0f, (length + 0.06f) * r, 0f), Vector3.one * (0.18f * r), Vector3.zero, false, prong);
+        }
+        surface = Surface.Felt;
+        Generated("Band", Frustum(1f, false), Shade.Dark, new Vector3(0f, 0.12f * r, 0f), new Vector3(1.1f * r, 0.18f * r, 1.1f * r), Vector3.zero, true);
+    }
+
+    // A plasma globe on the head: a glass ball on a metal base, a glowing core in the middle, and
+    // bolts of lightning flickering out from it to the glass
+    private void BuildPlasmaGlobe(float r)
+    {
+        const float centre = 1.42f, radius = 0.4f;
+        surface = Surface.Metal;
+        Primitive("Base", PrimitiveType.Cylinder, Shade.Dark, new Vector3(0f, 1.0f * r, 0f), new Vector3(0.5f * r, 0.07f * r, 0.5f * r), Vector3.zero, true);
+        Primitive("Neck", PrimitiveType.Cylinder, Shade.Dark, new Vector3(0f, 1.08f * r, 0f), new Vector3(0.3f * r, 0.03f * r, 0.3f * r), Vector3.zero, false);
+        Transform arcs = Pivot("Arcs", new Vector3(0f, centre * r, 0f));
+        surface = Surface.Glow;
+        Primitive("Core", PrimitiveType.Sphere, Shade.Main, Vector3.zero, Vector3.one * (0.14f * r), Vector3.zero, false, arcs);
+        const int bolts = 5;
+        Transform[] segments = new Transform[bolts * 2];
+        for (int i = 0; i < segments.Length; i++)
+        {
+            segments[i] = Primitive("Bolt", PrimitiveType.Cylinder, Shade.Light, Vector3.zero, Vector3.one * (0.02f * r), Vector3.zero, false, arcs).transform;
+        }
+        arcs.gameObject.AddComponent<HatArcs>().Setup(segments, (radius - 0.03f) * r, 0.02f * r);
+        surface = Surface.Glass;
+        Primitive("Globe", PrimitiveType.Sphere, Shade.Light, new Vector3(0f, centre * r, 0f), Vector3.one * (2f * radius * r), Vector3.zero, true);
+    }
+
+    // A little flying saucer hovering over the head: a metal hull with a glass dome, a ring of lights
+    // going round its rim, and a see-through tractor beam shining down onto the head
+    private void BuildUfo(float r)
+    {
+        Transform saucer = Pivot("Saucer", new Vector3(0f, 1.5f * r, 0f));
+        HatMotion.Add(saucer.gameObject, HatMotion.Kind.Bob, Vector3.up, 0.6f, 0.05f * r);
+        surface = Surface.Metal;
+        Primitive("Hull", PrimitiveType.Sphere, Shade.Main, Vector3.zero, new Vector3(1.5f * r, 0.3f * r, 1.5f * r), Vector3.zero, false, saucer);
+        Primitive("Underside", PrimitiveType.Cylinder, Shade.Dark, new Vector3(0f, -0.12f * r, 0f), new Vector3(0.6f * r, 0.03f * r, 0.6f * r), Vector3.zero, false, saucer);
+
+        Transform ring = Pivot("Lights", Vector3.zero, Vector3.zero, saucer);
+        ring.gameObject.AddComponent<HatSpinner>().SetSteady(120f);
+        surface = Surface.Glow;
+        const int lights = 8;
+        for (int i = 0; i < lights; i++)
+        {
+            float a = i * Mathf.PI * 2f / lights;
+            Primitive("Light", PrimitiveType.Sphere, i % 2 == 0 ? Shade.Light : Shade.Main, new Vector3(Mathf.Sin(a) * 0.68f * r, 0f, Mathf.Cos(a) * 0.68f * r), Vector3.one * (0.12f * r), Vector3.zero, false, ring);
+        }
+
+        surface = Surface.Glass;
+        Primitive("Dome", PrimitiveType.Sphere, Shade.Light, new Vector3(0f, 0.1f * r, 0f), new Vector3(0.6f * r, 0.45f * r, 0.6f * r), Vector3.zero, false, saucer);
+        // The beam: a cone widening downwards, from inside the hull to inside the head
+        Generated("Beam", Frustum(0.3f, false), Shade.Light, new Vector3(0f, -0.85f * r, 0f), new Vector3(0.7f * r, 0.8f * r, 0.7f * r), Vector3.zero, false, saucer);
+        StillBox(new Vector3(0f, 1.5f * r, 0f), new Vector3(1.5f * r, 0.35f * r, 1.5f * r));
+    }
+
     // Devil horns: a short horn on each side of the top of the head, leaning out then curving up to a point
     private void BuildDevilHorns(float r)
     {
@@ -516,11 +708,33 @@ public class PlayerCap : MonoBehaviour
     }
 
     // A part with a generated mesh
-    private Renderer Generated(string name, Mesh mesh, Shade shade, Vector3 position, Vector3 scale, Vector3 euler, bool collide)
+    private Renderer Generated(string name, Mesh mesh, Shade shade, Vector3 position, Vector3 scale, Vector3 euler, bool collide, Transform parent = null)
     {
         GameObject part = new GameObject(name, typeof(MeshFilter), typeof(MeshRenderer));
         part.GetComponent<MeshFilter>().sharedMesh = mesh;
-        return AddPart(part, name, shade, position, scale, euler, collide, null);
+        return AddPart(part, name, shade, position, scale, euler, collide, parent);
+    }
+
+    // An empty object for moving parts to go under (spinning, swinging or bobbing): parts placed under
+    // it are placed from it, and move with it. Moving parts never get colliders (see StillBox).
+    private Transform Pivot(string name, Vector3 position, Vector3 euler = default, Transform parent = null)
+    {
+        GameObject pivot = new GameObject(name);
+        pivot.layer = gameObject.layer;
+        pivot.transform.SetParent(parent != null ? parent : transform, false);
+        pivot.transform.localPosition = position;
+        pivot.transform.localRotation = Quaternion.Euler(euler);
+        return pivot.transform;
+    }
+
+    // On a ragdoll's hat: a still box collider round moving parts, so the hat lands on them instead of
+    // sinking them into the floor. (A collider moving inside a rigidbody every frame makes it jitter.)
+    private void StillBox(Vector3 centre, Vector3 size)
+    {
+        if (!solid) return;
+        BoxCollider box = gameObject.AddComponent<BoxCollider>();
+        box.center = centre;
+        box.size = size;
     }
 
     private Renderer AddPart(GameObject part, string name, Shade shade, Vector3 position, Vector3 scale, Vector3 euler, bool collide, Transform parent)

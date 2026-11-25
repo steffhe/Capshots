@@ -32,9 +32,9 @@ public class CustomizeMenu : MenuPanel
 
     // Panel layout, in canvas units from the panel's centre
     private const float PanelWidth = 640f;
-    private const float PanelHeight = 760f;
+    private const float PanelHeight = 820f;
     private const float ColumnWidth = 560f;
-    private const float RowStep = 36f;
+    private const float RowStep = 32f;
     // The hats are listed in two columns, left to right then down, with this gap between them
     private const float HatColumnGap = 8f;
     // Gap between the screen's left edge and the panel, in the main menu
