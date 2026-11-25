@@ -6,7 +6,7 @@ Capshots (formerly MultiplayerFPS) is a simple online multiplayer first-person s
 
 ## Play
 
-**In your browser:** go to **[steffhe.github.io/Capshots](https://steffhe.github.io/Capshots/)**. It works in desktop browsers (Chrome, Edge or Firefox) and on phones and tablets, which get on-screen touch controls (see below). On a computer, click the game to lock the mouse. **Esc** releases the mouse and opens the pause menu (also while you wait to respawn); click again after resuming to lock it. Crouch is on `Z` in the browser, because Ctrl+W would close the tab. A controller works in the browser too: browsers only let the game see one after you press a button on it with the game open. If it still does nothing, the browser's console (F12) says which controller the game found. During a match the browser asks before closing or reloading the tab.
+**In your browser:** go to **[steffhe.github.io/Capshots](https://steffhe.github.io/Capshots/)**. It works in desktop browsers (Chrome, Edge or Firefox) and on phones and tablets, which get on-screen touch controls (see below). On a computer, click the game to lock the mouse (Chrome and Edge lock it with raw mouse input, which turns the view sooner and without the system's pointer acceleration). **Esc** releases the mouse and opens the pause menu (also while you wait to respawn); click again after resuming to lock it. Crouch is on `Z` in the browser, because Ctrl+W would close the tab. A controller works in the browser too: browsers only let the game see one after you press a button on it with the game open. If it still does nothing, the browser's console (F12) says which controller the game found. During a match the browser asks before closing or reloading the tab.
 
 **On Windows:**
 

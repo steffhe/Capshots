@@ -90,6 +90,31 @@
         });
       }
 
+      // Lock the mouse with raw input where the browser offers it (Chrome, Edge): mouse movement
+      // then comes straight from the mouse instead of through the system's pointer, which cuts
+      // the delay before the view turns and drops the system's pointer acceleration, like other
+      // shooters. Browsers without it lock the mouse the usual way.
+      (function () {
+        var lock = canvas.requestPointerLock;
+        if (!lock) return;
+        var raw = true;
+        canvas.requestPointerLock = function () {
+          var el = this;
+          if (!raw) return lock.call(el);
+          var result;
+          try { result = lock.call(el, { unadjustedMovement: true }); } catch (e) { raw = false; return lock.call(el); }
+          // Older Chrome returns nothing; newer browsers return a promise that fails without raw input
+          if (result && result.catch) {
+            return result.catch(function (error) {
+              if (!error || error.name !== "NotSupportedError") throw error;
+              raw = false;
+              return lock.call(el);
+            });
+          }
+          return result;
+        };
+      })();
+
       // Right mouse button aims, so don't open the browser's menu
       canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
 
