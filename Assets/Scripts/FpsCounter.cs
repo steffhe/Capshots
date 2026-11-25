@@ -3,7 +3,8 @@ using UnityEngine.UI;
 
 // A small frame rate readout in the top right corner, turned on in Settings (GameSettings.ShowFps).
 // Shows the frames per second and the average and slowest frame time over the last half second,
-// so you can tell a steady low frame rate from one that stutters. Lives for the whole session,
+// so you can tell a steady low frame rate from one that stutters. In the browser it also shows the
+// resolution the world is drawn at, while BrowserGraphics has lowered it. Lives for the whole session,
 // over every scene and menu.
 public class FpsCounter : MonoBehaviour
 {
@@ -83,6 +84,8 @@ public class FpsCounter : MonoBehaviour
         float average = elapsed / frames * 1000f;
         Color colour = fps >= 55f ? new Color(0.5f, 1f, 0.5f) : fps >= 30f ? new Color(1f, 0.85f, 0.3f) : new Color(1f, 0.4f, 0.4f);
         text.text = $"<color=#{ColorUtility.ToHtmlStringRGB(colour)}>{Mathf.RoundToInt(fps)} FPS</color>   {average:0.0} ms   <color=#FFFFFF99>MAX {slowest * 1000f:0} ms</color>";
+        // The browser lowers the resolution when frames are slow (BrowserGraphics)
+        if (BrowserGraphics.RenderScale < 0.999f) text.text += $"   <color=#FFFFFF99>RES {Mathf.RoundToInt(BrowserGraphics.RenderScale * 100f)}%</color>";
         frames = 0;
         elapsed = slowest = 0f;
     }
