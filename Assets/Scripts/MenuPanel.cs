@@ -26,6 +26,10 @@ public abstract class MenuPanel : MonoBehaviour
         Button button = copy.GetComponent<Button>();
         if (button != null)
         {
+            // Its own way round the panel: the template may have explicit moves set for the menu it
+            // came from (the main menu's column wires its buttons by hand), which point at buttons
+            // hidden while the panel is open
+            button.navigation = new Navigation { mode = Navigation.Mode.Automatic };
             for (int i = 0; i < button.onClick.GetPersistentEventCount(); i++)
             {
                 if (button.onClick.GetPersistentMethodName(i) == "TogglePause" || button.onClick.GetPersistentTarget(i) is Launcher)

@@ -50,7 +50,7 @@ public class HatsTests
     [Test]
     public void NextUnlock_IsTheFirstLockedHat()
     {
-        Assert.AreEqual(Hats.CatEarHeadset, Hats.NextUnlock(0));
+        Assert.AreEqual(Hats.Headset, Hats.NextUnlock(0));
         Assert.AreEqual(Hats.BirthdayCake, Hats.NextUnlock(12));
         Assert.AreEqual(-1, Hats.NextUnlock(Hats.UnlockLevel(Hats.Count - 1)));
     }

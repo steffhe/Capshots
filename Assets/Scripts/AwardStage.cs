@@ -10,7 +10,9 @@ using UnityEngine.UI;
 // the award. A player who won several gets one card listing them all. The cards come up one after
 // another, each drone popping in over its card.
 //
-// The drones stand on a little stage of their own, built far above the map and filmed by a camera
+// The drones stand on a little stage of their own, in front of a dark backdrop with neon strips and a
+// glowing disc behind each winner, lit by a spotlight each, with confetti in the
+// winners' colours drifting down, built far above the map and filmed by a camera
 // of its own drawn over the map view, so nothing in the map gets in the way. Purely local
 // presentation: Manager builds it from the awards the host sent (Manager.Awards.cs).
 public class AwardStage : MonoBehaviour
@@ -122,9 +124,145 @@ public class AwardStage : MonoBehaviour
             drone.root.position = drone.home;
             drone.root.rotation = Quaternion.Euler(0f, drone.yaw, 0f);
             Pedestal(feet, entries[i].color);
+            Spotlight(feet, entries[i].color);
             drones.Add(drone);
         }
         Floor(floor.y);
+        Backdrop(entries, floor.y);
+        Confetti(entries, floor.y);
+    }
+
+    // How far behind the drones the backdrop stands
+    private const float BackdropDistance = 4.5f;
+    private static readonly Color BackdropColor = new Color(0.035f, 0.04f, 0.07f);
+
+    // Behind the stage: a dark wall, neon strips running along it in the winners' colours, and a
+    // big soft disc of light on it behind each drone, in that drone's colour
+    private void Backdrop(List<Entry> entries, float floorY)
+    {
+        float wallZ = transform.position.z + BackdropDistance;
+        Transform wall = Primitive(PrimitiveType.Cube, "Backdrop", transform);
+        wall.position = new Vector3(transform.position.x, floorY + 6f, wallZ + 0.1f);
+        wall.localScale = new Vector3(40f, 14f, 0.2f);
+        Paint(wall, DroneBody.ShellMaterial, BackdropColor, Color.black);
+
+        // Neon strips: one low, one high, and a thin one between, each in turn of the winners' colours
+        float[] heights = { 0.5f, 3.9f, 4.15f };
+        float[] thickness = { 0.05f, 0.05f, 0.025f };
+        for (int i = 0; i < heights.Length; i++)
+        {
+            Color color = entries.Count > 0 ? entries[i % entries.Count].color : Color.white;
+            Transform strip = Primitive(PrimitiveType.Cube, "Neon", transform);
+            strip.position = new Vector3(transform.position.x, floorY + heights[i], wallZ - 0.02f);
+            strip.localScale = new Vector3(40f, thickness[i], 0.03f);
+            Paint(strip, DroneBody.GlowMaterial, color, color * 2f);
+        }
+
+        // A soft glowing disc behind each drone, and a brighter ring round it. Each is sized to the
+        // gap to its nearest neighbour, so with the drones close together they don't run into each other.
+        const float MaxHalo = 2.75f, HaloGap = 0.3f;
+        for (int i = 0; i < drones.Count && i < entries.Count; i++)
+        {
+            float room = MaxHalo;
+            for (int j = 0; j < drones.Count; j++)
+            {
+                if (j != i) room = Mathf.Min(room, Mathf.Abs(drones[j].home.x - drones[i].home.x) - HaloGap);
+            }
+            float size = Mathf.Max(0.8f, room);
+            Vector3 behind = new Vector3(drones[i].home.x, floorY + 2f, wallZ - 0.03f);
+            // The ring: a bright disc, with the dim one over it leaving only its edge showing
+            Transform ring = Primitive(PrimitiveType.Cylinder, "Halo Ring", transform);
+            ring.position = behind;
+            ring.rotation = Quaternion.Euler(90f, 0f, 0f);
+            ring.localScale = new Vector3(size, 0.004f, size);
+            Paint(ring, DroneBody.GlowMaterial, entries[i].color, entries[i].color * 1.4f);
+            Transform disc = Primitive(PrimitiveType.Cylinder, "Halo", transform);
+            disc.position = behind - Vector3.forward * 0.01f;
+            disc.rotation = Quaternion.Euler(90f, 0f, 0f);
+            float inner = size - 0.12f;
+            disc.localScale = new Vector3(inner, 0.004f, inner);
+            Color dim = Color.Lerp(BackdropColor, entries[i].color, 0.35f);
+            Paint(disc, DroneBody.GlowMaterial, dim, entries[i].color * 0.35f);
+        }
+    }
+
+    // A spotlight from above and in front, making a pool of light round each drone
+    private void Spotlight(Vector3 feet, Color color)
+    {
+        Light spot = NewLight("Spot", LightType.Spot, Color.Lerp(Color.white, color, 0.25f), 12f);
+        spot.transform.position = feet + new Vector3(0f, 5f, -2.5f);
+        spot.transform.rotation = Quaternion.LookRotation(feet + Vector3.up * 0.6f - spot.transform.position);
+        spot.range = 12f;
+        spot.spotAngle = 32f;
+        spot.innerSpotAngle = 18f;
+    }
+
+    private static void Paint(Transform part, Material material, Color color, Color emission)
+    {
+        Renderer r = part.GetComponent<Renderer>();
+        r.sharedMaterial = material;
+        r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        MaterialPropertyBlock block = new MaterialPropertyBlock();
+        block.SetColor("_BaseColor", color);
+        block.SetColor("_Color", color);
+        block.SetColor("_EmissionColor", emission);
+        r.SetPropertyBlock(block);
+    }
+
+    // Confetti drifting down over the stage, in the winners' colours and white, spinning as it
+    // falls and starting again at the top
+    private class Piece
+    {
+        public Transform transform;
+        public Vector3 spin;
+        public float fall, sway, phase;
+    }
+    private readonly List<Piece> confetti = new List<Piece>();
+    private float confettiTop, confettiBottom;
+    private const int ConfettiCount = 70;
+
+    private void Confetti(List<Entry> entries, float floorY)
+    {
+        confettiBottom = floorY - 0.2f;
+        confettiTop = floorY + 5.5f;
+        Vector3 centre = transform.position;
+        for (int i = 0; i < ConfettiCount; i++)
+        {
+            Transform piece = Primitive(PrimitiveType.Cube, "Confetti", transform);
+            piece.position = new Vector3(centre.x + Random.Range(-6f, 6f), Random.Range(confettiBottom, confettiTop), centre.z + Random.Range(-2f, 4f));
+            piece.rotation = Random.rotation;
+            piece.localScale = new Vector3(0.08f, 0.005f, 0.13f);
+            Renderer r = piece.GetComponent<Renderer>();
+            r.sharedMaterial = DroneBody.GlowMaterial;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            Color color = entries.Count > 0 && i % 4 != 3 ? entries[i % entries.Count].color : Color.white;
+            MaterialPropertyBlock block = new MaterialPropertyBlock();
+            block.SetColor("_BaseColor", color);
+            block.SetColor("_Color", color);
+            block.SetColor("_EmissionColor", color * 0.5f);
+            r.SetPropertyBlock(block);
+            confetti.Add(new Piece
+            {
+                transform = piece,
+                spin = Random.onUnitSphere * Random.Range(120f, 360f),
+                fall = Random.Range(0.5f, 1.1f),
+                sway = Random.Range(0.15f, 0.4f),
+                phase = Random.value * 10f,
+            });
+        }
+    }
+
+    private void FallConfetti(float dt, float time)
+    {
+        foreach (Piece p in confetti)
+        {
+            Vector3 at = p.transform.position;
+            at.y -= p.fall * dt;
+            at.x += Mathf.Sin(time * 1.3f + p.phase) * p.sway * dt;
+            if (at.y < confettiBottom) at.y = confettiTop;
+            p.transform.position = at;
+            p.transform.Rotate(p.spin * dt, Space.Self);
+        }
     }
 
     private void LoadForms()
@@ -253,7 +391,8 @@ public class AwardStage : MonoBehaviour
     {
         Transform floor = Primitive(PrimitiveType.Cylinder, "Floor", transform);
         floor.position = new Vector3(transform.position.x, y - 0.01f, transform.position.z + 1f);
-        floor.localScale = new Vector3(18f, 0.01f, 10f);
+        // Out to the backdrop at the back, and past the edges of the shot at the sides
+        floor.localScale = new Vector3(40f, 0.01f, 12f);
         Renderer r = floor.GetComponent<Renderer>();
         // The drone's shell material, which builds always include (a primitive's default material
         // can be left out of a build, and then draws pink)
@@ -382,6 +521,7 @@ public class AwardStage : MonoBehaviour
     private void Update()
     {
         float time = Time.time;
+        FallConfetti(Time.deltaTime, time);
         foreach (Drone drone in drones)
         {
             if (drone.shownAt < 0f) continue;

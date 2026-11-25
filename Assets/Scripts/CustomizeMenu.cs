@@ -9,7 +9,8 @@ using UnityEngine.UI;
 // main menu, pointing at a locked hat (or tapping it) shows it on the player model as a see-through
 // grey preview; it can't be worn until it's unlocked.
 // In the main menu the panel sits on the left, where the menu column was, so the player model
-// stays in view wearing the hat picked. In a match, a new hat shows on your drone at once.
+// stays in view wearing the hat picked, and can be turned round by dragging it (or with a
+// controller's right stick; see MenuScenery.Turnable). In a match, a new hat shows on your drone at once.
 public class CustomizeMenu : MenuPanel
 {
     private Transform anchor;
@@ -39,6 +40,8 @@ public class CustomizeMenu : MenuPanel
     private int seenLevel;
     // What was selected when the panel opened (its button), to go back to with a controller
     private Selectable returnTo;
+    // In the main menu: a hint under the model saying it can be turned (see MenuScenery.Turnable)
+    private Text turnHint;
 
     // Whether the panel is showing (the pause menu's B button leaves it to close itself)
     public override bool IsOpen => panel != null && panel.activeSelf;
@@ -96,6 +99,8 @@ public class CustomizeMenu : MenuPanel
         returnTo = MenuNavigation.Current;
         if (mainButtons != null) mainButtons.SetActive(false);
         panel.SetActive(true);
+        if (inMainMenu) MenuScenery.Turnable = true;
+        if (turnHint != null) turnHint.gameObject.SetActive(true);
         // Looking at the hats: the ones unlocked since last time are marked NEW this time, and the
         // Customize button's NEW badge goes
         seenLevel = GameSettings.HatsSeenLevel;
@@ -113,6 +118,8 @@ public class CustomizeMenu : MenuPanel
         pinned = -1;
         Preview(-1);
         if (panel != null) panel.SetActive(false);
+        if (inMainMenu) MenuScenery.Turnable = false;
+        if (turnHint != null) turnHint.gameObject.SetActive(false);
         if (mainButtons != null) mainButtons.SetActive(true);
         MenuNavigation.Focus(returnTo);
     }
@@ -126,6 +133,7 @@ public class CustomizeMenu : MenuPanel
         if (!OptionPicker.Showing && MenuNavigation.TakeBack()) { Close(); return; }
         // With a controller, a locked hat is previewed while it's selected (as pointing at it does)
         if (inMainMenu && MenuNavigation.UsingGamepad) PreviewSelected();
+        if (turnHint != null) turnHint.text = MenuNavigation.UsingGamepad ? "RIGHT STICK  ·  TURN YOUR DRONE" : "DRAG  ·  TURN YOUR DRONE";
         // In the main menu, Esc closes the panel (in a match it unpauses, closing it as above)
         if (inMainMenu && !OptionPicker.Showing)
         {
@@ -191,6 +199,15 @@ public class CustomizeMenu : MenuPanel
         GameObject done = NewButton(content, "DONE", Close);
         UITheme.StyleButton(done.GetComponent<Button>(), UITheme.ButtonStyle.Primary);
         Place(done, new Vector2(0f, -top + 50f), new Vector2(ColumnWidth, 52f));
+
+        if (inMainMenu)
+        {
+            // Under the model, right of the panel
+            turnHint = UITheme.NewText("Turn Hint", anchor, 16, UITheme.MutedText, TextAnchor.MiddleCenter);
+            turnHint.raycastTarget = false;
+            UITheme.Place(turnHint.rectTransform, new Vector2(0.62f, 0f), new Vector2(0f, 56f), new Vector2(420f, 24f));
+            turnHint.gameObject.SetActive(false);
+        }
     }
 
     private void AddHatRow(RectTransform parent, int hat, float y, int column)

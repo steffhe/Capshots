@@ -14,6 +14,12 @@ using UnityEngine.AI;
 [DisallowMultipleComponent]
 public class BotBrain : MonoBehaviour
 {
+    private void Awake()
+    {
+        path = new NavMeshPath();
+        coverPath = new NavMeshPath();
+    }
+
     private Player player;
     private Weapon weapon;
     private Manager manager;
@@ -36,7 +42,9 @@ public class BotBrain : MonoBehaviour
     private float lastSeenAt = -100f;
 
     // Moving: the path being followed and where to
-    private readonly NavMeshPath path = new NavMeshPath();
+    // Made in Awake: Unity doesn't allow making a NavMeshPath in a field initializer (it throws, and
+    // the fields after it are never set)
+    private NavMeshPath path;
     private Vector3[] corners = new Vector3[0];
     private int cornerIndex;
     // The path stops short of where it was going: there's no walkable way all the way there
@@ -54,7 +62,7 @@ public class BotBrain : MonoBehaviour
     private Vector3 coverPoint;
     private float retreatUntil;
     private float nextCoverSearchAt;
-    private readonly NavMeshPath coverPath = new NavMeshPath();
+    private NavMeshPath coverPath;
 
     // Sidestepping while fighting
     private float strafeDirection = 1f;
