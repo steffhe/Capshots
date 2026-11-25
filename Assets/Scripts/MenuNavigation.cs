@@ -153,6 +153,12 @@ public class MenuNavigation : MonoBehaviour
         if (old != null) DestroyImmediate(old);
         InputSystemUIInputModule module = events.gameObject.AddComponent<InputSystemUIInputModule>();
         module.AssignDefaultActions();
+        // Only the left stick and d-pad move between buttons: the right stick turns the drone in
+        // Customize (see MenuScenery), and would otherwise also jump round the hat list
+        if (module.move != null && module.move.action != null)
+        {
+            module.move.action.ApplyBindingOverride(new InputBinding { path = "<Gamepad>/rightStick", overridePath = "" });
+        }
     }
 
     private static bool GamepadUsed()

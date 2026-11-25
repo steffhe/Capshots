@@ -30,6 +30,16 @@ public class MenuScenery : MonoBehaviour
     private Vector3 modelPosition;
     private float modelYaw;
 
+    // In Customize, the model can be turned round to see the hat from every side: dragged with the
+    // mouse or a finger (anywhere off the menu), or with a controller's right stick. It keeps
+    // spinning a little after a flick, and turns back to face the camera when Customize closes.
+    public static bool Turnable { get; set; }
+    private const float DragTurn = 0.45f;     // degrees per pixel dragged
+    private const float StickTurn = 200f;     // degrees a second at full stick
+    private float turnYaw, turnSpeed;
+    private bool dragging;
+    private float lastDragX;
+
     private float fadeIn;
     private Volume volume;
 
@@ -226,14 +236,65 @@ public class MenuScenery : MonoBehaviour
         if (model != null)
         {
             // Glance towards the cursor, and breathe
-            modelYaw = Mathf.Lerp(modelYaw, -lean.x * 14f, 1f - Mathf.Exp(-dt * 3f));
-            model.rotation = Quaternion.Euler(0f, modelYaw, 0f) * modelRotation;
+            modelYaw = Mathf.Lerp(modelYaw, Turnable ? 0f : -lean.x * 14f, 1f - Mathf.Exp(-dt * 3f));
+            Turn(dt);
+            model.rotation = Quaternion.Euler(0f, modelYaw + turnYaw, 0f) * modelRotation;
             model.position = modelPosition + Vector3.up * (Mathf.Sin(time * 1.6f) * 0.012f);
         }
     }
 
+    // Turns the model round while Customize is open (see Turnable), or back to face the camera
+    private void Turn(float dt)
+    {
+        if (dt <= 0f) return;
+        if (!Turnable)
+        {
+            dragging = false;
+            turnSpeed = 0f;
+            turnYaw = Mathf.LerpAngle(turnYaw, 0f, 1f - Mathf.Exp(-dt * 5f));
+            if (Mathf.Abs(Mathf.DeltaAngle(turnYaw, 0f)) < 0.05f) turnYaw = 0f;
+            return;
+        }
+
+        // Dragging: started off the menu, so dragging a slider or scrolling the hat list doesn't turn it.
+        // Dragging right turns the model's front to the right.
+        Pointer pointer = Pointer.current;
+        bool held = pointer != null && pointer.press.isPressed;
+        if (held && pointer.press.wasPressedThisFrame)
+        {
+            UnityEngine.EventSystems.EventSystem events = UnityEngine.EventSystems.EventSystem.current;
+            dragging = events == null || !events.IsPointerOverGameObject();
+            lastDragX = pointer.position.ReadValue().x;
+        }
+        if (!held) dragging = false;
+        if (dragging)
+        {
+            float x = pointer.position.ReadValue().x;
+            float step = -(x - lastDragX) * DragTurn;
+            lastDragX = x;
+            turnYaw += step;
+            // Its speed, for the spin it keeps after letting go
+            turnSpeed = Mathf.Lerp(turnSpeed, step / dt, 1f - Mathf.Exp(-dt * 20f));
+            return;
+        }
+
+        Gamepad pad = Gamepad.current;
+        float stick = pad != null ? pad.rightStick.ReadValue().x : 0f;
+        if (Mathf.Abs(stick) > 0.15f)
+        {
+            turnSpeed = -stick * StickTurn;
+        }
+        else
+        {
+            // Let go: the spin dies away
+            turnSpeed = Mathf.Lerp(turnSpeed, 0f, 1f - Mathf.Exp(-dt * 3f));
+        }
+        turnYaw = Mathf.Repeat(turnYaw + turnSpeed * dt + 180f, 360f) - 180f;
+    }
+
     private void OnDestroy()
     {
+        Turnable = false;
         GameSettings.StartingGunChanged -= HoldStartingGun;
         if (volume != null)
         {
