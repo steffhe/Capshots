@@ -16,10 +16,15 @@ public static class Browser
     [DllImport("__Internal")] private static extern void CopyBrowserText(string text);
     [DllImport("__Internal")] private static extern int ReadBrowserGamepad(float[] values);
     [DllImport("__Internal")] private static extern string GetBrowserGamepadName();
+    [DllImport("__Internal")] private static extern int GetBrowserGamepadIndex();
+    [DllImport("__Internal")] private static extern int GetBrowserGamepadCount();
 
-    // The first connected controller, from the browser's Gamepad API (see BrowserGamepad)
+    // The controller in use, from the browser's Gamepad API (see BrowserGamepad)
     public static int ReadGamepad(float[] values) => ReadBrowserGamepad(values);
     public static string GamepadName => GetBrowserGamepadName();
+    // Which of the browser's controllers that is (-1 for none), and how many it lists
+    public static int GamepadIndex => GetBrowserGamepadIndex();
+    public static int GamepadCount => GetBrowserGamepadCount();
 
     public static void ClearUrlQuery() => ClearBrowserUrlQuery();
     public static void CopyText(string text) => CopyBrowserText(text);
@@ -55,6 +60,8 @@ public static class Browser
     public static void CopyText(string text) => GUIUtility.systemCopyBuffer = text;
     public static int ReadGamepad(float[] values) => GamepadNone;
     public static string GamepadName => "";
+    public static int GamepadIndex => -1;
+    public static int GamepadCount => 0;
 #endif
 
     // What ReadGamepad found: no controller, one with the browser's "standard" layout, or another
