@@ -7,7 +7,8 @@ using UnityEngine.UI;
 // Unity's own WebGL gamepad support, which didn't pass a controller on (an Xbox pad in Chrome did
 // nothing in a match). Each frame the controller in use, if it has the browser's "standard" layout
 // (Xbox and PlayStation pads in Chrome, Edge and most others, and every controller in Chrome on
-// Android, such as a Backbone), is copied into a gamepad of our own, so GameInput's <Gamepad>
+// Android, such as a Backbone, even one Chrome reports as having no mapping: see Browser.jslib),
+// is copied into a gamepad of our own, so GameInput's <Gamepad>
 // bindings work as on Windows. Unity's own WebGL gamepads are switched off while ours is there,
 // so nothing is read twice.
 //

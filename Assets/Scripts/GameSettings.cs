@@ -74,6 +74,18 @@ public static class GameSettings
     // The main menu's player model, or your drone in a match, puts the new hat on at once
     public static event System.Action HatChanged;
 
+    // The level the player was at when they last looked at their hats in Customize: hats unlocked
+    // since then are new (a NEW badge on the Customize button, and on their rows). 0 at first, so
+    // every unlocked hat starts out new.
+    private const string HatsSeenLevelKey = "hats.seenLevel";
+    public static int HatsSeenLevel
+    {
+        get => PlayerPrefs.GetInt(HatsSeenLevelKey, 0);
+        set { PlayerPrefs.SetInt(HatsSeenLevelKey, value); PlayerPrefs.Save(); }
+    }
+
+    public static bool HasNewHats => Hats.AnyUnlockedBetween(HatsSeenLevel, Launcher.myProfile.level);
+
     public static float Volume
     {
         get => PlayerPrefs.GetFloat(VolumeKey, 1f);

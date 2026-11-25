@@ -6,7 +6,8 @@ using UnityEngine.UI;
 // A dropdown list for menu options with several choices (map, mode, bots, graphics, starting gun):
 // clicking the option's button drops a list of every choice under it (above it if there's no room
 // below), the current one highlighted. Picking one closes it; so does clicking anywhere else, Esc,
-// or the button going away. Built at runtime in the menu's style (UITheme).
+// a controller's B, or the button going away. With a controller, up and down move through the list
+// (and only the list) and A picks. Built at runtime in the menu's style (UITheme).
 public class OptionPicker : MonoBehaviour
 {
     private const float Gap = 4f, Padding = 4f, MinRowHeight = 34f, MaxRowHeight = 44f;
@@ -39,6 +40,7 @@ public class OptionPicker : MonoBehaviour
         coverImage.color = new Color(0f, 0f, 0f, 0f);
         Button coverButton = cover.GetComponent<Button>();
         coverButton.transition = Selectable.Transition.None;
+        coverButton.navigation = new Navigation { mode = Navigation.Mode.None };
         coverButton.onClick.AddListener(Close);
 
         OptionPicker picker = cover.AddComponent<OptionPicker>();
@@ -71,6 +73,7 @@ public class OptionPicker : MonoBehaviour
         panelRect.anchoredPosition = new Vector2(min.x, top);
         panelRect.sizeDelta = new Vector2(width, height);
 
+        Button[] rows = new Button[options.Length];
         for (int i = 0; i < options.Length; i++)
         {
             int index = i;
@@ -86,19 +89,37 @@ public class OptionPicker : MonoBehaviour
             Button button = row.GetComponent<Button>();
             UITheme.StyleButtonBackground(button, i == selected ? UITheme.ButtonStyle.Primary : UITheme.ButtonStyle.Secondary, 6f);
             button.onClick.AddListener(() => picker.Pick(index));
+            rows[i] = button;
 
             Text label = UITheme.NewText("Label", row.transform, 18, UITheme.TextColor, TextAnchor.MiddleLeft);
             UITheme.Inset(label.rectTransform, 14f, 14f);
             label.text = options[i];
         }
+
+        // A controller moves up and down the list, and can't wander off it to the buttons behind
+        for (int i = 0; i < rows.Length; i++)
+        {
+            rows[i].navigation = new Navigation
+            {
+                mode = Navigation.Mode.Explicit,
+                selectOnUp = rows[(i + rows.Length - 1) % rows.Length],
+                selectOnDown = rows[(i + 1) % rows.Length],
+            };
+        }
+        MenuNavigation.Focus(rows[Mathf.Clamp(selected, 0, rows.Length - 1)]);
     }
 
     public static void Close()
     {
         if (open == null) return;
         closedFrame = Time.frameCount;
+        Button owner = open.owner;
+        // Gone at once (not at the end of the frame), so a controller's selection can't stay on it
+        open.gameObject.SetActive(false);
         Destroy(open.gameObject);
         open = null;
+        // A controller goes back to the option's button
+        MenuNavigation.Focus(owner);
     }
 
     private void Pick(int index)
@@ -113,7 +134,8 @@ public class OptionPicker : MonoBehaviour
         // The button went away (its tab or menu closed): so does the list
         if (owner == null || !owner.isActiveAndEnabled) { Close(); return; }
         Keyboard keyboard = Keyboard.current;
-        if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame) Close();
+        if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame) { Close(); return; }
+        if (MenuNavigation.TakeBack()) Close();
     }
 
     private void OnDestroy()

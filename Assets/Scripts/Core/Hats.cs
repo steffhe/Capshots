@@ -2,24 +2,38 @@ using System.Collections.Generic;
 
 // The hats players can wear, and the level each one unlocks at. A hat is unlocked once the player's
 // level reaches it, so nothing about unlocks is saved: only which hat is picked (ProfileData.hat).
-// A hat's number is its place in this list, which is what's saved and sent over the network, so new
-// hats go on the end. Every hat is drawn in the player's (or their team's) colour by PlayerCap.
+// A hat's number is its place in this list, which is what's saved and sent over the network: hats
+// are kept in unlock order, so adding one before a saved hat changes which hat that save picks.
+// Every hat is drawn in the player's (or their team's) colour by PlayerCap.
 public static class Hats
 {
-    public const int Cap = 0, BackwardsCap = 1, Beanie = 2, BucketHat = 3, HardHat = 4,
-        PropellerBeanie = 5, TopHat = 6, VikingHelmet = 7, Crown = 8, Halo = 9;
+    public const int Cap = 0, CatEarHeadset = 1, BackwardsCap = 2, TrafficCone = 3, Beanie = 4,
+        ChefsHat = 5, BucketHat = 6, Antenna = 7, GraduationCap = 8, HardHat = 9, Plunger = 10,
+        WindUpKey = 11, PropellerBeanie = 12, BirthdayCake = 13, CowboyHat = 14, Siren = 15, TopHat = 16,
+        RadarDish = 17, Sombrero = 18, JesterHat = 19, VikingHelmet = 20, PirateHat = 21,
+        PlasmaGlobe = 22, Fishbowl = 23, Crown = 24, Ufo = 25, WizardHat = 26, DevilHorns = 27, Atom = 28, Halo = 29;
 
     private static readonly string[] names =
     {
-        "CAP", "BACKWARDS CAP", "BEANIE", "BUCKET HAT", "HARD HAT",
-        "PROPELLER BEANIE", "TOP HAT", "VIKING HELMET", "CROWN", "HALO",
+        "CAP", "CAT-EAR HEADSET", "BACKWARDS CAP", "TRAFFIC CONE", "BEANIE",
+        "CHEF'S HAT", "BUCKET HAT", "ANTENNA", "GRADUATION CAP", "HARD HAT", "PLUNGER",
+        "WIND-UP KEY", "PROPELLER BEANIE", "BIRTHDAY CAKE", "COWBOY HAT", "SIREN", "TOP HAT",
+        "RADAR DISH", "SOMBRERO", "JESTER HAT", "VIKING HELMET", "PIRATE HAT",
+        "PLASMA GLOBE", "FISHBOWL", "CROWN", "UFO", "WIZARD HAT", "DEVIL HORNS", "ATOM", "HALO",
     };
 
     // Early hats come within the first few matches; later ones are long-term goals
-    private static readonly int[] unlockLevels = { 0, 2, 4, 6, 9, 12, 16, 20, 25, 30 };
+    private static readonly int[] unlockLevels =
+    {
+        0, 1, 2, 3, 4,
+        5, 6, 7, 8, 9, 10,
+        11, 12, 13, 14, 15, 16,
+        17, 18, 19, 20, 22,
+        23, 24, 25, 26, 27, 28, 29, 30,
+    };
 
-    // Bots wear one of the first few hats, so they look like players who've played a little
-    public const int BotHatCount = 5;
+    // Bots wear one of the hats unlocked by level 9, so they look like players who've played a little
+    public const int BotHatCount = 10;
 
     public static int Count => names.Length;
 
@@ -43,6 +57,16 @@ public static class Hats
             if (unlockLevels[i] > oldLevel && unlockLevels[i] <= newLevel) unlocked.Add(i);
         }
         return unlocked;
+    }
+
+    // Whether going from one level to another unlocks any hat (UnlockedBetween, without the list)
+    public static bool AnyUnlockedBetween(int oldLevel, int newLevel)
+    {
+        for (int i = 0; i < unlockLevels.Length; i++)
+        {
+            if (unlockLevels[i] > oldLevel && unlockLevels[i] <= newLevel) return true;
+        }
+        return false;
     }
 
     // The next hat still to unlock at this level, or -1 if they're all unlocked

@@ -43,6 +43,10 @@ public class SettingsMenu : MenuPanel
     // In the main menu rather than the pause menu
     private bool inMainMenu;
 
+    public override bool IsOpen => panel != null && panel.activeSelf;
+    // What was selected when the panel opened (its button), to go back to with a controller
+    private Selectable returnTo;
+
     public static SettingsMenu Create(Pause pause)
     {
         return pause.gameObject.AddComponent<SettingsMenu>();
@@ -137,6 +141,8 @@ public class SettingsMenu : MenuPanel
     {
         // Unpausing hides the whole pause menu: go back to the main pause buttons for next time
         if (panel != null && panel.activeSelf && !anchor.gameObject.activeSelf) CloseSettings();
+        // The controller's B closes the panel, in the main menu and the pause menu
+        if (panel != null && panel.activeSelf && !GameInput.IsRebinding && !OptionPicker.Showing && MenuNavigation.TakeBack()) CloseSettings();
         // In the main menu, Esc closes the panel (in a match it unpauses, closing it as above)
         if (inMainMenu && panel != null && panel.activeSelf && !GameInput.IsRebinding && !OptionPicker.Showing)
         {
@@ -307,6 +313,9 @@ public class SettingsMenu : MenuPanel
     private void Rebind(BindingRow row)
     {
         if (GameInput.IsRebinding) return;
+        // These are keyboard and mouse bindings: pressed with a controller's A, it would wait for a
+        // key with no way to cancel from the controller
+        if (MenuNavigation.UsingGamepad) return;
 
         row.key.text = "PRESS A KEY  (ESC CANCELS)";
         row.key.color = UITheme.TextColor;
@@ -336,6 +345,7 @@ public class SettingsMenu : MenuPanel
 
     private void OpenSettings()
     {
+        returnTo = MenuNavigation.Current;
         mainButtons.SetActive(false);
         panel.SetActive(true);
 
@@ -346,12 +356,14 @@ public class SettingsMenu : MenuPanel
         volumeSlider.SetValueWithoutNotify(GameSettings.Volume);
         RefreshLabels();
         RefreshBindings();
+        MenuNavigation.Focus(xSensSlider);
     }
 
     private void CloseSettings()
     {
         panel.SetActive(false);
         mainButtons.SetActive(true);
+        MenuNavigation.Focus(returnTo);
     }
 
     #endregion
