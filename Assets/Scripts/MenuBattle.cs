@@ -185,7 +185,8 @@ public class MenuBattle : MonoBehaviour
         DestroyImmediate(body.GetComponent<Collider>());
         DestroyImmediate(head.GetComponent<Collider>());
 
-        DroneBody.Dress(body, head, bot.color);
+        // Each with a face of its own, as in a match
+        DroneBody.Dress(body, head, bot.color, false, false, Random.Range(0, Faces.Count));
         PlayerCap.Attach(head, bot.color, false, Random.Range(0, Hats.BotHatCount));
 
         bot.holder = new GameObject("Weapon").transform;

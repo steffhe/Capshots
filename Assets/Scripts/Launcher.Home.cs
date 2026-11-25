@@ -245,7 +245,7 @@ public partial class Launcher
         customizeRect.anchorMin = customizeRect.anchorMax = new Vector2(0.5f, 0.5f);
         customizeRect.pivot = new Vector2(0.5f, 1f);
         customizeRect.sizeDelta = new Vector2(CustomizeWidth, CustomizeHeight);
-        TwoLineLabel(customize, "CUSTOMIZE DRONE", "HATS  ·  WEAPONS", 20);
+        TwoLineLabel(customize, "CUSTOMIZE DRONE", "HATS  ·  FACES  ·  WEAPONS", 20);
         newHatsBadge = AddBadge(customize, "NEW");
         // The badge sits on the button's top right corner, so it doesn't cover the label
         UITheme.Place((RectTransform)newHatsBadge.transform, new Vector2(1f, 1f), new Vector2(10f, 10f), new Vector2(52f, 22f));

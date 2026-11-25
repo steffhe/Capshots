@@ -190,7 +190,7 @@ public class PlayerCap : MonoBehaviour
         Seams(r * 1.0f, 1.09f, 4, Shade.Main, 1.22f / 1.09f);
 
         Transform pom = Pivot("Pom-pom", new Vector3(0f, 1.18f * r, 0f));
-        HatDangle.Add(pom.gameObject, Vector3.up, 0.18f * r, 260f, 0.35f, 3f);
+        HatDangle.Add(pom.gameObject, Vector3.up, 0.18f * r, 600f, 0.15f, 6f);
         Primitive("Pom", PrimitiveType.Sphere, Shade.Light, new Vector3(0f, 0.2f * r, 0f), Vector3.one * (0.46f * r), Vector3.zero, false, pom);
         // Tufts all round it, so it looks fluffy rather than a ball
         for (int i = 0; i < 10; i++)
@@ -544,7 +544,7 @@ public class PlayerCap : MonoBehaviour
         if (!solid)
         {
             cone = Pivot("Wobble", new Vector3(0f, sit * r, 0f));
-            HatDangle.Add(cone.gameObject, Vector3.up, height * r, 320f, 0f, 3.5f);
+            HatDangle.Add(cone.gameObject, Vector3.up, height * r, 1400f, 0f, 9f);
         }
         Vector3 at = solid ? new Vector3(0f, sit * r, 0f) : Vector3.zero;
         surface = Surface.Plastic;
@@ -626,7 +626,7 @@ public class PlayerCap : MonoBehaviour
             Vector3 euler = new Vector3(-10f, 0f, -28f * side);
             Vector3 up = Quaternion.Euler(euler) * Vector3.up;
             Transform rod = Pivot("Antenna", basePoint, euler);
-            HatDangle.Add(rod.gameObject, up, length * r, 90f, 0.06f, 1.6f);
+            HatDangle.Add(rod.gameObject, up, length * r, 500f, 0.02f, 6f);
             surface = Surface.Metal;
             Primitive("Rod", PrimitiveType.Cylinder, Shade.Main, new Vector3(0f, 0.3f * length * r, 0f), new Vector3(0.06f * r, 0.3f * length * r, 0.06f * r), Vector3.zero, false, rod);
             Primitive("Rod", PrimitiveType.Cylinder, Shade.Light, new Vector3(0f, 0.75f * length * r, 0f), new Vector3(0.04f * r, 0.25f * length * r, 0.04f * r), Vector3.zero, false, rod);
@@ -657,7 +657,7 @@ public class PlayerCap : MonoBehaviour
         if (!solid)
         {
             stick = Pivot("Handle", cupTop, euler);
-            HatDangle.Add(stick.gameObject, up, handle * r, 110f, 0.05f, 2f);
+            HatDangle.Add(stick.gameObject, up, handle * r, 600f, 0.02f, 7f);
             at = Vector3.zero;
             along = Vector3.up;
             stickEuler = Vector3.zero;
@@ -734,7 +734,7 @@ public class PlayerCap : MonoBehaviour
             float a = i * Mathf.PI * 2f / poms;
             Vector3 hang = new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a)) * (1.88f * r) + Vector3.up * ((sit + 0.2f) * r);
             Transform pom = Pivot("Pom-pom", hang);
-            HatDangle.Add(pom.gameObject, Vector3.down, 0.2f * r, 40f, 1f, 2.5f);
+            HatDangle.Add(pom.gameObject, Vector3.down, 0.2f * r, 40f, 1f, 4f);
             Primitive("String", PrimitiveType.Cylinder, Shade.Dark, new Vector3(0f, -0.07f * r, 0f), new Vector3(0.02f * r, 0.07f * r, 0.02f * r), Vector3.zero, false, pom);
             Primitive("Pom", PrimitiveType.Sphere, i % 2 == 0 ? Shade.Light : Shade.Main, new Vector3(0f, -0.2f * r, 0f), Vector3.one * (0.14f * r), Vector3.zero, false, pom);
         }
@@ -793,7 +793,7 @@ public class PlayerCap : MonoBehaviour
         // A big feather sticking up and back out of the left side, swaying as the player moves
         Vector3 plumeWay = new Vector3(-0.55f, 1f, -0.65f).normalized;
         Transform plume = Pivot("Plume", new Vector3(-0.42f * r, (sit + 0.42f) * r, -0.2f * r), Quaternion.FromToRotation(Vector3.up, plumeWay).eulerAngles);
-        HatDangle.Add(plume.gameObject, plumeWay, 0.9f * r, 70f, 0.1f, 2f);
+        HatDangle.Add(plume.gameObject, plumeWay, 0.9f * r, 250f, 0.05f, 5f);
         surface = Surface.Satin;
         Primitive("Quill", PrimitiveType.Cylinder, Shade.Light, new Vector3(0f, 0.45f * r, 0f), new Vector3(0.025f * r, 0.45f * r, 0.025f * r), Vector3.zero, false, plume);
         surface = Surface.Felt;
@@ -865,7 +865,7 @@ public class PlayerCap : MonoBehaviour
         float joint = radius * narrow * r;
         Vector3 tipWay = Quaternion.Euler(-25f, 0f, 0f) * Vector3.up;
         Transform tip = Pivot("Tip", new Vector3(0f, (sit + lower - 0.02f) * r, 0f), new Vector3(-25f, 0f, 0f));
-        HatDangle.Add(tip.gameObject, tipWay, 0.9f * r, 60f, 0.25f, 2.2f);
+        HatDangle.Add(tip.gameObject, tipWay, 0.9f * r, 200f, 0.15f, 5f);
         Primitive("Tip Joint", PrimitiveType.Sphere, Shade.Main, Vector3.zero, Vector3.one * (2f * joint), Vector3.zero, false, tip);
         Generated("Tip", Frustum(0f, false), Shade.Main, Vector3.zero, new Vector3(joint, 0.9f * r, joint), Vector3.zero, false, tip);
         surface = Surface.Satin;
@@ -922,7 +922,7 @@ public class PlayerCap : MonoBehaviour
         Primitive("Cord", PrimitiveType.Cube, Shade.Light, new Vector3(0.5f * corner * r, top + 0.01f * r, 0f), new Vector3(corner * r, 0.02f * r, 0.03f * r), Vector3.zero, false);
 
         Transform tassel = Pivot("Tassel", new Vector3(corner * r, top, 0f));
-        HatDangle.Add(tassel.gameObject, Vector3.down, 0.5f * r, 0f, 1f, 2f);
+        HatDangle.Add(tassel.gameObject, Vector3.down, 0.5f * r, 0f, 1f, 4f);
         Primitive("String", PrimitiveType.Cylinder, Shade.Light, new Vector3(0f, -0.15f * r, 0f), new Vector3(0.03f * r, 0.15f * r, 0.03f * r), Vector3.zero, false, tassel);
         Primitive("Knot", PrimitiveType.Sphere, Shade.Light, new Vector3(0f, -0.3f * r, 0f), Vector3.one * (0.09f * r), Vector3.zero, false, tassel);
         Generated("Tassel", Frustum(0.35f, true), Shade.Light, new Vector3(0f, -0.52f * r, 0f), new Vector3(0.1f * r, 0.24f * r, 0.1f * r), Vector3.zero, false, tassel);
@@ -1115,7 +1115,7 @@ public class PlayerCap : MonoBehaviour
             Vector3 way = ways[i].normalized;
             // Rooted at the cap's surface, so their open ends don't show inside a hat knocked off
             Transform prong = Pivot("Prong", way * (1.065f * r), Quaternion.FromToRotation(Vector3.up, way).eulerAngles);
-            HatDangle.Add(prong.gameObject, way, length * r, 140f, 0.6f, 2.5f);
+            HatDangle.Add(prong.gameObject, way, length * r, 300f, 0.4f, 5f);
             surface = Surface.Felt;
             Generated("Prong", Frustum(0.2f, false), prongShades[i], Vector3.zero, new Vector3(0.26f * r, length * r, 0.26f * r), Vector3.zero, false, prong);
             // A ring of the other shade round the prong, near its end
