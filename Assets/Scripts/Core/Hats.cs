@@ -7,17 +7,17 @@ using System.Collections.Generic;
 // Every hat is drawn in the player's (or their team's) colour by PlayerCap.
 public static class Hats
 {
-    public const int Cap = 0, CatEarHeadset = 1, BackwardsCap = 2, TrafficCone = 3, Beanie = 4,
+    public const int Cap = 0, Headset = 1, BackwardsCap = 2, TrafficCone = 3, Beanie = 4,
         ChefsHat = 5, BucketHat = 6, Antenna = 7, GraduationCap = 8, HardHat = 9, Plunger = 10,
-        WindUpKey = 11, PropellerBeanie = 12, BirthdayCake = 13, CowboyHat = 14, Siren = 15, TopHat = 16,
+        MilitaryBeret = 11, PropellerBeanie = 12, BirthdayCake = 13, CowboyHat = 14, Siren = 15, TopHat = 16,
         RadarDish = 17, Sombrero = 18, JesterHat = 19, VikingHelmet = 20, PirateHat = 21,
         PlasmaGlobe = 22, Fishbowl = 23, Crown = 24, Ufo = 25, WizardHat = 26, DevilHorns = 27, Atom = 28, Halo = 29;
 
     private static readonly string[] names =
     {
-        "CAP", "CAT-EAR HEADSET", "BACKWARDS CAP", "TRAFFIC CONE", "BEANIE",
+        "CAP", "GAMER HEADSET", "BACKWARDS CAP", "TRAFFIC CONE", "BEANIE",
         "CHEF'S HAT", "BUCKET HAT", "ANTENNA", "GRADUATION CAP", "HARD HAT", "PLUNGER",
-        "WIND-UP KEY", "PROPELLER BEANIE", "BIRTHDAY CAKE", "COWBOY HAT", "SIREN", "TOP HAT",
+        "MILITARY BERET", "PROPELLER BEANIE", "BIRTHDAY CAKE", "COWBOY HAT", "SIREN", "TOP HAT",
         "RADAR DISH", "SOMBRERO", "JESTER HAT", "VIKING HELMET", "PIRATE HAT",
         "PLASMA GLOBE", "FISHBOWL", "CROWN", "UFO", "WIZARD HAT", "DEVIL HORNS", "ATOM", "HALO",
     };

@@ -48,8 +48,9 @@ public class HatDangle : MonoBehaviour
         // Verlet: keeps its speed (less damping), pulled by the spring and gravity
         Vector3 velocity = (tip - lastTip) * Mathf.Exp(-damping * dt);
         lastTip = tip;
-        Vector3 pull = (restTip - tip) * stiffness + Physics.gravity * gravity;
-        tip += velocity + pull * dt * dt;
+        // The spring's step is capped so a stiff part (like the chef's hat) can't overshoot and shake
+        // when the frame rate drops: past 0.9 of the way back in one frame it would start to
+        tip += velocity + (restTip - tip) * Mathf.Min(stiffness * dt * dt, 0.9f) + Physics.gravity * (gravity * dt * dt);
 
         // It can't stretch: keep the tip its length from the pivot
         Vector3 direction = tip - pivot;
