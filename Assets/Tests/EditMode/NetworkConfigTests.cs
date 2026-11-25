@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Fusion;
 using NUnit.Framework;
 using UnityEngine;
+using Assert = NUnit.Framework.Assert;
 
 // The network settings in Assets/Photon/Fusion/Resources/NetworkProjectConfig.fusion. Fusion quietly
 // falls back to its default tick rate if the one set there isn't valid, so this checks it is.
@@ -30,7 +31,7 @@ public class NetworkConfigTests
             ServerTickInterval = Value(text, "ServerTickInterval"),
             ServerSendInterval = Value(text, "ServerSendInterval"),
         };
-        Assert.AreEqual(TickRate.ValidateResult.Ok, TickRate.ValidateSelection(selection));
+        Assert.AreEqual(TickRate.ValidateResult.Ok, selection.Validate());
         Assert.AreEqual(selection.Client, TickRate.Resolve(selection).Client);
     }
 
