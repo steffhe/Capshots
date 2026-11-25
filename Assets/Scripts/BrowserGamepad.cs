@@ -165,8 +165,17 @@ public class BrowserGamepad : MonoBehaviour
         else
         {
             Debug.Log("Controller: " + name + ". It hasn't got the browser's standard layout, so Unity reads it as a joystick and its buttons may not match." + others);
-            ShowNotice("CONTROLLER: " + ShortName(name) + "\n<size=16>NOT A STANDARD LAYOUT, SO IT MAY NOT WORK" + (count > 1 ? ". PRESS A BUTTON ON YOUR CONTROLLER" : "") + "</size>");
+            // With what the browser says about it, small, to tell what went wrong from a screenshot
+            ShowNotice("CONTROLLER: " + ShortName(name) + "\n<size=16>NOT A STANDARD LAYOUT, SO IT MAY NOT WORK" + (count > 1 ? ". PRESS A BUTTON ON YOUR CONTROLLER" : "") + "</size>"
+                + "\n<size=12>" + Detail(name) + "</size>", 10f);
         }
+    }
+
+    // The details in brackets after the browser's name for a controller (mapping, buttons, platform)
+    private static string Detail(string name)
+    {
+        int bracket = name.IndexOf('(');
+        return bracket >= 0 ? name.Substring(bracket) : "";
     }
 
     // The browser's name for a controller, without the details in brackets (ids, mapping)
@@ -179,7 +188,7 @@ public class BrowserGamepad : MonoBehaviour
     }
 
     // A line at the top of the screen for a few seconds, over everything
-    private void ShowNotice(string message)
+    private void ShowNotice(string message, float seconds = 5f)
     {
         if (noticeCanvas == null)
         {
@@ -195,13 +204,13 @@ public class BrowserGamepad : MonoBehaviour
             RectTransform rect = background.rectTransform;
             rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 1f);
             rect.anchoredPosition = new Vector2(0f, -24f);
-            rect.sizeDelta = new Vector2(760f, 72f);
+            rect.sizeDelta = new Vector2(1100f, 96f);
             notice = UITheme.NewText("Text", rect, 22, UITheme.TextColor, TextAnchor.MiddleCenter);
             if (notice.font == null) notice.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         }
         if (UITheme.Font != null) notice.font = UITheme.Font;
         notice.text = message;
         noticeCanvas.enabled = true;
-        noticeUntil = Time.unscaledTime + 5f;
+        noticeUntil = Time.unscaledTime + seconds;
     }
 }

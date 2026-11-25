@@ -64,7 +64,8 @@ mergeInto(LibraryManager.library, {
   // connected, 1 for one with the browser's "standard" layout, 2 for any other.
   //
   // Chrome on Android lays out every controller in the standard order, even one it doesn't know,
-  // which it reports as having no mapping ("") all the same. So there every controller counts as
+  // which it reports as having no mapping ("") all the same. (Android is spotted even with the
+  // browser's "desktop site" setting on, which makes the phone claim to be a Linux computer.) So there every controller counts as
   // standard: otherwise an unknown one (some Bluetooth pads) would be read as a joystick, and
   // nothing in the game would answer it.
   //
@@ -75,7 +76,13 @@ mergeInto(LibraryManager.library, {
   ReadBrowserGamepad: function (values) {
     if (!navigator.getGamepads) return 0;
     var pads = navigator.getGamepads();
-    var android = /Android/i.test(navigator.userAgent);
+    // Android: said in the user agent, or (with "desktop site" on, which hides it there) by the
+    // browser's platform hints, or a touch screen on Linux, which is what Android then claims to be
+    var ua = navigator.userAgent || "";
+    var hints = navigator.userAgentData;
+    var android = /Android/i.test(ua)
+      || (hints && /Android/i.test(hints.platform || ""))
+      || (navigator.maxTouchPoints > 0 && /Linux/i.test(ua) && !/CrOS/i.test(ua));
     var standard = function (p) { return p.mapping === "standard" || android; };
     // Which controllers had a button down last time: only a new press counts, so a device that
     // always reports a button held can't take over
@@ -136,7 +143,9 @@ mergeInto(LibraryManager.library, {
     var i = Module.gamepadIndex;
     if (navigator.getGamepads && i !== undefined && i >= 0) {
       var pad = navigator.getGamepads()[i];
-      if (pad && pad.connected) name = pad.id + " (mapping: " + (pad.mapping || "none") + ")";
+      var platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "";
+      if (pad && pad.connected) name = pad.id + " (mapping: " + (pad.mapping || "none") + ", " + pad.buttons.length + " buttons, "
+        + pad.axes.length + " axes, platform: " + platform + ", touch: " + (navigator.maxTouchPoints || 0) + ")";
     }
     var size = lengthBytesUTF8(name) + 1;
     var buffer = _malloc(size);
