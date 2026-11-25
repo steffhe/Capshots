@@ -39,17 +39,17 @@ public class HatsTests
     [Test]
     public void UnlockedBetween_ListsOnlyTheNewHats()
     {
-        // Levels 3 to 9 pass the beanie (4), bucket hat (6) and hard hat (9)
-        CollectionAssert.AreEqual(new[] { Hats.Beanie, Hats.BucketHat, Hats.HardHat }, Hats.UnlockedBetween(3, 9));
-        CollectionAssert.IsEmpty(Hats.UnlockedBetween(4, 5));
+        // Levels 3 to 9 pass the beanie (4), chef's hat (5), bucket hat (6), antenna (7) and hard hat (9)
+        CollectionAssert.AreEqual(new[] { Hats.Beanie, Hats.ChefsHat, Hats.BucketHat, Hats.Antenna, Hats.HardHat }, Hats.UnlockedBetween(3, 9));
+        CollectionAssert.IsEmpty(Hats.UnlockedBetween(7, 8));
         CollectionAssert.IsEmpty(Hats.UnlockedBetween(5, 5));
     }
 
     [Test]
     public void NextUnlock_IsTheFirstLockedHat()
     {
-        Assert.AreEqual(Hats.BackwardsCap, Hats.NextUnlock(0));
-        Assert.AreEqual(Hats.TopHat, Hats.NextUnlock(12));
+        Assert.AreEqual(Hats.CatEarHeadset, Hats.NextUnlock(0));
+        Assert.AreEqual(Hats.CowboyHat, Hats.NextUnlock(12));
         Assert.AreEqual(-1, Hats.NextUnlock(Hats.UnlockLevel(Hats.Count - 1)));
     }
 

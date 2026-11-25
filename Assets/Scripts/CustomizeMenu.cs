@@ -31,10 +31,12 @@ public class CustomizeMenu : MenuPanel
     private readonly List<HatRow> hatRows = new List<HatRow>();
 
     // Panel layout, in canvas units from the panel's centre
-    private const float PanelWidth = 500f;
-    private const float PanelHeight = 720f;
-    private const float ColumnWidth = 420f;
+    private const float PanelWidth = 640f;
+    private const float PanelHeight = 760f;
+    private const float ColumnWidth = 560f;
     private const float RowStep = 36f;
+    // The hats are listed in two columns, left to right then down, with this gap between them
+    private const float HatColumnGap = 8f;
     // Gap between the screen's left edge and the panel, in the main menu
     private const float MainMenuMargin = 80f;
 
@@ -140,7 +142,7 @@ public class CustomizeMenu : MenuPanel
         Place(startingGun, new Vector2(0f, top - 146f), new Vector2(ColumnWidth, 48f));
         startingGunText = startingGun.GetComponentInChildren<Text>();
 
-        // Hats: every one, in unlock order
+        // Hats: every one, in unlock order, in two columns
         float y = top - 204f;
         NewLabel(content, "CAP", new Vector2(0f, y), ColumnWidth, 16, TextAnchor.MiddleLeft).color = UITheme.AccentText;
         levelText = NewLabel(content, "", new Vector2(0f, y), ColumnWidth, 14, TextAnchor.MiddleRight);
@@ -149,8 +151,8 @@ public class CustomizeMenu : MenuPanel
         y -= 36f;
         for (int i = 0; i < Hats.Count; i++)
         {
-            AddHatRow(content, i, y);
-            y -= RowStep;
+            AddHatRow(content, i, y, i % 2);
+            if (i % 2 == 1 || i == Hats.Count - 1) y -= RowStep;
         }
 
         nextUnlockText = NewLabel(content, "", new Vector2(0f, y - 4f), ColumnWidth, 14, TextAnchor.MiddleCenter);
@@ -161,11 +163,13 @@ public class CustomizeMenu : MenuPanel
         Place(done, new Vector2(0f, -top + 50f), new Vector2(ColumnWidth, 52f));
     }
 
-    private void AddHatRow(RectTransform parent, int hat, float y)
+    private void AddHatRow(RectTransform parent, int hat, float y, int column)
     {
         HatRow row = new HatRow { hat = hat };
         GameObject button = NewButton(parent, "", () => GameSettings.Hat = row.hat);
-        Place(button, new Vector2(0f, y), new Vector2(ColumnWidth, RowStep - 4f));
+        float width = (ColumnWidth - HatColumnGap) / 2f;
+        float x = (column == 0 ? -1f : 1f) * (width + HatColumnGap) / 2f;
+        Place(button, new Vector2(x, y), new Vector2(width, RowStep - 4f));
         row.button = button.GetComponent<Button>();
 
         row.name = button.GetComponentInChildren<Text>();

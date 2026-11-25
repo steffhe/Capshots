@@ -2,24 +2,29 @@ using System.Collections.Generic;
 
 // The hats players can wear, and the level each one unlocks at. A hat is unlocked once the player's
 // level reaches it, so nothing about unlocks is saved: only which hat is picked (ProfileData.hat).
-// A hat's number is its place in this list, which is what's saved and sent over the network, so new
-// hats go on the end. Every hat is drawn in the player's (or their team's) colour by PlayerCap.
+// A hat's number is its place in this list, which is what's saved and sent over the network: hats
+// are kept in unlock order, so adding one before a saved hat changes which hat that save picks.
+// Every hat is drawn in the player's (or their team's) colour by PlayerCap.
 public static class Hats
 {
-    public const int Cap = 0, BackwardsCap = 1, Beanie = 2, BucketHat = 3, HardHat = 4,
-        PropellerBeanie = 5, TopHat = 6, VikingHelmet = 7, Crown = 8, Halo = 9;
+    public const int Cap = 0, CatEarHeadset = 1, BackwardsCap = 2, TrafficCone = 3, Beanie = 4,
+        ChefsHat = 5, BucketHat = 6, Antenna = 7, HardHat = 8, Plunger = 9, PropellerBeanie = 10,
+        CowboyHat = 11, TopHat = 12, Sombrero = 13, VikingHelmet = 14, PirateHat = 15, Fishbowl = 16,
+        Crown = 17, WizardHat = 18, DevilHorns = 19, Halo = 20;
 
     private static readonly string[] names =
     {
-        "CAP", "BACKWARDS CAP", "BEANIE", "BUCKET HAT", "HARD HAT",
-        "PROPELLER BEANIE", "TOP HAT", "VIKING HELMET", "CROWN", "HALO",
+        "CAP", "CAT-EAR HEADSET", "BACKWARDS CAP", "TRAFFIC CONE", "BEANIE",
+        "CHEF'S HAT", "BUCKET HAT", "ANTENNA", "HARD HAT", "PLUNGER", "PROPELLER BEANIE",
+        "COWBOY HAT", "TOP HAT", "SOMBRERO", "VIKING HELMET", "PIRATE HAT", "FISHBOWL",
+        "CROWN", "WIZARD HAT", "DEVIL HORNS", "HALO",
     };
 
     // Early hats come within the first few matches; later ones are long-term goals
-    private static readonly int[] unlockLevels = { 0, 2, 4, 6, 9, 12, 16, 20, 25, 30 };
+    private static readonly int[] unlockLevels = { 0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 12, 14, 16, 18, 20, 22, 24, 25, 27, 28, 30 };
 
-    // Bots wear one of the first few hats, so they look like players who've played a little
-    public const int BotHatCount = 5;
+    // Bots wear one of the hats unlocked by level 9, so they look like players who've played a little
+    public const int BotHatCount = 9;
 
     public static int Count => names.Length;
 

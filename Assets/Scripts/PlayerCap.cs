@@ -3,9 +3,9 @@ using UnityEngine;
 // The hat every player wears (see Hats for the list): the baseball cap to start with, and more as
 // they level up. Built from primitives and a few generated meshes. Each part is made of a surface
 // (Surface): cotton twill, knit, felt, satin, glossy plastic, metal or hammered metal, each a
-// material in Resources/Hats with its own shine and a tiling normal map (Tools/SurfaceTextures), or a
-// glow for the halo. It sits on
-// the head, so on a dead player's ragdoll it flies off together with the head (or on its own, on a
+// material in Resources/Hats with its own shine and a tiling normal map (Tools/SurfaceTextures),
+// clear glass for the fishbowl, or a glow for the halo and other glowing bits. It sits on the
+// head, so on a dead player's ragdoll it flies off together with the head (or on its own, on a
 // headshot). Every hat is drawn in shades of one colour: the team colour in Team Deathmatch,
 // otherwise a colour picked from the player's actor number, so every client shows the same colour
 // for the same player without sending anything.
@@ -15,14 +15,16 @@ public class PlayerCap : MonoBehaviour
     private enum Shade { Main, Dark, Light }
 
     // What a part is made of: a material in Resources/Hats ("Hat" + the name), or the glow
-    private enum Surface { Twill, Knit, Felt, Satin, Plastic, Metal, Hammered, Glow }
+    private enum Surface { Twill, Knit, Felt, Satin, Plastic, Metal, Hammered, Glass, Glow }
     private static readonly System.Collections.Generic.Dictionary<Surface, Material> surfaceMaterials = new System.Collections.Generic.Dictionary<Surface, Material>();
     // How brightly a glowing part (the halo) glows, in its light shade
     private const float HaloGlow = 1.8f;
+    // How see-through glass is: its colour's alpha
+    private const float GlassAlpha = 0.2f;
 
     private Renderer[] renderers;
     private Shade[] shades;
-    private bool[] glows;
+    private Surface[] surfaces;
     private static Material capMaterial;
 
     // The hat this is (see Hats)
@@ -31,7 +33,7 @@ public class PlayerCap : MonoBehaviour
     // While building: the parts so far, and whether they get colliders (a ragdoll's hat)
     private readonly System.Collections.Generic.List<Renderer> parts = new System.Collections.Generic.List<Renderer>();
     private readonly System.Collections.Generic.List<Shade> partShades = new System.Collections.Generic.List<Shade>();
-    private readonly System.Collections.Generic.List<bool> partGlows = new System.Collections.Generic.List<bool>();
+    private readonly System.Collections.Generic.List<Surface> partSurfaces = new System.Collections.Generic.List<Surface>();
     // What the parts being built are made of (set by each hat as it builds)
     private Surface surface = Surface.Twill;
     private bool solid;
@@ -61,10 +63,10 @@ public class PlayerCap : MonoBehaviour
         cap.Build(hat, r);
         cap.renderers = cap.parts.ToArray();
         cap.shades = cap.partShades.ToArray();
-        cap.glows = cap.partGlows.ToArray();
+        cap.surfaces = cap.partSurfaces.ToArray();
         cap.parts.Clear();
         cap.partShades.Clear();
-        cap.partGlows.Clear();
+        cap.partSurfaces.Clear();
         cap.SetColor(color);
         return cap;
     }
@@ -79,10 +81,12 @@ public class PlayerCap : MonoBehaviour
         {
             if (renderers[i] == null) continue;
             Color c = shades[i] == Shade.Dark ? dark : shades[i] == Shade.Light ? light : color;
+            Surface kind = surfaces != null ? surfaces[i] : Surface.Twill;
+            if (kind == Surface.Glass) c.a = GlassAlpha;
             renderers[i].GetPropertyBlock(block);
             block.SetColor("_BaseColor", c); // URP
             block.SetColor("_Color", c);     // built-in shaders
-            block.SetColor("_EmissionColor", glows != null && glows[i] ? c * HaloGlow : Color.black);
+            block.SetColor("_EmissionColor", kind == Surface.Glow ? c * HaloGlow : Color.black);
             renderers[i].SetPropertyBlock(block);
         }
     }
@@ -103,6 +107,17 @@ public class PlayerCap : MonoBehaviour
             case Hats.VikingHelmet: BuildVikingHelmet(r); break;
             case Hats.Crown: BuildCrown(r); break;
             case Hats.Halo: BuildHalo(r); break;
+            case Hats.CatEarHeadset: BuildCatEarHeadset(r); break;
+            case Hats.TrafficCone: BuildTrafficCone(r); break;
+            case Hats.ChefsHat: BuildChefsHat(r); break;
+            case Hats.Antenna: BuildAntenna(r); break;
+            case Hats.Plunger: BuildPlunger(r); break;
+            case Hats.CowboyHat: BuildCowboyHat(r); break;
+            case Hats.Sombrero: BuildSombrero(r); break;
+            case Hats.PirateHat: BuildPirateHat(r); break;
+            case Hats.Fishbowl: BuildFishbowl(r); break;
+            case Hats.WizardHat: BuildWizardHat(r); break;
+            case Hats.DevilHorns: BuildDevilHorns(r); break;
             default: BuildCap(r, 1f); break;
         }
     }
@@ -275,6 +290,194 @@ public class PlayerCap : MonoBehaviour
         Generated("Ring", Torus(0.24f), Shade.Light, new Vector3(0f, 1.42f * r, 0f), Vector3.one * (0.68f * r), new Vector3(-8f, 0f, 0f), true);
     }
 
+    // A headset with a cat's ears: a band over the head from ear to ear, a round cup over each of the
+    // drone's ear pods with a glowing disc on the outside, and a pointed ear on each side of the band
+    private void BuildCatEarHeadset(float r)
+    {
+        const float band = 1.1f; // the band's radius, round the head's centre
+        surface = Surface.Plastic;
+        // Half a ring, stood up across the head
+        Generated("Band", Torus(0.14f, 180f), Shade.Dark, Vector3.zero, Vector3.one * (band * r), new Vector3(-90f, 0f, 0f), true);
+        for (int side = -1; side <= 1; side += 2)
+        {
+            surface = Surface.Plastic;
+            Primitive("Cup", PrimitiveType.Cylinder, Shade.Main, new Vector3(1.04f * r * side, 0f, 0f), new Vector3(0.62f * r, 0.09f * r, 0.62f * r), new Vector3(0f, 0f, 90f), true);
+            // The ear stands on the band, pointing away from the head's centre
+            float tilt = 35f * side;
+            Vector3 onBand = new Vector3(Mathf.Sin(tilt * Mathf.Deg2Rad), Mathf.Cos(tilt * Mathf.Deg2Rad), 0f) * (band * r);
+            Vector3 euler = new Vector3(0f, 0f, -tilt);
+            Generated("Ear", Frustum(0f, false), Shade.Main, onBand, new Vector3(0.22f * r, 0.4f * r, 0.11f * r), euler, false);
+            Generated("Inner Ear", Frustum(0f, false), Shade.Light, onBand + new Vector3(0f, 0f, 0.05f * r), new Vector3(0.12f * r, 0.27f * r, 0.07f * r), euler, false);
+            surface = Surface.Glow;
+            Primitive("Light", PrimitiveType.Cylinder, Shade.Light, new Vector3(1.05f * r * side, 0f, 0f), new Vector3(0.3f * r, 0.1f * r, 0.3f * r), new Vector3(0f, 0f, 90f), false);
+        }
+    }
+
+    // A traffic cone sitting on the head: a square base, the cone, and two light stripes round it
+    private void BuildTrafficCone(float r)
+    {
+        const float sit = 0.62f, radius = 0.78f, height = 1.7f, top = 0.16f;
+        surface = Surface.Plastic;
+        Primitive("Base", PrimitiveType.Cube, Shade.Dark, new Vector3(0f, sit * r, 0f), new Vector3(1.75f * r, 0.08f * r, 1.75f * r), Vector3.zero, true);
+        Generated("Cone", Frustum(top, true), Shade.Main, new Vector3(0f, (sit + 0.04f) * r, 0f), new Vector3(radius * r, height * r, radius * r), Vector3.zero, true);
+        Stripe("Stripe", Shade.Light, (sit + 0.04f) * r, radius * r, top, height * r, 0.45f * r, 0.72f * r);
+        Stripe("Stripe", Shade.Light, (sit + 0.04f) * r, radius * r, top, height * r, 0.98f * r, 1.18f * r);
+    }
+
+    // A chef's hat: a tall band round the head and a big puffy top of round lumps
+    private void BuildChefsHat(float r)
+    {
+        surface = Surface.Twill;
+        Generated("Band", Frustum(1.04f, false), Shade.Main, new Vector3(0f, 0.38f * r, 0f), new Vector3(0.94f * r, 0.5f * r, 0.94f * r), Vector3.zero, true);
+        Primitive("Puff", PrimitiveType.Sphere, Shade.Light, new Vector3(0f, 1.3f * r, 0f), new Vector3(1.15f * r, 0.85f * r, 1.15f * r), Vector3.zero, true);
+        const int lumps = 6;
+        for (int i = 0; i < lumps; i++)
+        {
+            float angle = (i + 0.5f) * Mathf.PI * 2f / lumps;
+            Vector3 at = new Vector3(Mathf.Sin(angle) * 0.55f * r, 1.15f * r, Mathf.Cos(angle) * 0.55f * r);
+            Primitive("Puff", PrimitiveType.Sphere, Shade.Light, at, Vector3.one * (0.75f * r), Vector3.zero, false);
+        }
+    }
+
+    // Rabbit-ear antennas: a round metal base on top of the head with two rods in a V, each with a
+    // glowing ball on its tip
+    private void BuildAntenna(float r)
+    {
+        surface = Surface.Metal;
+        Vector3 basePoint = new Vector3(0f, 1.02f * r, 0f);
+        Primitive("Base", PrimitiveType.Sphere, Shade.Dark, new Vector3(0f, 0.98f * r, 0f), new Vector3(0.45f * r, 0.28f * r, 0.45f * r), Vector3.zero, true);
+        const float length = 1.5f;
+        for (int side = -1; side <= 1; side += 2)
+        {
+            Vector3 euler = new Vector3(-10f, 0f, -28f * side);
+            Vector3 up = Quaternion.Euler(euler) * Vector3.up;
+            surface = Surface.Metal;
+            Primitive("Rod", PrimitiveType.Cylinder, Shade.Main, basePoint + up * (0.5f * length * r), new Vector3(0.05f * r, 0.5f * length * r, 0.05f * r), euler, false);
+            surface = Surface.Glow;
+            Primitive("Tip", PrimitiveType.Sphere, Shade.Light, basePoint + up * (length * r), Vector3.one * (0.16f * r), Vector3.zero, false);
+        }
+    }
+
+    // A plunger stuck to the top of the head: a rubber cup with a handle leaning a little to one side
+    private void BuildPlunger(float r)
+    {
+        const float cupY = 0.72f, cupHeight = 0.38f, handle = 1.5f;
+        surface = Surface.Plastic;
+        Generated("Cup", Dome(), Shade.Main, new Vector3(0f, cupY * r, 0f), new Vector3(0.62f * r, cupHeight * r, 0.62f * r), Vector3.zero, true);
+        Vector3 cupTop = new Vector3(0f, (cupY + cupHeight - 0.02f) * r, 0f);
+        Vector3 euler = new Vector3(4f, 0f, -8f);
+        Vector3 up = Quaternion.Euler(euler) * Vector3.up;
+        surface = Surface.Satin;
+        Primitive("Handle", PrimitiveType.Cylinder, Shade.Light, cupTop + up * (0.5f * handle * r), new Vector3(0.13f * r, 0.5f * handle * r, 0.13f * r), euler, true);
+        Primitive("Knob", PrimitiveType.Sphere, Shade.Dark, cupTop + up * (handle * r), Vector3.one * (0.2f * r), Vector3.zero, false);
+    }
+
+    // A cowboy hat: a creased crown, slightly longer front to back, with a band, on a brim that
+    // curls up at the sides
+    private void BuildCowboyHat(float r)
+    {
+        const float sit = 0.6f;
+        surface = Surface.Felt;
+        Primitive("Brim", PrimitiveType.Cylinder, Shade.Dark, new Vector3(0f, sit * r, 0f), new Vector3(1.7f * r, 0.025f * r, 2.9f * r), Vector3.zero, true);
+        for (int side = -1; side <= 1; side += 2)
+        {
+            // Tipped up 30 degrees, its inner edge meeting the flat brim
+            Primitive("Brim Curl", PrimitiveType.Cylinder, Shade.Dark, new Vector3(0.98f * r * side, (sit + 0.25f) * r, 0f), new Vector3(1.0f * r, 0.025f * r, 2.5f * r), new Vector3(0f, 0f, 30f * side), true);
+        }
+        Generated("Crown", Frustum(0.82f, true), Shade.Main, new Vector3(0f, (sit - 0.02f) * r, 0f), new Vector3(0.88f * r, 0.8f * r, 0.98f * r), Vector3.zero, true);
+        // The crease down the middle of the top
+        Primitive("Crease", PrimitiveType.Cube, Shade.Dark, new Vector3(0f, (sit + 0.77f) * r, 0f), new Vector3(0.08f * r, 0.03f * r, 1.2f * r), Vector3.zero, false);
+        surface = Surface.Satin;
+        Stripe("Band", Shade.Dark, (sit - 0.02f) * r, 0.88f * r, 0.82f, 0.8f * r, 0.06f * r, 0.2f * r, 0.98f / 0.88f);
+    }
+
+    // A sombrero: a tall rounded crown with a band, on a huge brim whose edge turns up
+    private void BuildSombrero(float r)
+    {
+        const float sit = 0.6f, crownRadius = 0.85f, crownTop = 0.55f, crownHeight = 1.0f;
+        surface = Surface.Felt;
+        Primitive("Brim", PrimitiveType.Cylinder, Shade.Dark, new Vector3(0f, sit * r, 0f), new Vector3(3.4f * r, 0.025f * r, 3.4f * r), Vector3.zero, true);
+        Generated("Brim Edge", Frustum(1.1f, false), Shade.Light, new Vector3(0f, sit * r, 0f), new Vector3(1.7f * r, 0.22f * r, 1.7f * r), Vector3.zero, false);
+        Generated("Crown", Frustum(crownTop, true), Shade.Main, new Vector3(0f, sit * r, 0f), new Vector3(crownRadius * r, crownHeight * r, crownRadius * r), Vector3.zero, true);
+        surface = Surface.Satin;
+        Stripe("Band", Shade.Light, sit * r, crownRadius * r, crownTop, crownHeight * r, 0.05f * r, 0.22f * r);
+    }
+
+    // A pirate's bicorne: a tall, flat half-round hat worn sideways over a skullcap, with a skull and
+    // crossbones on the front
+    private void BuildPirateHat(float r)
+    {
+        surface = Surface.Felt;
+        Crown(Vector3.one * (1.07f * r));
+        Generated("Bicorne", Dome(), Shade.Main, new Vector3(0f, 0.42f * r, 0f), new Vector3(1.4f * r, 0.95f * r, 0.55f * r), Vector3.zero, true);
+        // Its front face is about 0.46 of the head's radius forward, at the skull's height
+        surface = Surface.Plastic;
+        Primitive("Skull", PrimitiveType.Sphere, Shade.Light, new Vector3(0f, 1.0f * r, 0.47f * r), new Vector3(0.22f * r, 0.22f * r, 0.08f * r), Vector3.zero, false);
+        for (int side = -1; side <= 1; side += 2)
+        {
+            Primitive("Bone", PrimitiveType.Cube, Shade.Light, new Vector3(0f, 0.84f * r, 0.46f * r), new Vector3(0.42f * r, 0.06f * r, 0.04f * r), new Vector3(0f, 0f, 35f * side), false);
+        }
+    }
+
+    // An astronaut's fishbowl: a clear glass sphere round the whole head, a metal collar round its
+    // bottom, and a little fish swimming round in the space over the head
+    private void BuildFishbowl(float r)
+    {
+        surface = Surface.Glass;
+        Primitive("Bowl", PrimitiveType.Sphere, Shade.Light, new Vector3(0f, 0.12f * r, 0f), Vector3.one * (2.56f * r), Vector3.zero, true);
+        surface = Surface.Metal;
+        Generated("Collar", Torus(0.22f), Shade.Dark, new Vector3(0f, -0.8f * r, 0f), Vector3.one * (0.86f * r), Vector3.zero, false);
+
+        GameObject swim = new GameObject("Swim");
+        swim.layer = gameObject.layer;
+        swim.transform.SetParent(transform, false);
+        swim.transform.localPosition = new Vector3(0f, 1.18f * r, 0f);
+        swim.AddComponent<HatSpinner>().SetSteady(50f);
+        // Facing along its circle: the swim turns clockwise seen from above, so at +x it heads to -z
+        surface = Surface.Plastic;
+        Primitive("Fish", PrimitiveType.Sphere, Shade.Main, new Vector3(0.28f * r, 0f, 0f), new Vector3(0.1f * r, 0.13f * r, 0.2f * r), Vector3.zero, false, swim.transform);
+        Primitive("Tail", PrimitiveType.Cube, Shade.Light, new Vector3(0.28f * r, 0f, 0.13f * r), new Vector3(0.02f * r, 0.12f * r, 0.08f * r), new Vector3(45f, 0f, 0f), false, swim.transform);
+    }
+
+    // A wizard's hat: a wide brim and a tall cone whose tip bends back, with a band and glowing stars
+    private void BuildWizardHat(float r)
+    {
+        const float sit = 0.6f, radius = 0.8f, lower = 1.1f, narrow = 0.42f;
+        surface = Surface.Felt;
+        Primitive("Brim", PrimitiveType.Cylinder, Shade.Dark, new Vector3(0f, sit * r, 0f), new Vector3(2.3f * r, 0.025f * r, 2.3f * r), Vector3.zero, true);
+        Generated("Cone", Frustum(narrow, false), Shade.Main, new Vector3(0f, sit * r, 0f), new Vector3(radius * r, lower * r, radius * r), Vector3.zero, true);
+        float joint = radius * narrow * r;
+        Generated("Tip", Frustum(0f, false), Shade.Main, new Vector3(0f, (sit + lower - 0.02f) * r, 0f), new Vector3(joint, 0.9f * r, joint), new Vector3(-25f, 0f, 0f), false);
+        surface = Surface.Satin;
+        Stripe("Band", Shade.Light, sit * r, radius * r, narrow, lower * r, 0.03f * r, 0.18f * r);
+        surface = Surface.Glow;
+        float[] heights = { 0.4f, 0.62f, 0.8f };
+        float[] angles = { 25f, -55f, 140f };
+        for (int i = 0; i < heights.Length; i++)
+        {
+            float h = heights[i] * lower;
+            float at = radius * (1f - (1f - narrow) * heights[i]) + 0.01f;
+            float a = angles[i] * Mathf.Deg2Rad;
+            Primitive("Star", PrimitiveType.Sphere, Shade.Light, new Vector3(Mathf.Sin(a) * at * r, (sit + h) * r, Mathf.Cos(a) * at * r), Vector3.one * (0.09f * r), Vector3.zero, false);
+        }
+    }
+
+    // Devil horns: a short horn on each side of the top of the head, leaning out then curving up to a point
+    private void BuildDevilHorns(float r)
+    {
+        surface = Surface.Plastic;
+        for (int side = -1; side <= 1; side += 2)
+        {
+            Vector3 root = new Vector3(0.42f * side, 0.86f, 0.22f).normalized * (0.97f * r);
+            Vector3 lowerEuler = new Vector3(12f, 0f, -30f * side);
+            const float lowerHeight = 0.3f, lowerRadius = 0.17f, taper = 0.6f;
+            Generated("Horn", Frustum(taper, false), Shade.Main, root, new Vector3(lowerRadius * r, lowerHeight * r, lowerRadius * r), lowerEuler, true);
+            Vector3 bend = root + Quaternion.Euler(lowerEuler) * Vector3.up * (lowerHeight * r);
+            float tipRadius = lowerRadius * taper * r;
+            Generated("Horn Tip", Frustum(0f, false), Shade.Main, bend, new Vector3(tipRadius, 0.38f * r, tipRadius), new Vector3(4f, 0f, 8f * side), false);
+        }
+    }
+
     #endregion
 
     #region Parts
@@ -290,6 +493,16 @@ public class PlayerCap : MonoBehaviour
             collider.sharedMesh = colliderDome != null ? colliderDome : (colliderDome = BuildDome(4, 12, "Cap Crown Collider", false));
             collider.convex = true; // needed on a moving Rigidbody
         }
+    }
+
+    // A band round a frustum part (bottom at y, bottom radius radius, top radius taper of that, height
+    // height), from from to to above its bottom, a hair outside it. depth stretches it front to back,
+    // for a part stretched the same way.
+    private void Stripe(string name, Shade shade, float y, float radius, float taper, float height, float from, float to, float depth = 1f)
+    {
+        float r0 = radius * (1f - (1f - taper) * from / height) * 1.02f;
+        float r1 = radius * (1f - (1f - taper) * to / height) * 1.02f;
+        Generated(name, Frustum(r1 / r0, false), shade, new Vector3(0f, y + from, 0f), new Vector3(r0, to - from, r0 * depth), Vector3.zero, false);
     }
 
     // A part made from one of Unity's primitives. collide: gets a box collider on a ragdoll's hat.
@@ -325,7 +538,7 @@ public class PlayerCap : MonoBehaviour
         renderer.sharedMaterial = SurfaceMaterial(surface, renderer.sharedMaterial);
         parts.Add(renderer);
         partShades.Add(shade);
-        partGlows.Add(surface == Surface.Glow);
+        partSurfaces.Add(surface);
         return renderer;
     }
 
@@ -447,10 +660,11 @@ public class PlayerCap : MonoBehaviour
         return mesh;
     }
 
-    // A ring lying flat, 1 from its centre to the middle of its tube, the tube thickness/2 across
-    private static Mesh Torus(float thickness)
+    // A ring lying flat, 1 from its centre to the middle of its tube, the tube thickness/2 across.
+    // sweep: how much of the ring there is, in degrees round from +x towards +z (all of it at 360).
+    private static Mesh Torus(float thickness, float sweep = 360f)
     {
-        string key = "Torus " + thickness.ToString("0.###");
+        string key = "Torus " + thickness.ToString("0.###") + " " + sweep.ToString("0.#");
         Mesh mesh;
         if (meshes.TryGetValue(key, out mesh) && mesh != null) return mesh;
 
@@ -461,7 +675,7 @@ public class PlayerCap : MonoBehaviour
         Vector2[] torusUvs = new Vector2[vertices.Length];
         for (int i = 0; i <= segments; i++)
         {
-            float a = 2f * Mathf.PI * i / segments;
+            float a = sweep * Mathf.Deg2Rad * i / segments;
             Vector3 around = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a));
             for (int j = 0; j <= sides; j++)
             {
