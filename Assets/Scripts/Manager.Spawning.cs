@@ -16,6 +16,12 @@ public partial class Manager
     public float spawnSightPenalty = 30f;
     // Random metres added to each spawn point's score, so the choice isn't always the same
     public float spawnRandomness = 5f;
+    // In team modes, spawn points on the player's own side of the map (marked with SpawnSide) count as
+    // this many metres farther from enemies. Maps without SpawnSide markers aren't affected.
+    public float ownSideSpawnBonus = 25f;
+
+    // The SpawnSide of each spawn point (null where there's none), looked up once
+    private SpawnSide[] spawnSides;
 
     // Host only: players waiting to (re)spawn, and when
     private readonly Dictionary<PlayerRef, TickTimer> pendingSpawns = new Dictionary<PlayerRef, TickTimer>();
@@ -67,9 +73,31 @@ public partial class Manager
         else Runner.Spawn(playerPrefabObject, spawn.position, spawn.rotation, player);
     }
 
-    // Picks the spawn point farthest from living enemies, avoiding points an enemy can see
+    // Picks the spawn point farthest from living enemies, avoiding points an enemy can see. On maps whose
+    // spawn points are marked with SpawnSide, a team prefers its own side and lane-only points are left
+    // out of team modes.
     private Transform ChooseSpawnPoint(PlayerRef forPlayer)
     {
+        if (spawnSides == null || spawnSides.Length != spawnPoints.Length)
+        {
+            spawnSides = new SpawnSide[spawnPoints.Length];
+            for (int i = 0; i < spawnPoints.Length; i++) spawnSides[i] = spawnPoints[i] != null ? spawnPoints[i].GetComponent<SpawnSide>() : null;
+        }
+        bool teamMode = IsTeamMode;
+        int team = teamMode ? GetTeam(forPlayer.PlayerId) : -1;
+
+        // The points this mode can use, and those on the player's own side
+        List<Transform> usable = new List<Transform>(spawnPoints.Length);
+        List<Transform> ownSide = new List<Transform>();
+        for (int i = 0; i < spawnPoints.Length; i++)
+        {
+            SpawnSide side = spawnSides[i];
+            if (teamMode && side != null && side.freeForAllOnly) continue;
+            usable.Add(spawnPoints[i]);
+            if (team >= 0 && side != null && side.team == team) ownSide.Add(spawnPoints[i]);
+        }
+        if (usable.Count == 0) usable.AddRange(spawnPoints);
+
         List<Vector3> enemyEyes = new List<Vector3>();
         foreach (Player p in Player.All)
         {
@@ -79,18 +107,20 @@ public partial class Manager
             enemyEyes.Add(p.normalCam != null ? p.normalCam.transform.position : p.transform.position + Vector3.up * 1.5f);
         }
 
-        if (enemyEyes.Count == 0 || spawnPoints.Length <= 1)
+        if (enemyEyes.Count == 0 || usable.Count <= 1)
         {
-            return spawnPoints[Random.Range(0, spawnPoints.Length)];
+            // Nobody to avoid: anywhere on our own side, if the map has sides
+            List<Transform> pool = ownSide.Count > 0 ? ownSide : usable;
+            return pool[Random.Range(0, pool.Count)];
         }
 
         // Players' own bodies and glass walls shouldn't block line of sight
         int sightMask = ~((1 << Layers.RemotePlayer) | (1 << Layers.LocalPlayer) | (1 << Layers.Hitbox) | (1 << Layers.Glass));
 
-        Transform best = spawnPoints[0];
+        Transform best = usable[0];
         float bestScore = float.MinValue;
 
-        foreach (Transform point in spawnPoints)
+        foreach (Transform point in usable)
         {
             Vector3 eye = point.position + Vector3.up * 1.6f;
             float closest = float.MaxValue;
@@ -103,6 +133,7 @@ public partial class Manager
             }
 
             float score = closest - (seen ? spawnSightPenalty : 0f) + Random.Range(0f, spawnRandomness);
+            if (ownSide.Count > 0 && ownSide.Contains(point)) score += ownSideSpawnBonus;
             if (score > bestScore)
             {
                 bestScore = score;
