@@ -58,14 +58,14 @@ def front(form):
     for i in range(4):
         if vents: g.append(P(f"Vent {i+1}", "box", "glow", (X, (st + sb) / 2, vents[i]), (sw + 0.006, vh, 0.014)))
     ly = 0.235 if form == "rail" else 0.215
-    lx = max(0.07, sw / 2) + 0.0035
-    g.append(P("Energy Line", "box", "glow", (X + lx, ly, (1.34 + sf - 0.03) / 2), (0.006, 0.012, sf - 0.03 - 1.34)))
+    lx = max(0.07, sw / 2) + 0.0045
+    g.append(P("Energy Line", "box", "glow", (X + lx, ly, (1.34 + sf - 0.03) / 2), (0.008, 0.016, sf - 0.03 - 1.34)))
     rx = max(0.07, sw / 2) + 0.0055
     g.append(P("Rail", "box", "steel", (X + rx, 0.365, (0.97 + sf - 0.04) / 2), (0.011, 0.014, sf - 0.04 - 0.97)))
     m, ms, mx = {"orbit": ((0.29, 2.155), (0.016, 0.13, 0.35), 0.081), "fan": ((0.36, 1.675), (0.016, 0.08, 0.35), 0.114),
                  "rail": ((0.31, 0.91), (0.014, 0.11, 0.18), 0.078), "tight": ((0.30, 0.98), (0.014, 0.12, 0.15), 0.078)}[form]
     g.append(P("Side Module", "chamfer", "gunmetal", (X + mx, m[0], m[1]), ms, float_=True))
-    g.append(P("Side Glow", "box", "glow", (X + mx + ms[0] / 2 + 0.0015, m[0], m[1]), (0.003, 0.02, ms[2] * 0.8), float_=True))
+    g.append(P("Side Glow", "box", "glow", (X + mx + ms[0] / 2 + 0.002, m[0], m[1]), (0.004, 0.03, ms[2] * 0.8), float_=True))
     if form == "orbit":
         g += [P("Spindle", "cyl", "steel", (X, CY, 2.69), (0.035, 0.035, 0.62)), P("Bore Glow", "cyl", "glow", (X, CY, 3.0), (0.03, 0.03, 0.01)),
               P("Muzzle", "ring", "gunmetal", (X, CY, 3.03), (0.17, 0.17, 0.025), float_=True), P("Muzzle Glow", "ring", "glow", (X, CY, 3.03), (0.15, 0.15, 0.03), float_=True)]

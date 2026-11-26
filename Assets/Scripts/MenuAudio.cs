@@ -4,8 +4,8 @@ using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 // The main menu's sound: a mellow synthwave loop (MenuMusic) and short blips for the buttons: a
-// tick when one is pointed at or picked with a controller, a rising chirp when it's pressed, and a
-// falling one for BACK, DONE and the like. Everything is made in code, like the game's other sounds.
+// tick when one is pointed at or picked with a controller, a soft tap when it's pressed, and a
+// falling chirp for BACK, DONE and the like. Everything is made in code, like the game's other sounds.
 // The Launcher creates it with the menu; it goes with the menu scene, fading the music out when a
 // match starts loading. Music volume is its own setting (GameSettings.MusicVolume), under the
 // master volume.
@@ -116,7 +116,7 @@ public class MenuAudio : MonoBehaviour
     {
         if (instance == null) return;
         instance.lastClickAt = Time.unscaledTime;
-        instance.uiSource.PlayOneShot(goingBack ? back : click, UiLevel);
+        instance.uiSource.PlayOneShot(goingBack ? back : click, goingBack ? UiLevel : UiLevel * 0.75f);
     }
 
     #region Clips
@@ -130,8 +130,14 @@ public class MenuAudio : MonoBehaviour
             float f = Mathf.Lerp(1700f, 2100f, t / 0.035f);
             return Mathf.Sin(2f * Mathf.PI * f * t) * Mathf.Exp(-t * 110f) * Mathf.Clamp01(t * 2000f);
         });
-        // Two quick notes going up (a fifth), with a bright edge
-        click = Make("Menu Click", rate, 0.13f, t => TwoNotes(t, 880f, 1318.5f));
+        // A soft, rounded tap: the hover tick's family, a little lower and fuller (the two-note chirp
+        // it replaced was too much for every press)
+        click = Make("Menu Click", rate, 0.07f, t =>
+        {
+            float f = Mathf.Lerp(1250f, 1500f, t / 0.07f);
+            float body = Mathf.Sin(2f * Mathf.PI * f * t) * 0.8f + Mathf.Sin(2f * Mathf.PI * f * 0.5f * t) * 0.3f;
+            return body * Mathf.Exp(-t * 60f) * Mathf.Clamp01(t * 1500f) * 0.8f;
+        });
         // The same, going down
         back = Make("Menu Back", rate, 0.13f, t => TwoNotes(t, 1046.5f, 698.5f));
     }

@@ -18,9 +18,10 @@ public partial class Launcher
     private const float BackGap = 10f;
     // Each tab's column is raised this much from where the scene has it: the scene left about 290
     // units empty above the logo, and the create tab (which gained rows in code) reached to within
-    // a few units of the bottom of the screen. Raised, its top is 140 from the top of the screen
-    // and its bottom about 155 from the bottom.
-    private const float ColumnRaise = 150f;
+    // a few units of the bottom of the screen. Raised, its top is 210 from the top of the screen and
+    // its bottom about 85 from the bottom: the main tab (shorter, more so in a browser, which has
+    // no Quit) sits nearer the middle than it did at 150, where it looked pinned to the top.
+    private const float ColumnRaise = 80f;
 
     private Text levelText;
     private Text xpText;
@@ -46,7 +47,8 @@ public partial class Launcher
     }
 
     // Dark panel down the left side that fades out towards the player model, so the menu
-    // reads well over the bright sky and floor
+    // reads well over the bright sky and floor. Solid for its first 60% and fading over the rest:
+    // reaching 120 past the middle, the fade starts after the column's right edge, not under it.
     private static void AddSidebar(Transform canvas)
     {
         if (canvas.Find("Sidebar") != null) return;
@@ -57,7 +59,7 @@ public partial class Launcher
         rect.anchorMin = Vector2.zero;
         rect.anchorMax = new Vector2(0.5f, 1f);
         rect.offsetMin = Vector2.zero;
-        rect.offsetMax = new Vector2(-60f, 0f);
+        rect.offsetMax = new Vector2(120f, 0f);
 
         Image image = sidebar.GetComponent<Image>();
         image.sprite = UITheme.FadeRight;

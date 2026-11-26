@@ -3,8 +3,9 @@ using UnityEngine;
 // Makes the players look like they hover instead of walk. Added by Player at runtime, so no prefab changes
 // are needed. Runs on every client from how the player moves on this machine, so it needs no network traffic.
 //  - The body floats a few centimetres up and bobs gently, and leans into the direction it moves, like a drone.
-//  - A glowing disc under the body, with a small light that tints the ground, in the player's colour (the
-//    team colour in Team Deathmatch). It pulses with the bob and brightens while moving.
+//  - A soft glow under the body (brightest in the middle, fading to nothing at its edge, so it reads as
+//    light rather than a solid disc), with a small light that tints the ground, in the player's colour
+//    (the team colour in Team Deathmatch). It pulses with the bob and brightens while moving.
 // Only the body model moves: the hitboxes stay put, so the lean is kept small to keep them lined up.
 public class HoverVisuals : MonoBehaviour
 {
@@ -32,7 +33,9 @@ public class HoverVisuals : MonoBehaviour
     private MaterialPropertyBlock block;
     private Color color;
     private int colorVersion = -1;
-    private const float GlowSize = 0.9f;
+    // Wider than the old solid disc (0.9), as the glow fades out well before its edge
+    private const float GlowSize = 1.3f;
+    private static Texture2D glowTexture;
 
     private static Material glowMaterial;
     private static bool glowMaterialLooked;
@@ -77,17 +80,23 @@ public class HoverVisuals : MonoBehaviour
 
         if (material != null)
         {
-            GameObject disc = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            // A flat quad facing up, painted with a round falloff: a pool of light, not a solid disc
+            GameObject disc = GameObject.CreatePrimitive(PrimitiveType.Quad);
             disc.name = "Disc";
             // Right away, not at the end of the frame: a collider under the player would trip its own movement
             DestroyImmediate(disc.GetComponent<Collider>());
             disc.layer = layer;
             disc.transform.SetParent(glow, false);
-            disc.transform.localScale = new Vector3(GlowSize, 0.004f, GlowSize);
+            disc.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            disc.transform.localScale = new Vector3(GlowSize, GlowSize, 1f);
             glowRenderer = disc.GetComponent<Renderer>();
             glowRenderer.sharedMaterial = material;
             glowRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             glowRenderer.receiveShadows = false;
+            glowRenderer.GetPropertyBlock(block);
+            block.SetTexture("_BaseMap", GlowTexture()); // URP
+            block.SetTexture("_MainTex", GlowTexture()); // built-in shaders
+            glowRenderer.SetPropertyBlock(block);
         }
 
         GameObject lightObject = new GameObject("Light");
@@ -99,6 +108,35 @@ public class HoverVisuals : MonoBehaviour
         glowLight.shadows = LightShadows.None;
 
         RefreshColor();
+    }
+
+    // White, its alpha falling off from the middle: full at the centre, a soft shoulder, nothing at the rim
+    private static Texture2D GlowTexture()
+    {
+        if (glowTexture != null) return glowTexture;
+        const int size = 64;
+        glowTexture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+        {
+            name = "Hover Glow Falloff",
+            wrapMode = TextureWrapMode.Clamp,
+            filterMode = FilterMode.Bilinear,
+            hideFlags = HideFlags.HideAndDontSave,
+        };
+        Color32[] pixels = new Color32[size * size];
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float dx = (x + 0.5f) / size * 2f - 1f, dy = (y + 0.5f) / size * 2f - 1f;
+                float r = Mathf.Sqrt(dx * dx + dy * dy);
+                float a = Mathf.Clamp01(1f - r);
+                a = a * a * (0.6f + 0.4f * a);
+                pixels[y * size + x] = new Color32(255, 255, 255, (byte)(a * 255f));
+            }
+        }
+        glowTexture.SetPixels32(pixels);
+        glowTexture.Apply();
+        return glowTexture;
     }
 
     // A see-through copy of the guns' beam material, which is in every build
@@ -154,9 +192,9 @@ public class HoverVisuals : MonoBehaviour
         float strength = Mathf.Lerp(0.55f, 1f, moving) * (1f - 0.15f * bob);
         if (glowRenderer != null)
         {
-            glowRenderer.transform.localScale = new Vector3(GlowSize, 0.004f, GlowSize) * (1f - 0.08f * bob);
+            glowRenderer.transform.localScale = new Vector3(GlowSize, GlowSize, 1f) * (1f - 0.08f * bob);
             glowRenderer.GetPropertyBlock(block);
-            Color c = new Color(color.r, color.g, color.b, 0.55f * strength);
+            Color c = new Color(color.r, color.g, color.b, 0.75f * strength);
             block.SetColor("_BaseColor", c); // URP
             block.SetColor("_Color", c);     // built-in shaders
             glowRenderer.SetPropertyBlock(block);
