@@ -20,7 +20,8 @@ public class GunModel : MonoBehaviour
     private static readonly string[] MeasuringBlocks = { "Body", "Grip", "Under", "Barrel" };
 
     // How brightly each kind of glowing part glows, times the player's colour
-    private const float CoreGlow = 2.8f, RingGlow = 2.2f, LineGlow = 1.4f, ModuleGlow = 1.6f, MuzzleGlow = 2f, VentGlow = 2.4f, TrimGlow = 1.2f;
+    // (raised after a first look in the game: the parts' lights read dim next to the floating pieces' 2.6)
+    private const float CoreGlow = 4.2f, RingGlow = 3.4f, LineGlow = 2.8f, ModuleGlow = 3f, MuzzleGlow = 3.2f, VentGlow = 3.6f, TrimGlow = 2.6f;
 
     public struct State
     {
@@ -260,7 +261,8 @@ public class GunModel : MonoBehaviour
                     float drift = (0.003f * wave + 0.010f * kick) * aimCalm + 0.035f * s.loose;
                     position.x += item.part.side * drift;
                     position.y += Mathf.Sin(idle * 1.3f + item.phase) * 0.002f - 0.02f * s.loose;
-                    if (s.loose > 0f) rotation *= Quaternion.Euler(Mathf.Sin(idle * 2.3f + item.phase) * 30f * s.loose, 0f, item.part.side * 20f * s.loose);
+                    // Tipped away from the gun (top edge outwards), never into it
+                    if (s.loose > 0f) rotation *= Quaternion.Euler(Mathf.Sin(idle * 2.3f + item.phase) * 30f * s.loose, 0f, -item.part.side * 15f * s.loose);
                     if (item.part.finish == GunDesign.Finish.Glow) glow = ModuleGlow * (1f + 0.8f * kick);
                     break;
                 }

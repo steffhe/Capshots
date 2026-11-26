@@ -403,11 +403,18 @@ public class GunSatellites : MonoBehaviour
 
             if (loose > 0f)
             {
-                // Drift away from the gun and tumble
+                // Drift away from the gun and tumble: outwards from its centre line (with a little
+                // wander round it and along it), never back into it
                 float t = now + phase;
-                Vector3 away = new Vector3(Mathf.Sin(t * 1.7f + i * 2f), Mathf.Sin(t * 1.3f + i * 3.1f) - 0.6f, Mathf.Sin(t * 1.1f + i));
+                Vector3 outward = Outward(position, i);
+                Vector3 round = new Vector3(-outward.y, outward.x, 0f);
+                Vector3 away = outward * (1f + 0.35f * Mathf.Sin(t * 1.7f + i * 2f))
+                    + round * (0.5f * Mathf.Sin(t * 1.3f + i * 3.1f))
+                    + Vector3.forward * (0.5f * Mathf.Sin(t * 1.1f + i));
                 position += away * (drift * loose);
                 rotation *= Quaternion.Euler(Mathf.Sin(t * 2.3f + i) * 50f * loose, Mathf.Sin(t * 1.9f + i * 2f) * 50f * loose, 0f);
+                // However it's turned, the whole piece stays out of the gun's body
+                position = Vector3.Lerp(position, ClearOfBody(position, size, i), loose);
             }
 
             // Re-forming after a change of form: each piece slides from where it was, a little after the last
@@ -461,6 +468,43 @@ public class GunSatellites : MonoBehaviour
                 detail = player == null || player == Player.Local,
             });
         }
+    }
+
+    // Away from the gun's centre line (in its cross-section), for piece i at 'position' in the gun's space
+    private Vector3 Outward(Vector3 position, int i)
+    {
+        Vector2 radial = new Vector2(position.x - shape.body.center.x, position.y - shape.body.center.y);
+        if (radial.sqrMagnitude < 1e-6f)
+        {
+            // On the centre line (a muzzle cap): spread out round it by piece
+            float angle = i * Mathf.PI * 2f / Count;
+            radial = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+        }
+        radial.Normalize();
+        return new Vector3(radial.x, radial.y, 0f);
+    }
+
+    // Moves a piece out of the gun's body if any part of it could be inside, whichever way it's
+    // tumbling: its reach is half its longest side. Out along its own direction from the centre line.
+    private Vector3 ClearOfBody(Vector3 position, Vector3 size, int i)
+    {
+        Bounds body = shape.body;
+        float reach = Mathf.Max(size.x, Mathf.Max(size.y, size.z)) * 0.5f;
+        const float margin = 0.01f;
+        if (position.z < body.min.z - reach || position.z > body.max.z + reach) return position;
+        float ex = body.extents.x + reach + margin, ey = body.extents.y + reach + margin;
+        Vector2 offset = new Vector2(position.x - body.center.x, position.y - body.center.y);
+        if (Mathf.Abs(offset.x) >= ex || Mathf.Abs(offset.y) >= ey) return position;
+        if (offset.sqrMagnitude < 1e-6f)
+        {
+            Vector3 o = Outward(position, i);
+            offset = new Vector2(o.x, o.y) * 0.001f;
+        }
+        // The smallest push along the offset that takes it past the box's side or top or bottom
+        float scale = Mathf.Min(Mathf.Abs(offset.x) > 1e-6f ? ex / Mathf.Abs(offset.x) : float.MaxValue,
+                                Mathf.Abs(offset.y) > 1e-6f ? ey / Mathf.Abs(offset.y) : float.MaxValue);
+        Vector2 pushed = offset * scale;
+        return new Vector3(body.center.x + pushed.x, body.center.y + pushed.y, position.z);
     }
 
     private void OnDestroy()

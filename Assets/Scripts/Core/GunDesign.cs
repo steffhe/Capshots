@@ -227,12 +227,12 @@ public static class GunDesign
 
         // Energy channels: glowing lines down both sides, from the core to the front
         float lineY = form == GunSatelliteLayout.Form.Rail ? 0.235f : 0.215f;
-        float lineX = Mathf.Max(0.07f, shroudWidth / 2f) + 0.0035f;
+        float lineX = Mathf.Max(0.07f, shroudWidth / 2f) + 0.0045f;
         float lineBack = 1.34f, lineFront = shroudFront - 0.03f;
         for (int s = -1; s <= 1; s += 2)
         {
             Add(parts, P(s < 0 ? "Energy Line Left" : "Energy Line Right", Shape.Box, Finish.Glow,
-                new Vector3(X + s * lineX, lineY, (lineBack + lineFront) / 2f), new Vector3(0.006f, 0.012f, lineFront - lineBack), Motion.Line, s));
+                new Vector3(X + s * lineX, lineY, (lineBack + lineFront) / 2f), new Vector3(0.008f, 0.016f, lineFront - lineBack), Motion.Line, s));
         }
 
         // Rails: brushed steel down the upper sides, which the front assembly slides along
@@ -259,7 +259,7 @@ public static class GunDesign
             Vector3 at = new Vector3(X + s * moduleX, module.y, module.z);
             Add(parts, P(s < 0 ? "Side Module Left" : "Side Module Right", Shape.Chamfer, Finish.Gunmetal, at, moduleSize, Motion.SideModule, s));
             Add(parts, P(s < 0 ? "Side Glow Left" : "Side Glow Right", Shape.Box, Finish.Glow,
-                at + new Vector3(s * (moduleSize.x / 2f + 0.0015f), 0f, 0f), new Vector3(0.003f, 0.02f, moduleSize.z * 0.8f), Motion.SideModule, s, detail: true));
+                at + new Vector3(s * (moduleSize.x / 2f + 0.002f), 0f, 0f), new Vector3(0.004f, 0.03f, moduleSize.z * 0.8f), Motion.SideModule, s, detail: true));
         }
 
         // The barrel's spindle, the glowing bore at its tip and a floating ring round the muzzle

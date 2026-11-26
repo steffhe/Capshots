@@ -126,11 +126,15 @@ public class DroneHands : MonoBehaviour
         Transform reticle = FindPart(gun.transform, "Reticle");
         if (reticle == null) return glow;
 
-        foreach (Transform part in reticle)
+        foreach (Renderer r in reticle.GetComponentsInChildren<Renderer>(true))
         {
-            if (part.name == ReticleGlowName) { Renderer r = part.GetComponent<Renderer>(); if (r != null) glow.Add(r); }
+            if (r.name == ReticleGlowName) glow.Add(r);
         }
-        if (glow.Count > 0) return glow;
+        if (glow.Count > 0)
+        {
+            reticleSpin = reticle.Find(ReticleSpinName);
+            return glow;
+        }
 
         List<Transform> lines = new List<Transform>();
         foreach (Transform part in reticle) if (part.name.StartsWith("Line")) lines.Add(part);
@@ -144,10 +148,102 @@ public class DroneHands : MonoBehaviour
             glow.Add(copy);
             thickness = Mathf.Min(line.localScale.x, line.localScale.y);
         }
-        // The dot: a little round lamp where the lines cross, just in front of them
-        float dot = Mathf.Max(thickness * 4f, 0.004f);
-        glow.Add(GlowPart(reticle, PrimitiveType.Sphere, new Vector3(0f, 0f, -0.002f), Quaternion.identity, new Vector3(dot, dot, dot * 0.4f)));
+        // In front of the lines: a thin circle round the aim point, a small chevron whose tip is
+        // the aim point, and four ticks on the diagonals (between the dark posts) that sway gently
+        // and kick outwards with each shot (AnimateReticle)
+        float stroke = Mathf.Max(thickness, 0.0008f);
+        Vector3 front = new Vector3(0f, 0f, -0.002f);
+        glow.Add(GlowPart(reticle, ThinRing(), front, Quaternion.identity, Vector3.one * ReticleCircle));
+        for (int side = -1; side <= 1; side += 2)
+        {
+            // Each arm from the tip down and out at 40 degrees
+            Quaternion tilt = Quaternion.Euler(0f, 0f, side * 40f);
+            Vector3 arm = tilt * new Vector3(0f, -ChevronArm * 0.5f, 0f);
+            glow.Add(GlowPart(reticle, PrimitiveType.Cube, front + arm, tilt, new Vector3(stroke * 1.3f, ChevronArm, stroke)));
+        }
+        reticleSpin = new GameObject(ReticleSpinName).transform;
+        reticleSpin.SetParent(reticle, false);
+        reticleSpin.localPosition = front;
+        reticleSpin.gameObject.layer = reticle.gameObject.layer;
+        for (int i = 0; i < 4; i++)
+        {
+            Transform tick = new GameObject("Tick " + i).transform;
+            tick.SetParent(reticleSpin, false);
+            tick.localRotation = Quaternion.Euler(0f, 0f, 45f + i * 90f);
+            tick.gameObject.layer = reticle.gameObject.layer;
+            glow.Add(GlowPart(tick, PrimitiveType.Cube, new Vector3(0f, TickRadius, 0f), Quaternion.identity, new Vector3(stroke * 1.2f, TickLength, stroke)));
+        }
         return glow;
+    }
+
+    // The reticle's sizes, in the scope's units (its fine lines are 0.001 thick, its posts end
+    // about 0.013 from the middle)
+    private const float ReticleCircle = 0.021f, ChevronArm = 0.0045f, TickRadius = 0.0115f, TickLength = 0.0035f;
+    private const string ReticleSpinName = "Reticle Ticks";
+    private Transform reticleSpin;
+
+    // The ticks sway a few degrees either way at rest, and on each shot jump outwards and turn a
+    // quarter, settling back over half a second
+    private void AnimateReticle()
+    {
+        if (reticleSpin == null) return;
+        float now = Time.time;
+        float shot = weapon != null && weapon.LastShotTime >= 0f ? now - weapon.LastShotTime : 100f;
+        float kick = shot < 0.5f ? Mathf.Exp(-shot * 9f) : 0f;
+        reticleSpin.localRotation = Quaternion.Euler(0f, 0f, Mathf.Sin(now * 0.9f) * 12f + kick * 45f);
+        float spread = 1f + 0.6f * kick;
+        foreach (Transform tick in reticleSpin)
+        {
+            if (tick.childCount == 0) continue;
+            tick.GetChild(0).localPosition = new Vector3(0f, TickRadius * spread, 0f);
+        }
+    }
+
+    // A thin ring of unit diameter facing -z (towards the eye in the scope) and +z, made once
+    private static Mesh thinRing;
+
+    private static Mesh ThinRing()
+    {
+        if (thinRing != null) return thinRing;
+        const int segments = 48;
+        const float outer = 0.5f, inner = 0.47f;
+        var vertices = new Vector3[segments * 2];
+        var normals = new Vector3[segments * 2];
+        var triangles = new int[segments * 12];
+        for (int i = 0; i < segments; i++)
+        {
+            float a = i * Mathf.PI * 2f / segments;
+            Vector3 dir = new Vector3(Mathf.Cos(a), Mathf.Sin(a), 0f);
+            vertices[i * 2] = dir * inner;
+            vertices[i * 2 + 1] = dir * outer;
+            normals[i * 2] = normals[i * 2 + 1] = Vector3.back;
+            int a0 = i * 2, a1 = i * 2 + 1, b0 = (i + 1) % segments * 2, b1 = b0 + 1;
+            int t = i * 12;
+            // Both sides: one facing each way
+            triangles[t] = a0; triangles[t + 1] = b0; triangles[t + 2] = a1;
+            triangles[t + 3] = a1; triangles[t + 4] = b0; triangles[t + 5] = b1;
+            triangles[t + 6] = a0; triangles[t + 7] = a1; triangles[t + 8] = b0;
+            triangles[t + 9] = a1; triangles[t + 10] = b1; triangles[t + 11] = b0;
+        }
+        thinRing = new Mesh { name = "Reticle Ring", hideFlags = HideFlags.DontSave, vertices = vertices, normals = normals, triangles = triangles };
+        thinRing.RecalculateBounds();
+        return thinRing;
+    }
+
+    // A glowing part of the reticle made from a mesh (the ring)
+    private Renderer GlowPart(Transform parent, Mesh mesh, Vector3 position, Quaternion rotation, Vector3 scale)
+    {
+        GameObject part = new GameObject(ReticleGlowName, typeof(MeshFilter), typeof(MeshRenderer));
+        part.layer = parent.gameObject.layer;
+        part.transform.SetParent(parent, false);
+        part.transform.localPosition = position;
+        part.transform.localRotation = rotation;
+        part.transform.localScale = scale;
+        part.GetComponent<MeshFilter>().sharedMesh = mesh;
+        Renderer renderer = part.GetComponent<Renderer>();
+        renderer.sharedMaterial = DroneBody.GlowMaterial;
+        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        return renderer;
     }
 
     private Renderer GlowPart(Transform parent, PrimitiveType type, Vector3 position, Quaternion rotation, Vector3 scale)
@@ -331,6 +427,7 @@ public class DroneHands : MonoBehaviour
         // Again whenever the colour changes too: right after spawning the player's colour may not be
         // known yet, and in a mode without teams nothing else would ever paint the sights again
         if (gun != null && (gun != tintedGun || tintedTeamsVersion != Manager.TeamsVersion || tintedColor != SightColor())) TintSights(gun);
+        if (reticleSpin != null && gun != null && reticleSpin.IsChildOf(gun.transform)) AnimateReticle();
 
         bool show = gunDesign != null && (player == null || !player.IsDead);
         for (int i = 0; i < 2; i++) if (hands[i].gameObject.activeSelf != show) hands[i].gameObject.SetActive(show);
