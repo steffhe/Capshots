@@ -151,7 +151,7 @@ public class DroneHands : MonoBehaviour
         // In front of the lines: a thin circle round the aim point, a small chevron whose tip is
         // the aim point, and four ticks on the diagonals (between the dark posts) that sway gently
         // and kick outwards with each shot (AnimateReticle)
-        float line = Mathf.Max(thickness, 0.0008f);
+        float stroke = Mathf.Max(thickness, 0.0008f);
         Vector3 front = new Vector3(0f, 0f, -0.002f);
         glow.Add(GlowPart(reticle, ThinRing(), front, Quaternion.identity, Vector3.one * ReticleCircle));
         for (int side = -1; side <= 1; side += 2)
@@ -159,7 +159,7 @@ public class DroneHands : MonoBehaviour
             // Each arm from the tip down and out at 40 degrees
             Quaternion tilt = Quaternion.Euler(0f, 0f, side * 40f);
             Vector3 arm = tilt * new Vector3(0f, -ChevronArm * 0.5f, 0f);
-            glow.Add(GlowPart(reticle, PrimitiveType.Cube, front + arm, tilt, new Vector3(line * 1.3f, ChevronArm, line)));
+            glow.Add(GlowPart(reticle, PrimitiveType.Cube, front + arm, tilt, new Vector3(stroke * 1.3f, ChevronArm, stroke)));
         }
         reticleSpin = new GameObject(ReticleSpinName).transform;
         reticleSpin.SetParent(reticle, false);
@@ -171,7 +171,7 @@ public class DroneHands : MonoBehaviour
             tick.SetParent(reticleSpin, false);
             tick.localRotation = Quaternion.Euler(0f, 0f, 45f + i * 90f);
             tick.gameObject.layer = reticle.gameObject.layer;
-            glow.Add(GlowPart(tick, PrimitiveType.Cube, new Vector3(0f, TickRadius, 0f), Quaternion.identity, new Vector3(line * 1.2f, TickLength, line)));
+            glow.Add(GlowPart(tick, PrimitiveType.Cube, new Vector3(0f, TickRadius, 0f), Quaternion.identity, new Vector3(stroke * 1.2f, TickLength, stroke)));
         }
         return glow;
     }
