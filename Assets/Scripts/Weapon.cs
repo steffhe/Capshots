@@ -186,6 +186,12 @@ public class Weapon : NetworkBehaviour
                 Image image = weaponimageObject.GetComponent<Image>();
                 Rect rect = new Rect(0, 0, gun.image.width, gun.image.height);
                 image.sprite = Sprite.Create(gun.image, rect, new Vector2(0.5f, 0.5f), 100);
+                // A dark edge so the dimmed icons still read over sky and bright walls (the thin
+                // sniper rifle at the top of the stack all but vanished without one)
+                Outline edge = weaponimageObject.GetComponent<Outline>();
+                if (edge == null) edge = weaponimageObject.AddComponent<Outline>();
+                edge.effectColor = new Color(0f, 0f, 0f, 0.55f);
+                edge.effectDistance = new Vector2(1.5f, -1.5f);
                 arsenalImages.Add(image);
                 ind += 1;
             }
@@ -932,10 +938,10 @@ public class Weapon : NetworkBehaviour
         stateHip = currentWeapon.transform.Find("States/Hip");
 
         // Highlight the equipped gun in the HUD: bright white with an accent bar beside it, the others
-        // dim grey, and its name above the ammo count
+        // dimmer grey (outlined, so they still show over a bright background), and its name above the ammo count
         for (int i = 0; i < arsenalImages.Count; i++)
         {
-            arsenalImages[i].color = i == ind ? new Color(1f, 1f, 1f, 0.95f) : new Color(0.55f, 0.55f, 0.55f, 0.3f);
+            arsenalImages[i].color = i == ind ? new Color(1f, 1f, 1f, 0.95f) : new Color(0.8f, 0.8f, 0.8f, 0.55f);
         }
         if (arsenalMarker != null) arsenalMarker.anchoredPosition = new Vector2(206f, ind * ArsenalIconStep + 50f);
         if (HasInputAuthority) HudFeedback.SetWeapon(loadout[ind].gunName);
