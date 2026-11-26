@@ -30,8 +30,6 @@ public class DroneBody : MonoBehaviour
     private Renderer[] eyes;
     private Renderer[] blush;
     private Renderer thruster;
-    private Transform[] eyeTransforms;
-    private Vector3 eyeScale;
     private bool dead;
     private Color accent;
     private MaterialPropertyBlock block;
@@ -138,7 +136,7 @@ public class DroneBody : MonoBehaviour
         UpdateDamage(time);
 
         // Blink every few seconds: the eyes squash shut and open again over about a tenth of a second
-        if (eyeTransforms != null)
+        if (blinkingShapes.Count > 0)
         {
             if (blinkStart < 0f && time >= nextBlink) blinkStart = time;
             float squash = 1f;
@@ -153,8 +151,7 @@ public class DroneBody : MonoBehaviour
                 }
                 else squash = Mathf.Lerp(1f, 0.1f, 1f - Mathf.Abs(t * 2f - 1f));
             }
-            foreach (Transform eyeTransform in eyeTransforms)
-                if (eyeTransform != null) eyeTransform.localScale = new Vector3(eyeScale.x, eyeScale.y * squash, eyeScale.z);
+            SquashEyes(squash);
         }
 
         // The thruster flickers gently (and cuts out now and then when badly hurt)
@@ -317,6 +314,14 @@ public class DroneBody : MonoBehaviour
 
     #region Face
 
+    // The face is drawn on the face screen itself: every eye, brow, mouth and cheek is a flat shape
+    // whose mesh follows the screen's curve a hair in front of it, nothing sticking out. Shapes drawn
+    // over others (a pupil over an eye, a glint over a pupil) are each a hair further out: a layer.
+    // In head radii: how far the first layer is off the screen, and each next one off the last.
+    private const float FaceLift = 0.008f, FaceLayerStep = 0.006f;
+    // Longest edge between two points of a shape's mesh, in head radii, so it hugs the curve
+    private const float FaceMeshStep = 0.025f;
+
     // Where the face goes: the head's part root, the face screen's centre and radii, and the head's radius
     private Transform faceRoot;
     private Vector3 faceCentre, faceRadii;
@@ -324,8 +329,31 @@ public class DroneBody : MonoBehaviour
     // The face showing (see Faces), and the object its parts are under (rebuilt on a change)
     private int currentFace = -1;
     private Transform faceParts;
-    // Parts drawn in the face screen's own dark colour (pupils, brows), over the glowing ones
+    // Shapes drawn in the face screen's own dark colour (pupils, cuts), over the glowing ones
     private Renderer[] darkParts;
+    // The face's meshes (destroyed with it), and the shapes that blink with their eye
+    private readonly List<Mesh> faceMeshes = new List<Mesh>();
+    private readonly List<FaceShape> blinkingShapes = new List<FaceShape>();
+    private float faceSquash = 1f;
+
+    // One shape on the screen: its outline and inner rings as points across the screen (metres in
+    // the head's part root, before the curve), and its mesh, which puts them on the curve
+    private sealed class FaceShape
+    {
+        public Mesh mesh;
+        public Vector2[] points;
+        public float blinkY;   // the eye's middle, which a blink squashes towards
+        public float lift;     // metres off the screen
+        public Vector3[] vertices, normals;
+    }
+
+    // Where a group of shapes goes on the screen (head radii), and whether it blinks
+    private struct Spot
+    {
+        public float x, y;
+        public bool blinks;
+        public Spot(float x, float y, bool blinks) { this.x = x; this.y = y; this.blinks = blinks; }
+    }
 
     // Shows a different face (see Faces). A dead drone keeps its X-es.
     public void SetFace(int face)
@@ -335,8 +363,15 @@ public class DroneBody : MonoBehaviour
         BuildFace(face);
     }
 
-    // Builds the eyes (and cheeks) for a face. Each eye is built round a pivot lying on the face
-    // screen's surface, facing out of it (x across, y up, z out), and blinks by squashing that pivot.
+    // Squashes the blinking shapes towards their eyes' middles (1: open)
+    private void SquashEyes(float squash)
+    {
+        if (Mathf.Approximately(squash, faceSquash)) return;
+        faceSquash = squash;
+        foreach (FaceShape shape in blinkingShapes) PlaceShape(shape, squash);
+    }
+
+    // Builds the eyes (and brows, mouth, cheeks) for a face, as flat shapes on the screen
     private void BuildFace(int face)
     {
         currentFace = face;
@@ -345,52 +380,37 @@ public class DroneBody : MonoBehaviour
             if (Application.isPlaying) Destroy(faceParts.gameObject);
             else DestroyImmediate(faceParts.gameObject);
         }
+        DestroyFaceMeshes();
+        blinkingShapes.Clear();
+        faceSquash = 1f;
         faceParts = new GameObject("Face Parts").transform;
         faceParts.gameObject.layer = faceRoot.gameObject.layer;
         faceParts.SetParent(faceRoot, false);
 
         var glow = new List<Renderer>();
         var dark = new List<Renderer>();
-        var pivots = new List<Transform>();
-        float r = faceSize;
+        var cheeks = new List<Renderer>();
 
-        Transform Eye(float x, float y)
+        // The shapes, in head radii from their spot: w across, h up, turned by roll degrees
+        List<Vector2> Oval(float x, float y, float w, float h, float roll = 0f) => Turned(EllipseOutline(w, h), x, y, roll);
+        // A bar with round ends, w thick and length long, lying up and down before it's turned
+        List<Vector2> Bar(float x, float y, float w, float length, float roll = 0f) => Turned(BarOutline(w, length), x, y, roll);
+        List<Vector2> Box(float x, float y, float w, float h, float roll = 0f) => Turned(BoxOutline(w, h), x, y, roll);
+
+        void Glow(Spot spot, List<Vector2> outline, int layer = 0) => glow.Add(Shape(spot, outline, layer, GlowMaterial));
+        void Dark(Spot spot, List<Vector2> outline, int layer = 1) => dark.Add(Shape(spot, outline, layer, VisorMaterial));
+        // An upturned V, like a smiling closed eye: two short bars meeting at the top
+        void Chevron(Spot spot)
         {
-            Vector3 at = OnVisor(new Vector2(x * r, y * r), faceCentre, faceRadii, 0.02f * r);
-            Vector3 normal = Vector3.Scale(at - faceCentre, new Vector3(1f / (faceRadii.x * faceRadii.x), 1f / (faceRadii.y * faceRadii.y), 1f / (faceRadii.z * faceRadii.z))).normalized;
-            Transform pivot = new GameObject("Eye").transform;
-            pivot.gameObject.layer = faceParts.gameObject.layer;
-            pivot.SetParent(faceParts, false);
-            pivot.localPosition = at;
-            pivot.localRotation = Quaternion.LookRotation(normal, Vector3.up);
-            pivots.Add(pivot);
-            return pivot;
-        }
-        // z: how far out of the screen (a glint sits in front of a pupil)
-        void Lit(Transform eye, PrimitiveType type, float x, float y, Vector3 size, float roll = 0f, float z = 0f) =>
-            glow.Add(Part(eye, "Glow", type, GlowMaterial, new Vector3(x * r, y * r, z * r), size * r, false, new Vector3(0f, 0f, roll)));
-        void Shade(Transform eye, PrimitiveType type, float x, float y, Vector3 size, float roll = 0f, float z = 0.045f) =>
-            dark.Add(Part(eye, "Dark", type, VisorMaterial, new Vector3(x * r, y * r, z * r), size * r, false, new Vector3(0f, 0f, roll)));
-        // A part of the face that doesn't blink (brows, mouths, floating sparkles)
-        Transform Still(float x, float y)
-        {
-            Transform still = Eye(x, y);
-            pivots.Remove(still);
-            return still;
+            Glow(spot, Bar(-0.065f, -0.02f, 0.07f, 0.2f, -55f));
+            Glow(spot, Bar(0.065f, -0.02f, 0.07f, 0.2f, 55f));
         }
         // A four-pointed twinkle: two thin crossed ovals, the across one a little shorter
-        void Twinkle(Transform at, float x, float y, float size, float z)
+        void Twinkle(Spot spot, float x, float y, float size, int layer)
         {
-            Lit(at, PrimitiveType.Sphere, x, y, new Vector3(0.22f * size, size, 0.01f), 0f, z);
-            Lit(at, PrimitiveType.Sphere, x, y, new Vector3(0.22f * size, 0.8f * size, 0.01f), 90f, z);
+            Glow(spot, Oval(x, y, 0.22f * size, size), layer);
+            Glow(spot, Oval(x, y, 0.8f * size, 0.22f * size), layer);
         }
-        // An upturned V, like a smiling closed eye: two short bars meeting at the top
-        void Chevron(Transform eye)
-        {
-            Lit(eye, PrimitiveType.Capsule, -0.065f, -0.02f, new Vector3(0.07f, 0.1f, 0.04f), -55f);
-            Lit(eye, PrimitiveType.Capsule, 0.065f, -0.02f, new Vector3(0.07f, 0.1f, 0.04f), 55f);
-        }
-        Vector3 oval = new Vector3(0.2f, 0.3f, 0.08f);
 
         for (int i = 0; i < 2; i++)
         {
@@ -400,142 +420,295 @@ public class DroneBody : MonoBehaviour
             if (dead)
             {
                 // An X of two crossed rounded bars for each eye
-                Transform x = Eye(side * 0.24f, -0.06f);
-                Lit(x, PrimitiveType.Capsule, 0f, 0f, new Vector3(0.075f, 0.17f, 0.04f), 45f);
-                Lit(x, PrimitiveType.Capsule, 0f, 0f, new Vector3(0.075f, 0.17f, 0.04f), -45f);
+                Spot cross = new Spot(side * 0.24f, -0.06f, false);
+                Glow(cross, Bar(0f, 0f, 0.075f, 0.34f, 45f));
+                Glow(cross, Bar(0f, 0f, 0.075f, 0.34f, -45f));
                 continue;
             }
+            Spot eye = new Spot(side * 0.24f, -0.06f, true);
             switch (face)
             {
                 case Faces.Happy:
-                    Chevron(Eye(side * 0.24f, -0.02f));
+                    Chevron(new Spot(side * 0.24f, -0.02f, true));
                     break;
                 case Faces.Wink:
-                    if (i == 0) Lit(Eye(side * 0.24f, -0.06f), PrimitiveType.Sphere, 0f, 0f, oval);
-                    else Chevron(Eye(side * 0.24f, -0.02f));
+                    if (i == 0) Glow(eye, Oval(0f, 0f, 0.2f, 0.3f));
+                    else Chevron(new Spot(side * 0.24f, -0.02f, true));
                     break;
                 case Faces.Sleepy:
                 {
                     // Half shut: a low flat oval under a heavy lid
-                    Transform eye = Eye(side * 0.24f, -0.1f);
-                    Lit(eye, PrimitiveType.Sphere, 0f, -0.01f, new Vector3(0.22f, 0.12f, 0.08f));
-                    Lit(eye, PrimitiveType.Capsule, 0f, 0.07f, new Vector3(0.035f, 0.13f, 0.03f), 90f);
+                    Spot low = new Spot(side * 0.24f, -0.1f, true);
+                    Glow(low, Oval(0f, -0.01f, 0.22f, 0.12f));
+                    Glow(low, Bar(0f, 0.07f, 0.035f, 0.26f, 90f));
                     break;
                 }
                 case Faces.Visor:
                     // One wide bar across the face: built once
-                    if (i == 0) Lit(Eye(0f, -0.06f), PrimitiveType.Capsule, 0f, 0f, new Vector3(0.12f, 0.36f, 0.05f), 90f);
+                    if (i == 0) Glow(new Spot(0f, -0.06f, true), Bar(0f, 0f, 0.12f, 0.72f, 90f));
                     break;
                 case Faces.Angry:
                 {
                     // Narrowed eyes, their tops cut off along a slant down to the middle, under thick
                     // glowing brows on the same slant, and a small frown (built once)
                     const float slant = 30f;
-                    Transform eye = Eye(side * 0.24f, -0.08f);
-                    Lit(eye, PrimitiveType.Sphere, 0f, 0f, new Vector3(0.23f, 0.24f, 0.08f));
-                    Shade(eye, PrimitiveType.Cube, inner * 0.06f, 0.1f, new Vector3(0.36f, 0.14f, 0.05f), -inner * slant);
-                    // The brow: a bar parallel to the cut, with a dark gap between them
-                    Lit(Still(side * 0.24f, -0.08f), PrimitiveType.Capsule, inner * 0.04f, 0.085f, new Vector3(0.06f, 0.15f, 0.03f), 90f - inner * slant, 0.09f);
+                    Spot angry = new Spot(side * 0.24f, -0.08f, true);
+                    Glow(angry, Oval(0f, 0f, 0.23f, 0.24f));
+                    Dark(angry, Box(inner * 0.06f, 0.1f, 0.36f, 0.14f, -inner * slant));
+                    // The brow: a bar along the cut, with a dark gap between them
+                    Glow(new Spot(side * 0.24f, -0.08f, false), Bar(inner * 0.04f, 0.085f, 0.06f, 0.3f, 90f - inner * slant), 2);
                     if (i == 0)
                     {
                         // A frown: two short bars meeting at the top, flatter than a smiling eye
-                        Transform mouth = Still(0f, -0.33f);
-                        Lit(mouth, PrimitiveType.Capsule, -0.045f, 0f, new Vector3(0.045f, 0.065f, 0.03f), -68f);
-                        Lit(mouth, PrimitiveType.Capsule, 0.045f, 0f, new Vector3(0.045f, 0.065f, 0.03f), 68f);
+                        Spot mouth = new Spot(0f, -0.33f, false);
+                        Glow(mouth, Bar(-0.045f, 0f, 0.045f, 0.13f, -68f));
+                        Glow(mouth, Bar(0.045f, 0f, 0.045f, 0.13f, 68f));
                     }
                     break;
                 }
                 case Faces.Hearts:
                 {
                     // Two round lobes over a point
-                    Transform eye = Eye(side * 0.24f, -0.04f);
-                    Lit(eye, PrimitiveType.Sphere, -0.055f, 0.04f, new Vector3(0.14f, 0.14f, 0.06f));
-                    Lit(eye, PrimitiveType.Sphere, 0.055f, 0.04f, new Vector3(0.14f, 0.14f, 0.06f));
-                    Lit(eye, PrimitiveType.Cube, 0f, -0.035f, new Vector3(0.135f, 0.135f, 0.05f), 45f);
+                    Spot heart = new Spot(side * 0.24f, -0.04f, true);
+                    Glow(heart, Oval(-0.055f, 0.04f, 0.14f, 0.14f));
+                    Glow(heart, Oval(0.055f, 0.04f, 0.14f, 0.14f));
+                    Glow(heart, Box(0f, -0.035f, 0.135f, 0.135f, 45f));
                     break;
                 }
                 case Faces.Stars:
                 {
                     // A four-pointed star, with shorter points between
-                    Transform eye = Eye(side * 0.24f, -0.05f);
-                    Lit(eye, PrimitiveType.Sphere, 0f, 0f, new Vector3(0.08f, 0.34f, 0.05f));
-                    Lit(eye, PrimitiveType.Sphere, 0f, 0f, new Vector3(0.08f, 0.34f, 0.05f), 90f);
-                    Lit(eye, PrimitiveType.Sphere, 0f, 0f, new Vector3(0.05f, 0.18f, 0.05f), 45f);
-                    Lit(eye, PrimitiveType.Sphere, 0f, 0f, new Vector3(0.05f, 0.18f, 0.05f), -45f);
+                    Spot star = new Spot(side * 0.24f, -0.05f, true);
+                    Glow(star, Oval(0f, 0f, 0.08f, 0.34f));
+                    Glow(star, Oval(0f, 0f, 0.08f, 0.34f, 90f));
+                    Glow(star, Oval(0f, 0f, 0.05f, 0.18f, 45f));
+                    Glow(star, Oval(0f, 0f, 0.05f, 0.18f, -45f));
                     break;
                 }
                 case Faces.Cyclops:
                 {
                     // One big round lens in the middle, built once: a glowing rim, a dark ring, a glowing
-                    // iris round a dark pupil, and a glint, each just in front of the one before; with
-                    // short sight marks either side of it, like a scope
+                    // iris round a dark pupil, and glints; with short sight marks either side, like a scope
                     if (i != 0) break;
-                    Transform eye = Eye(0f, -0.07f);
-                    Lit(eye, PrimitiveType.Sphere, 0f, 0f, new Vector3(0.48f, 0.48f, 0.04f));
-                    Shade(eye, PrimitiveType.Sphere, 0f, 0f, new Vector3(0.38f, 0.38f, 0.02f), 0f, 0.03f);
-                    Lit(eye, PrimitiveType.Sphere, 0f, -0.01f, new Vector3(0.27f, 0.27f, 0.02f), 0f, 0.045f);
-                    Shade(eye, PrimitiveType.Sphere, 0f, -0.015f, new Vector3(0.12f, 0.12f, 0.01f), 0f, 0.06f);
-                    Lit(eye, PrimitiveType.Sphere, 0.06f, 0.055f, new Vector3(0.06f, 0.06f, 0.01f), 0f, 0.07f);
-                    Lit(eye, PrimitiveType.Sphere, -0.035f, -0.085f, new Vector3(0.025f, 0.025f, 0.01f), 0f, 0.07f);
-                    for (int mark = -1; mark <= 1; mark += 2)
-                    {
-                        Lit(eye, PrimitiveType.Capsule, mark * 0.32f, 0f, new Vector3(0.035f, 0.05f, 0.03f), 90f);
-                    }
+                    Spot lens = new Spot(0f, -0.07f, true);
+                    Glow(lens, Oval(0f, 0f, 0.48f, 0.48f));
+                    Dark(lens, Oval(0f, 0f, 0.38f, 0.38f), 1);
+                    Glow(lens, Oval(0f, -0.01f, 0.27f, 0.27f), 2);
+                    Dark(lens, Oval(0f, -0.015f, 0.12f, 0.12f), 3);
+                    Glow(lens, Oval(0.06f, 0.055f, 0.06f, 0.06f), 4);
+                    Glow(lens, Oval(-0.035f, -0.085f, 0.025f, 0.025f), 4);
+                    for (int mark = -1; mark <= 1; mark += 2) Glow(lens, Bar(mark * 0.32f, 0f, 0.035f, 0.1f, 90f));
                     break;
                 }
                 case Faces.Dots:
                     // Small round eyes, and a little mouth below them (built once)
-                    Lit(Eye(side * 0.2f, -0.02f), PrimitiveType.Sphere, 0f, 0f, new Vector3(0.12f, 0.13f, 0.06f));
-                    if (i == 0)
-                    {
-                        Transform mouth = Eye(0f, -0.25f);
-                        pivots.Remove(mouth); // the mouth doesn't blink
-                        Lit(mouth, PrimitiveType.Capsule, 0f, 0f, new Vector3(0.035f, 0.07f, 0.03f), 90f);
-                    }
+                    Glow(new Spot(side * 0.2f, -0.02f, true), Oval(0f, 0f, 0.12f, 0.13f));
+                    if (i == 0) Glow(new Spot(0f, -0.25f, false), Bar(0f, 0f, 0.035f, 0.14f, 90f));
                     break;
                 case Faces.Sparkle:
                 {
                     // Big glossy eyes: a glowing rim round a large dark iris with a four-pointed twinkle
                     // high up and a small glint low down, and a little twinkle floating off each eye's
                     // outer top corner
-                    Transform eye = Eye(side * 0.24f, -0.07f);
-                    Lit(eye, PrimitiveType.Sphere, 0f, 0f, new Vector3(0.27f, 0.36f, 0.04f));
-                    Shade(eye, PrimitiveType.Sphere, 0f, -0.01f, new Vector3(0.2f, 0.29f, 0.02f), 0f, 0.03f);
-                    Twinkle(eye, side * 0.025f, 0.05f, 0.14f, 0.045f);
-                    Lit(eye, PrimitiveType.Sphere, inner * 0.04f, -0.08f, new Vector3(0.04f, 0.04f, 0.01f), 0f, 0.045f);
-                    Twinkle(Still(side * 0.46f, 0.14f), 0f, 0f, 0.12f, 0.01f);
+                    Spot sparkle = new Spot(side * 0.24f, -0.07f, true);
+                    Glow(sparkle, Oval(0f, 0f, 0.27f, 0.36f));
+                    Dark(sparkle, Oval(0f, -0.01f, 0.2f, 0.29f), 1);
+                    Twinkle(sparkle, side * 0.025f, 0.05f, 0.14f, 2);
+                    Glow(sparkle, Oval(inner * 0.04f, -0.08f, 0.04f, 0.04f), 2);
+                    Twinkle(new Spot(side * 0.46f, 0.14f, false), 0f, 0f, 0.12f, 0);
                     break;
                 }
                 default:
                     // Classic and Blushing: the two big ovals
-                    Lit(Eye(side * 0.24f, -0.06f), PrimitiveType.Sphere, 0f, 0f, oval);
+                    Glow(eye, Oval(0f, 0f, 0.2f, 0.3f));
                     break;
             }
         }
 
         // Pink cheeks under the eyes
-        var cheeks = new List<Renderer>();
         if (Faces.HasCheeks(face))
         {
             for (int i = 0; i < 2; i++)
             {
                 float side = i == 0 ? -1f : 1f;
-                Vector3 at = OnVisor(new Vector2(side * 0.44f * r, -0.3f * r), faceCentre, faceRadii, 0.01f * r);
-                cheeks.Add(Part(faceParts, "Blush", PrimitiveType.Sphere, GlowMaterial, at, new Vector3(0.14f * r, 0.07f * r, 0.04f * r), false));
+                cheeks.Add(Shape(new Spot(side * 0.44f, -0.3f, false), Turned(EllipseOutline(0.14f, 0.07f), 0f, 0f, 0f), 0, GlowMaterial));
             }
         }
 
         eyes = glow.ToArray();
         darkParts = dark.ToArray();
         blush = cheeks.ToArray();
-        eyeTransforms = pivots.ToArray();
-        // The pivots blink, so their own scale is the one to squash
-        eyeScale = Vector3.one;
 
         if (block == null) block = new MaterialPropertyBlock();
         Paint(eyes, eyeColor, eyeColor * EyeGlow);
         Paint(darkParts, VisorColor, Color.black);
         Paint(blush, BlushColor, dead ? Color.black : BlushColor * 0.6f);
+    }
+
+    // Makes one shape: a mesh of rings from its middle out to its outline, placed on the screen
+    private Renderer Shape(Spot spot, List<Vector2> outline, int layer, Material material)
+    {
+        float r = faceSize;
+        // The outline with no edge longer than FaceMeshStep, so its edges follow the curve too
+        var edge = new List<Vector2>();
+        for (int k = 0; k < outline.Count; k++)
+        {
+            Vector2 a = outline[k], b = outline[(k + 1) % outline.Count];
+            int pieces = Mathf.Max(1, Mathf.CeilToInt(Vector2.Distance(a, b) / FaceMeshStep));
+            for (int p = 0; p < pieces; p++) edge.Add(Vector2.Lerp(a, b, (float)p / pieces));
+        }
+        // Its middle, and rings from there out to the edge, as many as it takes to follow the curve
+        Vector2 middle = Vector2.zero;
+        foreach (Vector2 p in outline) middle += p;
+        middle /= outline.Count;
+        float reach = 0f;
+        foreach (Vector2 p in edge) reach = Mathf.Max(reach, Vector2.Distance(p, middle));
+        int rings = Mathf.Clamp(Mathf.CeilToInt(reach / FaceMeshStep), 1, 12);
+
+        int n = edge.Count;
+        var points = new Vector2[1 + rings * n];
+        Vector2 offset = new Vector2(spot.x, spot.y);
+        points[0] = (middle + offset) * r;
+        for (int ring = 1; ring <= rings; ring++)
+        {
+            float t = (float)ring / rings;
+            for (int k = 0; k < n; k++) points[1 + (ring - 1) * n + k] = (Vector2.Lerp(middle, edge[k], t) + offset) * r;
+        }
+        // Outlines go anticlockwise across the screen, which faces them out of it (seen from the
+        // front, x runs right to left)
+        var triangles = new List<int>(rings * n * 6);
+        for (int k = 0; k < n; k++)
+        {
+            triangles.Add(0); triangles.Add(1 + k); triangles.Add(1 + (k + 1) % n);
+        }
+        for (int ring = 1; ring < rings; ring++)
+        {
+            int inside = 1 + (ring - 1) * n, outside = inside + n;
+            for (int k = 0; k < n; k++)
+            {
+                int next = (k + 1) % n;
+                triangles.Add(outside + k); triangles.Add(outside + next); triangles.Add(inside + next);
+                triangles.Add(outside + k); triangles.Add(inside + next); triangles.Add(inside + k);
+            }
+        }
+
+        var shape = new FaceShape
+        {
+            mesh = new Mesh { name = "Face Shape" },
+            points = points,
+            blinkY = spot.y * r,
+            lift = (FaceLift + layer * FaceLayerStep) * r,
+            vertices = new Vector3[points.Length],
+            normals = new Vector3[points.Length],
+        };
+        shape.mesh.MarkDynamic();
+        PlaceShape(shape, 1f);
+        shape.mesh.SetTriangles(triangles, 0);
+        shape.mesh.RecalculateBounds();
+        faceMeshes.Add(shape.mesh);
+        if (spot.blinks) blinkingShapes.Add(shape);
+
+        GameObject part = new GameObject(material == VisorMaterial ? "Face Dark" : "Face Glow");
+        part.layer = faceParts.gameObject.layer;
+        part.transform.SetParent(faceParts, false);
+        part.AddComponent<MeshFilter>().sharedMesh = shape.mesh;
+        MeshRenderer renderer = part.AddComponent<MeshRenderer>();
+        renderer.sharedMaterial = material;
+        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        renderer.receiveShadows = false;
+        return renderer;
+    }
+
+    // Puts a shape's points on the screen's curve, squashed up and down towards its eye's middle
+    private void PlaceShape(FaceShape shape, float squash)
+    {
+        for (int i = 0; i < shape.points.Length; i++)
+        {
+            Vector2 p = shape.points[i];
+            p.y = shape.blinkY + (p.y - shape.blinkY) * squash;
+            Vector3 normal;
+            Vector3 at = OnScreen(p, out normal);
+            shape.vertices[i] = at + normal * shape.lift;
+            shape.normals[i] = normal;
+        }
+        shape.mesh.vertices = shape.vertices;
+        shape.mesh.normals = shape.normals;
+        if (shape.mesh.GetIndexCount(0) > 0) shape.mesh.RecalculateBounds();
+    }
+
+    // The point on the front of the face screen (an ellipsoid) at x and y, and the way out of it there
+    private Vector3 OnScreen(Vector2 xy, out Vector3 normal)
+    {
+        Vector3 c = faceCentre, radii = faceRadii;
+        float dx = (xy.x - c.x) / radii.x, dy = (xy.y - c.y) / radii.y;
+        float dz = Mathf.Sqrt(Mathf.Max(0f, 1f - dx * dx - dy * dy));
+        Vector3 at = new Vector3(xy.x, xy.y, c.z + radii.z * dz);
+        normal = new Vector3(dx / radii.x, dy / radii.y, dz / radii.z).normalized;
+        return at;
+    }
+
+    private void DestroyFaceMeshes()
+    {
+        foreach (Mesh mesh in faceMeshes)
+        {
+            if (mesh == null) continue;
+            if (Application.isPlaying) Destroy(mesh);
+            else DestroyImmediate(mesh);
+        }
+        faceMeshes.Clear();
+    }
+
+    private void OnDestroy() => DestroyFaceMeshes();
+
+    // Shape outlines, anticlockwise round their middle
+    private static List<Vector2> EllipseOutline(float w, float h)
+    {
+        const int points = 40;
+        var outline = new List<Vector2>(points);
+        for (int k = 0; k < points; k++)
+        {
+            float a = 2f * Mathf.PI * k / points;
+            outline.Add(new Vector2(Mathf.Cos(a) * w * 0.5f, Mathf.Sin(a) * h * 0.5f));
+        }
+        return outline;
+    }
+
+    // Up and down, with round ends; one no longer than it's thick is a circle
+    private static List<Vector2> BarOutline(float w, float length)
+    {
+        const int pointsPerEnd = 14;
+        float radius = w * 0.5f, half = Mathf.Max(0f, length * 0.5f - radius);
+        var outline = new List<Vector2>(pointsPerEnd * 2 + 2);
+        // The top end, right to left, then the bottom end, left to right
+        for (int k = 0; k <= pointsPerEnd; k++)
+        {
+            float a = Mathf.PI * k / pointsPerEnd;
+            outline.Add(new Vector2(Mathf.Cos(a) * radius, half + Mathf.Sin(a) * radius));
+        }
+        for (int k = 0; k <= pointsPerEnd; k++)
+        {
+            float a = Mathf.PI + Mathf.PI * k / pointsPerEnd;
+            outline.Add(new Vector2(Mathf.Cos(a) * radius, -half + Mathf.Sin(a) * radius));
+        }
+        return outline;
+    }
+
+    private static List<Vector2> BoxOutline(float w, float h)
+    {
+        float x = w * 0.5f, y = h * 0.5f;
+        return new List<Vector2> { new Vector2(-x, -y), new Vector2(x, -y), new Vector2(x, y), new Vector2(-x, y) };
+    }
+
+    // Turned by roll degrees (x towards y) and moved to x, y
+    private static List<Vector2> Turned(List<Vector2> outline, float x, float y, float roll)
+    {
+        float a = roll * Mathf.Deg2Rad, cos = Mathf.Cos(a), sin = Mathf.Sin(a);
+        for (int k = 0; k < outline.Count; k++)
+        {
+            Vector2 p = outline[k];
+            outline[k] = new Vector2(x + p.x * cos - p.y * sin, y + p.x * sin + p.y * cos);
+        }
+        return outline;
     }
 
     #endregion
@@ -600,14 +773,6 @@ public class DroneBody : MonoBehaviour
         mesh.RecalculateBounds();
         capsules[key] = mesh;
         return mesh;
-    }
-
-    // A point on the front of the face screen (an ellipsoid) at the given x and y, pushed out by lift
-    private static Vector3 OnVisor(Vector2 xy, Vector3 centre, Vector3 radii, float lift)
-    {
-        float dx = xy.x / radii.x, dy = (xy.y - centre.y) / radii.y;
-        float z = centre.z + radii.z * Mathf.Sqrt(Mathf.Max(0f, 1f - dx * dx - dy * dy));
-        return new Vector3(xy.x, xy.y, z - 0.02f * radii.z + lift);
     }
 
     // A child that cancels the parent's (and its parents') scale, on the parent's layer
