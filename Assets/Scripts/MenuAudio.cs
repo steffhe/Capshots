@@ -7,8 +7,9 @@ using UnityEngine.UI;
 // tick when one is pointed at or picked with a controller, a soft tap when it's pressed, and a
 // falling chirp for BACK, DONE and the like. Everything is made in code, like the game's other sounds.
 // The Launcher creates it with the menu; it goes with the menu scene, fading the music out when a
-// match starts loading. The same loop plays again on a match's results and map vote (MatchMusic). Music volume is its own setting (GameSettings.MusicVolume), under the
-// master volume.
+// match starts loading. The same loop plays again on a match's results and map vote (MatchMusic).
+// Music volume is its own setting, under the master volume (GameSettings.MusicOutput); the button
+// blips follow the sound effects volume.
 public class MenuAudio : MonoBehaviour
 {
     internal const float MusicLevel = 0.42f;
@@ -39,6 +40,8 @@ public class MenuAudio : MonoBehaviour
         musicSource.playOnAwake = false;
         musicSource.spatialBlend = 0f;
         musicSource.volume = 0f;
+        // Under the music volume rather than the sound effects' (GameSettings.MusicOutput)
+        musicSource.ignoreListenerVolume = true;
         uiSource = gameObject.AddComponent<AudioSource>();
         uiSource.playOnAwake = false;
         uiSource.spatialBlend = 0f;
@@ -89,7 +92,7 @@ public class MenuAudio : MonoBehaviour
         // Fades in with the menu, and out under the loading screen when a match starts
         bool leaving = LoadingScreen.Visible;
         fade = Mathf.MoveTowards(fade, leaving ? 0f : 1f, Time.unscaledDeltaTime / (leaving ? FadeOut : FadeIn));
-        musicSource.volume = MusicLevel * GameSettings.MusicVolume * fade;
+        musicSource.volume = MusicLevel * GameSettings.MusicOutput * fade;
 
         if (Time.unscaledTime >= nextScan)
         {

@@ -22,6 +22,9 @@ public static class GameSettings
     private const string FovKey = "settings.fov";
     private const string VolumeKey = "settings.volume";
     private const string MusicVolumeKey = "settings.musicVolume";
+    private const string EffectsVolumeKey = "settings.effectsVolume";
+    private const string InvertYKey = "settings.invertY";
+    private const string ScreenShakeKey = "settings.screenShake";
     private const string QualityKey = "settings.quality";
     private const string AdsSensitivityKey = "settings.adsSensitivity";
     private const string StartingGunKey = "settings.startingGun";
@@ -105,6 +108,7 @@ public static class GameSettings
     // (Faces unlock with levels too, so a new face counts as well)
     public static bool HasNewHats => Hats.AnyUnlockedBetween(HatsSeenLevel, Launcher.myProfile.level) || Faces.AnyUnlockedBetween(HatsSeenLevel, Launcher.myProfile.level);
 
+    // The master volume, over both the sound effects and the music
     public static float Volume
     {
         get => PlayerPrefs.GetFloat(VolumeKey, 1f);
@@ -112,11 +116,30 @@ public static class GameSettings
         {
             PlayerPrefs.SetFloat(VolumeKey, Mathf.Clamp01(value));
             PlayerPrefs.Save();
-            AudioListener.volume = Mathf.Clamp01(value);
+            ApplyVolume();
         }
     }
 
-    // The main menu's music, under the master volume
+    // Every sound but the music, under the master volume. There's no audio mixer: the listener's
+    // volume is master x effects, and the music's sources ignore it and use MusicOutput instead.
+    public static float EffectsVolume
+    {
+        get => PlayerPrefs.GetFloat(EffectsVolumeKey, 1f);
+        set
+        {
+            PlayerPrefs.SetFloat(EffectsVolumeKey, Mathf.Clamp01(value));
+            PlayerPrefs.Save();
+            ApplyVolume();
+        }
+    }
+
+    private static void ApplyVolume() => AudioListener.volume = Mathf.Clamp01(Volume * EffectsVolume);
+
+    // How loud the music plays, 0 to 1: the music volume under the master volume. For music sources
+    // set to ignoreListenerVolume (MenuAudio, MatchMusic).
+    public static float MusicOutput => MusicVolume * Volume;
+
+    // The menu's music and the end of a match's (MatchMusic), under the master volume
     public static float MusicVolume
     {
         get => PlayerPrefs.GetFloat(MusicVolumeKey, 0.7f);
@@ -173,12 +196,27 @@ public static class GameSettings
 
     public static event System.Action ShowFpsChanged;
 
+    // Pushing the stick or mouse up looks down, and the other way round
+    public static bool InvertY
+    {
+        get => PlayerPrefs.GetInt(InvertYKey, 0) == 1;
+        set { PlayerPrefs.SetInt(InvertYKey, value ? 1 : 0); PlayerPrefs.Save(); }
+    }
+
+    // The view's shake on a kill and from a nearby grenade (Look.Punch). Off for players who get
+    // motion sick; recoil still moves the aim, since that's part of how the guns handle.
+    public static bool ScreenShake
+    {
+        get => PlayerPrefs.GetInt(ScreenShakeKey, 1) == 1;
+        set { PlayerPrefs.SetInt(ScreenShakeKey, value ? 1 : 0); PlayerPrefs.Save(); }
+    }
+
     public static string QualityName => QualitySettings.names.Length > 0 ? QualitySettings.names[Quality].ToUpper() : "-";
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void ApplySaved()
     {
-        AudioListener.volume = Volume;
+        ApplyVolume();
         if (PlayerPrefs.HasKey(QualityKey)) QualitySettings.SetQualityLevel(Quality, true);
     }
 }

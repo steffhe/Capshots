@@ -32,7 +32,8 @@ public class Sway : MonoBehaviour
         //Controls
         Vector2 look = GameInput.MouseLookValue + GameInput.StickLookValue * 0.5f;
         float xMouse = look.x;
-        float yMouse = look.y;
+        // The gun trails the way the view actually turns
+        float yMouse = GameSettings.InvertY ? -look.y : look.y;
         if (!isMine)
         {
             xMouse = 0;

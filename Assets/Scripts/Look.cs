@@ -83,6 +83,7 @@ public class Look : MonoBehaviour
 
         Vector2 look = LookInput();
         Yaw = Mathf.Repeat(Yaw + look.x * xSensitivity * SensitivityScale, 360f);
+        if (GameSettings.InvertY) look.y = -look.y;
         Pitch = Mathf.Clamp(Pitch + look.y * ySensitivity * SensitivityScale, -maxAngle, maxAngle);
 
         UpdateCursorLock();
@@ -167,6 +168,8 @@ public class Look : MonoBehaviour
     // Shakes the view for a moment: strength is the first swing, in degrees
     public void Punch(float strength)
     {
+        // Off in the settings for players who get motion sick
+        if (!GameSettings.ScreenShake) return;
         punchStrength = strength;
         punchAge = 0f;
         punchSeed = Random.Range(0f, 100f);

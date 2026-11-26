@@ -6,7 +6,7 @@ using UnityEngine;
 // fading out under the loading screen when the next map or the menu loads. Purely local, and it goes
 // with the match scene. Both clips are made in code over a few frames, starting when the match ends
 // (Prepare), while everyone is frozen on the result banner, so they're ready by the awards. Music
-// volume is its own setting (GameSettings.MusicVolume), under the master volume.
+// volume is its own setting, under the master volume (GameSettings.MusicOutput).
 public class MatchMusic : MonoBehaviour
 {
     private enum Track { None, Victory, Menu }
@@ -50,6 +50,8 @@ public class MatchMusic : MonoBehaviour
         source.playOnAwake = false;
         source.spatialBlend = 0f;
         source.volume = 0f;
+        // Under the music volume rather than the sound effects' (GameSettings.MusicOutput)
+        source.ignoreListenerVolume = true;
         // Ahead of the game's sounds, so it isn't the first thing dropped when many play at once
         source.priority = 0;
         return source;
@@ -96,7 +98,7 @@ public class MatchMusic : MonoBehaviour
         // Out under the loading screen, for the next map or the menu
         leaveFade = Mathf.MoveTowards(leaveFade, LoadingScreen.Visible ? 0f : 1f, dt / FadeOut);
 
-        float level = MenuAudio.MusicLevel * GameSettings.MusicVolume * leaveFade;
+        float level = MenuAudio.MusicLevel * GameSettings.MusicOutput * leaveFade;
         current.volume = level * currentFade;
         previous.volume = level * previousFade;
     }
