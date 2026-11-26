@@ -12,6 +12,14 @@ public partial class Manager
     private void RPC_KillFeed(int killer, int victim, string weapon, NetworkBool headshot, byte multiKill, byte streak, byte endedStreak)
     {
         int me = LocalActor;
+        // The killer's drone looks happy for a moment
+        if (killer >= 0 && killer != victim)
+        {
+            foreach (Player player in Player.All)
+            {
+                if (player != null && player.ActorId == killer) player.Celebrate();
+            }
+        }
         if (IsTeamMode)
         {
             FeedbackUI.AddKillFeed(GetPlayerName(killer), GetPlayerName(victim), weapon, headshot, killer == me || victim == me,

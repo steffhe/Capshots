@@ -368,6 +368,8 @@ public class AwardStage : MonoBehaviour
         DroneBody dressed = DroneBody.Dress(body, head, entry.color, entry.teamMode, false, entry.face);
         // The punching bag has taken a beating: its lights flicker and its collar sparks
         if (dressed != null && entry.titles.Contains("PUNCHING BAG")) dressed.SetHealth(0.2f);
+        // Everyone else is pleased with their award
+        else if (dressed != null) dressed.Celebrate(float.PositiveInfinity);
         PlayerCap.Attach(head, entry.color, false, entry.hat);
 
         Gun form = FormFor(entry.titles.Count > 0 ? entry.titles[0] : "");

@@ -7,6 +7,8 @@ using UnityEngine.Rendering.Universal;
 // Builds the Office map (the 3rd floor of an office building) when its scene loads, from the
 // boxes in Assets/Resources/Maps/Office.txt. That file is made by Tools/OfficeMap/generate.py
 // from a layout traced off the floor plan; change the layout there and run the script again.
+// The Prototype map is built by it too, from Assets/Resources/Maps/Prototype.txt (made by
+// Tools/PrototypeMap/generate.py): set as its layout on the Arena object in Prototype.unity.
 //
 // Boxes with the same material are merged into one mesh per 24 m square, with UVs from world
 // position so floor and wall patterns line up and keep their scale. Colliders are plain box

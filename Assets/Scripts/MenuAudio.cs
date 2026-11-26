@@ -32,6 +32,7 @@ public class MenuAudio : MonoBehaviour
 
     private void Awake()
     {
+        EnsureListener();
         musicSource = gameObject.AddComponent<AudioSource>();
         musicSource.loop = true;
         musicSource.playOnAwake = false;
@@ -43,6 +44,23 @@ public class MenuAudio : MonoBehaviour
 
         if (hover == null) BuildUiClips();
         StartCoroutine(StartMusic());
+    }
+
+    // Nothing is heard without an enabled AudioListener, and the menu scene's camera has its own
+    // switched off: switch it on (or give the camera, or failing that this object, one)
+    private void EnsureListener()
+    {
+        AudioListener[] listeners = FindObjectsByType<AudioListener>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        foreach (AudioListener listener in listeners)
+        {
+            if (listener.enabled) return;
+        }
+        Camera main = Camera.main;
+        AudioListener onCamera = main != null ? main.GetComponent<AudioListener>() : null;
+        if (onCamera != null) onCamera.enabled = true;
+        else if (listeners.Length > 0) listeners[0].enabled = true;
+        else if (main != null) main.gameObject.AddComponent<AudioListener>();
+        else gameObject.AddComponent<AudioListener>();
     }
 
     private IEnumerator StartMusic()
