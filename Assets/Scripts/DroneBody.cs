@@ -292,8 +292,8 @@ public class DroneBody : MonoBehaviour
         float r = 0.5f * Mathf.Max(head.lossyScale.x, head.lossyScale.z);
 
         // Face screen: a dark glossy bulge on the front, a little below the middle (the cap's brim is above it)
-        Vector3 visorCentre = new Vector3(0f, -0.12f * r, 0.6f * r);
-        Vector3 visorRadii = new Vector3(0.75f * r, 0.42f * r, 0.45f * r);
+        Vector3 visorCentre = new Vector3(0f, -0.14f * r, 0.6f * r);
+        Vector3 visorRadii = new Vector3(0.8f * r, 0.46f * r, 0.47f * r);
         Renderer visor = Part(root, "Face", PrimitiveType.Sphere, VisorMaterial, visorCentre, visorRadii * 2f);
         Paint(visor, VisorColor, Color.black);
 
@@ -369,8 +369,21 @@ public class DroneBody : MonoBehaviour
         // z: how far out of the screen (a glint sits in front of a pupil)
         void Lit(Transform eye, PrimitiveType type, float x, float y, Vector3 size, float roll = 0f, float z = 0f) =>
             glow.Add(Part(eye, "Glow", type, GlowMaterial, new Vector3(x * r, y * r, z * r), size * r, false, new Vector3(0f, 0f, roll)));
-        void Shade(Transform eye, PrimitiveType type, float x, float y, Vector3 size, float roll = 0f) =>
-            dark.Add(Part(eye, "Dark", type, VisorMaterial, new Vector3(x * r, y * r, 0.045f * r), size * r, false, new Vector3(0f, 0f, roll)));
+        void Shade(Transform eye, PrimitiveType type, float x, float y, Vector3 size, float roll = 0f, float z = 0.045f) =>
+            dark.Add(Part(eye, "Dark", type, VisorMaterial, new Vector3(x * r, y * r, z * r), size * r, false, new Vector3(0f, 0f, roll)));
+        // A part of the face that doesn't blink (brows, mouths, floating sparkles)
+        Transform Still(float x, float y)
+        {
+            Transform still = Eye(x, y);
+            pivots.Remove(still);
+            return still;
+        }
+        // A four-pointed twinkle: two thin crossed ovals, the across one a little shorter
+        void Twinkle(Transform at, float x, float y, float size, float z)
+        {
+            Lit(at, PrimitiveType.Sphere, x, y, new Vector3(0.22f * size, size, 0.01f), 0f, z);
+            Lit(at, PrimitiveType.Sphere, x, y, new Vector3(0.22f * size, 0.8f * size, 0.01f), 90f, z);
+        }
         // An upturned V, like a smiling closed eye: two short bars meeting at the top
         void Chevron(Transform eye)
         {
@@ -415,10 +428,21 @@ public class DroneBody : MonoBehaviour
                     break;
                 case Faces.Angry:
                 {
-                    // Ovals with their top inner corners cut off by a dark slanting brow
-                    Transform eye = Eye(side * 0.24f, -0.06f);
-                    Lit(eye, PrimitiveType.Sphere, 0f, 0f, oval);
-                    Shade(eye, PrimitiveType.Cube, inner * 0.06f, 0.115f, new Vector3(0.34f, 0.14f, 0.05f), -inner * 32f);
+                    // Narrowed eyes, their tops cut off along a slant down to the middle, under thick
+                    // glowing brows on the same slant, and a small frown (built once)
+                    const float slant = 30f;
+                    Transform eye = Eye(side * 0.24f, -0.08f);
+                    Lit(eye, PrimitiveType.Sphere, 0f, 0f, new Vector3(0.23f, 0.24f, 0.08f));
+                    Shade(eye, PrimitiveType.Cube, inner * 0.06f, 0.1f, new Vector3(0.36f, 0.14f, 0.05f), -inner * slant);
+                    // The brow: a bar parallel to the cut, with a dark gap between them
+                    Lit(Still(side * 0.24f, -0.08f), PrimitiveType.Capsule, inner * 0.04f, 0.085f, new Vector3(0.06f, 0.15f, 0.03f), 90f - inner * slant, 0.09f);
+                    if (i == 0)
+                    {
+                        // A frown: two short bars meeting at the top, flatter than a smiling eye
+                        Transform mouth = Still(0f, -0.33f);
+                        Lit(mouth, PrimitiveType.Capsule, -0.045f, 0f, new Vector3(0.045f, 0.065f, 0.03f), -68f);
+                        Lit(mouth, PrimitiveType.Capsule, 0.045f, 0f, new Vector3(0.045f, 0.065f, 0.03f), 68f);
+                    }
                     break;
                 }
                 case Faces.Hearts:
@@ -442,12 +466,21 @@ public class DroneBody : MonoBehaviour
                 }
                 case Faces.Cyclops:
                 {
-                    // One big eye in the middle, with a dark pupil and a glint: built once
+                    // One big round lens in the middle, built once: a glowing rim, a dark ring, a glowing
+                    // iris round a dark pupil, and a glint, each just in front of the one before; with
+                    // short sight marks either side of it, like a scope
                     if (i != 0) break;
-                    Transform eye = Eye(0f, -0.06f);
-                    Lit(eye, PrimitiveType.Sphere, 0f, 0f, new Vector3(0.36f, 0.42f, 0.08f));
-                    Shade(eye, PrimitiveType.Sphere, 0f, -0.03f, new Vector3(0.16f, 0.2f, 0.04f));
-                    Lit(eye, PrimitiveType.Sphere, 0.05f, 0.03f, new Vector3(0.06f, 0.06f, 0.03f), 0f, 0.075f);
+                    Transform eye = Eye(0f, -0.07f);
+                    Lit(eye, PrimitiveType.Sphere, 0f, 0f, new Vector3(0.48f, 0.48f, 0.04f));
+                    Shade(eye, PrimitiveType.Sphere, 0f, 0f, new Vector3(0.38f, 0.38f, 0.02f), 0f, 0.03f);
+                    Lit(eye, PrimitiveType.Sphere, 0f, -0.01f, new Vector3(0.27f, 0.27f, 0.02f), 0f, 0.045f);
+                    Shade(eye, PrimitiveType.Sphere, 0f, -0.015f, new Vector3(0.12f, 0.12f, 0.01f), 0f, 0.06f);
+                    Lit(eye, PrimitiveType.Sphere, 0.06f, 0.055f, new Vector3(0.06f, 0.06f, 0.01f), 0f, 0.07f);
+                    Lit(eye, PrimitiveType.Sphere, -0.035f, -0.085f, new Vector3(0.025f, 0.025f, 0.01f), 0f, 0.07f);
+                    for (int mark = -1; mark <= 1; mark += 2)
+                    {
+                        Lit(eye, PrimitiveType.Capsule, mark * 0.32f, 0f, new Vector3(0.035f, 0.05f, 0.03f), 90f);
+                    }
                     break;
                 }
                 case Faces.Dots:
@@ -462,12 +495,15 @@ public class DroneBody : MonoBehaviour
                     break;
                 case Faces.Sparkle:
                 {
-                    // Big shiny eyes: a dark pupil low in each, with two glints
-                    Transform eye = Eye(side * 0.24f, -0.06f);
-                    Lit(eye, PrimitiveType.Sphere, 0f, 0f, new Vector3(0.22f, 0.32f, 0.08f));
-                    Shade(eye, PrimitiveType.Sphere, 0f, -0.03f, new Vector3(0.13f, 0.18f, 0.04f));
-                    Lit(eye, PrimitiveType.Sphere, 0.035f, 0.035f, new Vector3(0.06f, 0.06f, 0.03f), 0f, 0.075f);
-                    Lit(eye, PrimitiveType.Sphere, -0.035f, -0.08f, new Vector3(0.03f, 0.03f, 0.03f), 0f, 0.075f);
+                    // Big glossy eyes: a glowing rim round a large dark iris with a four-pointed twinkle
+                    // high up and a small glint low down, and a little twinkle floating off each eye's
+                    // outer top corner
+                    Transform eye = Eye(side * 0.24f, -0.07f);
+                    Lit(eye, PrimitiveType.Sphere, 0f, 0f, new Vector3(0.27f, 0.36f, 0.04f));
+                    Shade(eye, PrimitiveType.Sphere, 0f, -0.01f, new Vector3(0.2f, 0.29f, 0.02f), 0f, 0.03f);
+                    Twinkle(eye, side * 0.025f, 0.05f, 0.14f, 0.045f);
+                    Lit(eye, PrimitiveType.Sphere, inner * 0.04f, -0.08f, new Vector3(0.04f, 0.04f, 0.01f), 0f, 0.045f);
+                    Twinkle(Still(side * 0.46f, 0.14f), 0f, 0f, 0.12f, 0.01f);
                     break;
                 }
                 default:
