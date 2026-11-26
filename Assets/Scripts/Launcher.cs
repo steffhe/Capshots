@@ -104,6 +104,7 @@ public partial class Launcher : MonoBehaviour
             customizeMenu = CustomizeMenu.CreateForMainMenu(tabMain.transform.parent, tabMain, settingsButton, maxPlayersValue);
         }
         MenuScenery.Create();
+        MenuAudio.Create();
         Connect();
         // Back from a match (or a join that failed): reveal the menu under the loading screen
         LoadingScreen.Hide(0.15f);

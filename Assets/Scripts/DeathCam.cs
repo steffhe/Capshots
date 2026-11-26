@@ -213,24 +213,115 @@ public class DeathCam : MonoBehaviour
             }
         }
 
-        // Drift back and up from where the eyes were, keeping the head in view and not going through walls
-        Vector3 focus = target.position;
-        Vector3 wanted = focus + back * Distance + Vector3.up * Height;
-        Vector3 toWanted = wanted - focus;
-        int mask = ~((1 << Layers.LocalPlayer) | (1 << Layers.RemotePlayer) | (1 << Layers.Gun) | (1 << Layers.LocalGun) | (1 << Layers.Hitbox) | (1 << 2));
-        if (Physics.SphereCast(focus, 0.25f, toWanted.normalized, out RaycastHit hit, toWanted.magnitude, mask, QueryTriggerInteraction.Ignore))
+        // Drift back and up from where the eyes were, keeping the head (or cap) in view. The camera
+        // always sits on a line from the focus that was checked for walls this frame, so it never cuts
+        // through the floor or a wall on its way. When the line straight back is blocked it swings
+        // round to a clearer side instead of closing in.
+        Vector3 pivot = target.position + Vector3.up * PivotLift;
+        if (!orbiting)
         {
-            wanted = focus + toWanted.normalized * Mathf.Max(0.6f, hit.distance - 0.1f);
+            Vector3 fromPivot = transform.position - pivot;
+            orbitDistance = fromPivot.magnitude;
+            orbitDirection = fromPivot.sqrMagnitude > 0.0001f ? fromPivot.normalized : PreferredDirection(back);
+            chosenDirection = PreferredDirection(back);
+            orbiting = true;
         }
 
-        float follow = 1f - Mathf.Exp(-3.5f * dt);
-        transform.position = Vector3.Lerp(transform.position, wanted, follow);
-        Vector3 look = focus - transform.position;
+        float wantedDistance = new Vector2(Distance, Height).magnitude;
+        chosenDirection = ChooseDirection(pivot, chosenDirection, wantedDistance);
+        orbitDirection = Vector3.Slerp(orbitDirection, chosenDirection, 1f - Mathf.Exp(-3f * dt)).normalized;
+
+        // Ease out to the wanted distance, but come in at once when something is in the way
+        float clear = Clearance(pivot, orbitDirection, wantedDistance);
+        orbitDistance = Mathf.Lerp(orbitDistance, wantedDistance, 1f - Mathf.Exp(-3.5f * dt));
+        orbitDistance = Mathf.Min(orbitDistance, clear);
+        transform.position = pivot + orbitDirection * orbitDistance;
+
+        Vector3 look = target.position - transform.position;
         if (look.sqrMagnitude > 0.0001f)
         {
             Quaternion lookRotation = Quaternion.LookRotation(look, Vector3.up);
             transform.rotation = Quaternion.Slerp(transform.rotation, lookRotation, 1f - Mathf.Exp(-6f * dt));
         }
+    }
+
+    // The camera's focus sits this far above the head or cap, so checks don't start in the floor
+    private const float PivotLift = 0.35f;
+    private const float CameraRadius = 0.25f;
+    private bool orbiting;
+    private Vector3 orbitDirection, chosenDirection;
+    private float orbitDistance;
+    private static readonly RaycastHit[] hits = new RaycastHit[16];
+    private static readonly float[] turns = { 0f, 35f, -35f, 70f, -70f, 110f, -110f, 150f, -150f, 180f };
+    private static readonly float[] lifts = { 0f, 20f };
+
+    // Back and up from the focus, as a direction
+    private static Vector3 PreferredDirection(Vector3 back) => (back * Distance + Vector3.up * Height).normalized;
+
+    // Keeps the current side while it's clear enough; otherwise the side, turned round the focus,
+    // nearest the preferred one that is, or the clearest one if none is
+    private Vector3 ChooseDirection(Vector3 pivot, Vector3 current, float wanted)
+    {
+        float enough = wanted * 0.8f;
+        if (Clearance(pivot, current, wanted) >= enough) return current;
+
+        Vector3 preferred = PreferredDirection(back);
+        Vector3 best = current;
+        float bestClear = -1f;
+        foreach (float lift in lifts)
+        {
+            foreach (float turn in turns)
+            {
+                Vector3 side = Quaternion.AngleAxis(turn, Vector3.up) * preferred;
+                if (lift > 0f) side = Vector3.RotateTowards(side, Vector3.up, lift * Mathf.Deg2Rad, 0f);
+                float clear = Clearance(pivot, side, wanted);
+                if (clear >= enough) return side;
+                if (clear > bestClear)
+                {
+                    bestClear = clear;
+                    best = side;
+                }
+            }
+        }
+        return best;
+    }
+
+    // How far the camera can go from the focus in this direction before touching the world. Bodies
+    // moved by physics (ragdolls, caps, glass shards) don't count: they're what the camera watches.
+    private static float Clearance(Vector3 pivot, Vector3 direction, float distance)
+    {
+        int mask = ~((1 << Layers.LocalPlayer) | (1 << Layers.RemotePlayer) | (1 << Layers.Gun) | (1 << Layers.LocalGun) | (1 << Layers.Hitbox) | (1 << 2));
+        int count = Physics.SphereCastNonAlloc(pivot, CameraRadius, direction, hits, distance, mask, QueryTriggerInteraction.Ignore);
+        float clear = distance;
+        bool startsTouching = false;
+        for (int i = 0; i < count; i++)
+        {
+            RaycastHit hit = hits[i];
+            if (IsLoose(hit)) continue;
+            // Already touching at the start (the focus is right against a wall or the floor): the
+            // sphere can't tell how far is free, so a thin ray below checks this direction instead
+            if (hit.distance <= 0f)
+            {
+                startsTouching = true;
+                continue;
+            }
+            clear = Mathf.Min(clear, hit.distance - 0.05f);
+        }
+        if (startsTouching)
+        {
+            count = Physics.RaycastNonAlloc(pivot, direction, hits, distance, mask, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < count; i++)
+            {
+                if (!IsLoose(hits[i])) clear = Mathf.Min(clear, hits[i].distance - CameraRadius);
+            }
+        }
+        return Mathf.Max(0.3f, clear);
+    }
+
+    private static bool IsLoose(RaycastHit hit)
+    {
+        Rigidbody body = hit.rigidbody;
+        return body != null && !body.isKinematic;
     }
 
     private void StartSpectating(Player body)

@@ -9,8 +9,7 @@ using UnityEngine.AI;
 // it can see one, turns to aim (with a reaction delay and some aim error that settles the longer it
 // tracks), sidesteps, keeps a sensible distance for its gun form and fires when on target, with the odd
 // plasma grenade at mid range. On Normal and Hard (BotLogic.Skill.tactical) it also backs off into
-// cover to heal when badly hurt, and picks up a nearby ammo box when its energy is low. With the scoped
-// form it holds its ground.
+// cover to heal when badly hurt. With the scoped form it holds its ground.
 [DisallowMultipleComponent]
 public class BotBrain : MonoBehaviour
 {
@@ -607,14 +606,6 @@ public class BotBrain : MonoBehaviour
     private void ChooseGoal(float now, Vector3 feet)
     {
         hasGoal = true;
-
-        // Low on energy with an ammo box close by: grab it first
-        if (skill.tactical && weapon != null && weapon.EnergyFraction < 0.5f &&
-            manager.NearestPickup(feet, 20f, out Vector3 box))
-        {
-            goal = box;
-            return;
-        }
 
         // Cap Grab: a cap on the ground nearby is worth more than a fight (an enemy's scores, its own
         // denies it to them)

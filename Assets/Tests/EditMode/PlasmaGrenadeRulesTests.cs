@@ -42,6 +42,15 @@ public class PlasmaGrenadeRulesTests
     }
 
     [Test]
+    public void RechargeProgress_RunsFromThrownToReady()
+    {
+        Assert.AreEqual(0f, PlasmaGrenadeRules.RechargeProgress(PlasmaGrenadeRules.RechargeTime), 1e-4f);
+        Assert.AreEqual(1f, PlasmaGrenadeRules.RechargeProgress(0f), 1e-4f);
+        Assert.AreEqual(0.5f, PlasmaGrenadeRules.RechargeProgress(PlasmaGrenadeRules.RechargeTime / 2f), 1e-4f);
+        Assert.AreEqual(1f, PlasmaGrenadeRules.RechargeProgress(-2f), 1e-4f);
+    }
+
+    [Test]
     public void Bounce_HardHitBouncesBack()
     {
         Vector3 after = PlasmaGrenadeRules.Bounce(new Vector3(0f, -10f, 0f), Vector3.up);

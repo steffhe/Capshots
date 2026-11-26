@@ -30,6 +30,7 @@ public class PlayerCap : MonoBehaviour
     private Renderer[] renderers;
     private Shade[] shades;
     private Surface[] surfaces;
+    private float[] glows;
     private static Material capMaterial;
 
     // The hat this is (see Hats)
@@ -39,8 +40,11 @@ public class PlayerCap : MonoBehaviour
     private readonly System.Collections.Generic.List<Renderer> parts = new System.Collections.Generic.List<Renderer>();
     private readonly System.Collections.Generic.List<Shade> partShades = new System.Collections.Generic.List<Shade>();
     private readonly System.Collections.Generic.List<Surface> partSurfaces = new System.Collections.Generic.List<Surface>();
+    private readonly System.Collections.Generic.List<float> partGlows = new System.Collections.Generic.List<float>();
     // What the parts being built are made of (set by each hat as it builds)
     private Surface surface = Surface.Twill;
+    // How much brighter than usual glowing parts being built glow (the halo glows the most)
+    private float glowBoost = 1f;
     private bool solid;
 
     // Puts a hat on a head made from Unity's sphere mesh, sized to it and drawn on the head's layer.
@@ -69,9 +73,11 @@ public class PlayerCap : MonoBehaviour
         cap.renderers = cap.parts.ToArray();
         cap.shades = cap.partShades.ToArray();
         cap.surfaces = cap.partSurfaces.ToArray();
+        cap.glows = cap.partGlows.ToArray();
         cap.parts.Clear();
         cap.partShades.Clear();
         cap.partSurfaces.Clear();
+        cap.partGlows.Clear();
         cap.SetColor(color);
         return cap;
     }
@@ -93,9 +99,22 @@ public class PlayerCap : MonoBehaviour
             renderers[i].GetPropertyBlock(block);
             block.SetColor("_BaseColor", c); // URP
             block.SetColor("_Color", c);     // built-in shaders
-            block.SetColor("_EmissionColor", kind == Surface.Glow && !locked ? c * GlowStrength : Color.black);
+            block.SetColor("_EmissionColor", kind == Surface.Glow && !locked ? c * (GlowStrength * GlowOf(i)) : Color.black);
             renderers[i].SetPropertyBlock(block);
         }
+    }
+
+    private float GlowOf(int part) => glows != null && part < glows.Length ? glows[part] : 1f;
+
+    // How much brighter than usual this part glows (1 for most; HatMotion's pulses start from it)
+    internal float GlowOf(Renderer part)
+    {
+        if (renderers == null) return 1f;
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            if (renderers[i] == part) return GlowOf(i);
+        }
+        return 1f;
     }
 
     // Shows the hat as a see-through grey ghost of itself, without its glow: the Customize menu's
@@ -335,12 +354,11 @@ public class PlayerCap : MonoBehaviour
         const float sit = 0.36f; // where the brim rests, as a fraction of the head's radius: just above the face
         const float radius = 0.96f, height = 1.05f, flare = 1.08f;
         surface = Surface.Felt;
-        Primitive("Brim", PrimitiveType.Cylinder, Shade.Dark, new Vector3(0f, sit * r, 0f), new Vector3(2.8f * r, 0.025f * r, 2.8f * r), Vector3.zero, true);
-        // The brim's edge rolled up a little, higher at the sides than front and back
-        for (int side = -1; side <= 1; side += 2)
-        {
-            Generated("Brim Roll", Torus(0.05f, 140f), Shade.Dark, new Vector3(0f, (sit + 0.05f) * r, 0f), new Vector3(1.38f * r, 1.38f * r, 1.38f * r), new Vector3(0f, side > 0 ? -70f : 110f, 6f * side), false);
-        }
+        // The brim curls up gently towards its edge, more at the sides than front and back, and its
+        // edge is rolled: one closed piece all the way round
+        BrimShape brim = new BrimShape { innerX = 0.94f, innerZ = 0.94f, outerX = 1.42f, outerZ = 1.36f, sideCurl = 0.2f, frontCurl = 0.05f, power = 2.2f, thickness = 0.03f };
+        Generated("Brim", BrimMesh(brim), Shade.Dark, new Vector3(0f, sit * r, 0f), Vector3.one * r, Vector3.zero, true);
+        Generated("Brim Roll", BrimEdge(brim, 0.035f), Shade.Dark, new Vector3(0f, sit * r, 0f), Vector3.one * r, Vector3.zero, false);
         // The crown flares out a little towards its flat top
         Line(Generated("Crown", Frustum(flare, true), Shade.Main, new Vector3(0f, sit * r, 0f), new Vector3(radius * r, height * r, radius * r), Vector3.zero, true), Frustum(flare, true, true));
         Generated("Top Edge", Torus(0.04f), Shade.Main, new Vector3(0f, (sit + height) * r, 0f), Vector3.one * (radius * flare * 0.99f * r), Vector3.zero, false);
@@ -470,6 +488,8 @@ public class PlayerCap : MonoBehaviour
     private void BuildHalo(float r)
     {
         surface = Surface.Glow;
+        // The brightest glow of any hat: it should light up the screen's bloom
+        glowBoost = 3f;
         if (solid)
         {
             Generated("Ring", Torus(0.24f), Shade.Light, new Vector3(0f, 1.42f * r, 0f), Vector3.one * (0.68f * r), new Vector3(-8f, 0f, 0f), true);
@@ -480,7 +500,9 @@ public class PlayerCap : MonoBehaviour
         Transform rock = Pivot("Rock", Vector3.zero, Vector3.zero, halo);
         HatMotion.Add(rock.gameObject, HatMotion.Kind.Sweep, Vector3.forward, 0.3f, 5f);
         Renderer ring = Generated("Ring", Torus(0.24f), Shade.Light, Vector3.zero, Vector3.one * (0.68f * r), Vector3.zero, false, rock);
-        HatMotion.Add(ring.gameObject, HatMotion.Kind.Pulse, Vector3.up, 0.35f, 0.35f);
+        HatMotion.Add(ring.gameObject, HatMotion.Kind.Pulse, Vector3.up, 0.35f, 0.25f);
+        // The glints brighter still
+        glowBoost = 4f;
         Transform glints = Pivot("Glints", Vector3.zero, Vector3.zero, rock);
         glints.gameObject.AddComponent<HatSpinner>().SetSteady(70f);
         for (int i = 0; i < 3; i++)
@@ -568,13 +590,13 @@ public class PlayerCap : MonoBehaviour
         Stripe("Stripe", Shade.Light, at.y + 0.04f * r, radius * r, top, height * r, 1.12f * r, 1.34f * r, 1f, cone);
     }
 
-    // A toadstool: a wide, squat mushroom cap sitting on the head like the drone is its stalk, with a
+    // A toadstool: a wide, squat mushroom cap pulled down snug over the head like the drone is its stalk, with a
     // rolled rim, pale spots scattered over the top and fine gills fanning out underneath (seen when
-    // it's knocked off and lands upside down). It wobbles a little as the player moves.
+    // it's knocked off and lands upside down). It sways slightly as the player moves.
     private void BuildToadstool(float r)
     {
         // The cap's dome: its base this high up the head, this wide and this tall (of the head's radius)
-        const float baseY = 0.55f, width = 1.55f, height = 1.1f;
+        const float baseY = 0.3f, width = 1.55f, height = 1.0f;
         surface = Surface.Felt;
 
         // A ragdoll's hat stays still: its colliders can't move inside the falling hat
@@ -583,7 +605,8 @@ public class PlayerCap : MonoBehaviour
         if (!solid)
         {
             cap = Pivot("Cap", at);
-            HatDangle.Add(cap.gameObject, Vector3.up, height * r, 1800f, 0.01f, 7f);
+            // Stiff and quickly settled: a slight sway, not a wobble
+            HatDangle.Add(cap.gameObject, Vector3.up, height * r, 6000f, 0f, 16f);
             at = Vector3.zero;
         }
 
@@ -679,37 +702,39 @@ public class PlayerCap : MonoBehaviour
         Primitive("Ferrule", PrimitiveType.Cylinder, Shade.Dark, at + along * (0.06f * r), new Vector3(0.16f * r, 0.06f * r, 0.16f * r), stickEuler, false, stick);
     }
 
-    // A cowboy hat: a creased crown, slightly longer front to back, with a band, on a brim that
-    // curls up at the sides
+    // A cowboy hat: a tall crown, longer front to back, with a deep crease down the middle of its top
+    // between two rounded ridges, a band with a buckle, on a wide brim that sweeps up hard at the
+    // sides and dips a little at the front and back
     private void BuildCowboyHat(float r)
     {
         const float sit = 0.38f; // just above the face, so the crown is wide enough for the head inside it
+        const float crownX = 0.97f, crownZ = 1.08f, crownTop = 0.78f, crownHeight = 0.82f;
+        float crownFoot = (sit - 0.02f) * r;
         surface = Surface.Felt;
-        Primitive("Brim", PrimitiveType.Cylinder, Shade.Dark, new Vector3(0f, sit * r, 0f), new Vector3(1.9f * r, 0.025f * r, 3.15f * r), Vector3.zero, true);
+        BrimShape brim = new BrimShape { innerX = 0.95f, innerZ = 1.06f, outerX = 1.55f, outerZ = 1.8f, sideCurl = 0.55f, frontCurl = -0.1f, power = 2f, thickness = 0.03f };
+        Generated("Brim", BrimMesh(brim), Shade.Dark, new Vector3(0f, sit * r, 0f), Vector3.one * r, Vector3.zero, true);
+        Generated("Brim Edge", BrimEdge(brim, 0.03f), Shade.Dark, new Vector3(0f, sit * r, 0f), Vector3.one * r, Vector3.zero, false);
+
+        Line(Generated("Crown", Frustum(crownTop, true), Shade.Main, new Vector3(0f, crownFoot, 0f), new Vector3(crownX * r, crownHeight * r, crownZ * r), Vector3.zero, true), Frustum(crownTop, true, true));
+        // The top: two long rounded ridges side by side, meeting in a crease down the middle
+        float top = crownFoot + crownHeight * r;
         for (int side = -1; side <= 1; side += 2)
         {
-            // Tipped up 30 degrees, its inner edge meeting the flat brim
-            Primitive("Brim Curl", PrimitiveType.Cylinder, Shade.Dark, new Vector3(1.08f * r * side, (sit + 0.25f) * r, 0f), new Vector3(1.05f * r, 0.025f * r, 2.7f * r), new Vector3(0f, 0f, 30f * side), true);
+            Primitive("Crown Ridge", PrimitiveType.Sphere, Shade.Main, new Vector3(0.37f * r * side, top, -0.02f * r), new Vector3(0.74f * r, 0.3f * r, 1.44f * r), new Vector3(0f, 0f, -6f * side), false);
         }
-        Line(Generated("Crown", Frustum(0.82f, true), Shade.Main, new Vector3(0f, (sit - 0.02f) * r, 0f), new Vector3(0.97f * r, 0.8f * r, 1.08f * r), Vector3.zero, true), Frustum(0.82f, true, true));
-        // The crease down the middle of the top
-        Primitive("Crease", PrimitiveType.Cube, Shade.Dark, new Vector3(0f, (sit + 0.77f) * r, 0f), new Vector3(0.08f * r, 0.03f * r, 1.3f * r), Vector3.zero, false);
-        // Two pinches in the front of the crown, either side of the crease
-        for (int side = -1; side <= 1; side += 2)
-        {
-            Primitive("Pinch", PrimitiveType.Sphere, Shade.Dark, new Vector3(0.33f * r * side, (sit + 0.6f) * r, 0.78f * r), new Vector3(0.12f * r, 0.24f * r, 0.06f * r), new Vector3(-20f, 25f * side, 0f), false);
-        }
+
         surface = Surface.Satin;
-        Stripe("Band", Shade.Dark, (sit - 0.02f) * r, 0.97f * r, 0.82f, 0.8f * r, 0.06f * r, 0.2f * r, 1.08f / 0.97f);
-        // A metal buckle on the front of the band, and studs round it
+        Stripe("Band", Shade.Dark, crownFoot, crownX * r, crownTop, crownHeight * r, 0.06f * r, 0.2f * r, crownZ / crownX);
+        // A metal buckle on the front of the band, and studs round it, sitting on the band
         surface = Surface.Metal;
-        float bandY = (sit + 0.11f) * r;
-        Primitive("Buckle", PrimitiveType.Cube, Shade.Light, new Vector3(0f, bandY, 1.06f * r), new Vector3(0.2f * r, 0.15f * r, 0.03f * r), new Vector3(-8f, 0f, 0f), false);
-        Primitive("Buckle Middle", PrimitiveType.Cube, Shade.Dark, new Vector3(0f, bandY, 1.075f * r), new Vector3(0.11f * r, 0.07f * r, 0.02f * r), new Vector3(-8f, 0f, 0f), false);
+        float bandY = crownFoot + 0.13f * r;
+        float bandScale = (1f - (1f - crownTop) * 0.13f / crownHeight) * 1.03f;
+        Primitive("Buckle", PrimitiveType.Cube, Shade.Light, new Vector3(0f, bandY, crownZ * bandScale * r), new Vector3(0.2f * r, 0.15f * r, 0.03f * r), new Vector3(-8f, 0f, 0f), false);
+        Primitive("Buckle Middle", PrimitiveType.Cube, Shade.Dark, new Vector3(0f, bandY, (crownZ * bandScale + 0.015f) * r), new Vector3(0.11f * r, 0.07f * r, 0.02f * r), new Vector3(-8f, 0f, 0f), false);
         for (int i = 1; i < 6; i++)
         {
             float a = i * 60f * Mathf.Deg2Rad;
-            Primitive("Stud", PrimitiveType.Sphere, Shade.Light, new Vector3(Mathf.Sin(a) * 0.97f * r, bandY, Mathf.Cos(a) * 1.06f * r), Vector3.one * (0.07f * r), Vector3.zero, false);
+            Primitive("Stud", PrimitiveType.Sphere, Shade.Light, new Vector3(Mathf.Sin(a) * crownX * bandScale * r, bandY, Mathf.Cos(a) * crownZ * bandScale * r), Vector3.one * (0.07f * r), Vector3.zero, false);
         }
     }
 
@@ -754,38 +779,33 @@ public class PlayerCap : MonoBehaviour
     // each with a light trim along its top, and a big skull and crossbones on the front flap
     private void BuildPirateHat(float r)
     {
-        const float sit = 0.48f;   // where the flaps start, up the head: just above the face
-        const float inset = 0.9f;  // from the middle out to each flap, clear of the head
-        const float lean = 14f;    // how far the flaps lean out
+        const float sit = 0.48f;   // where the brim starts, up the head: just above the face
 
         surface = Surface.Felt;
-        Line(Generated("Crown", Frustum(0.72f, true), Shade.Dark, new Vector3(0f, (sit - 0.06f) * r, 0f), new Vector3(0.93f * r, 0.7f * r, 0.93f * r), Vector3.zero, true), Frustum(0.72f, true, true));
-        // A satin bead on each corner, where two flaps meet
+        Line(Generated("Crown", Frustum(0.72f, true), Shade.Dark, new Vector3(0f, (sit - 0.06f) * r, 0f), new Vector3(0.93f * r, 0.86f * r, 0.93f * r), Vector3.zero, true), Frustum(0.72f, true, true));
+        // One brim, turned up steeply into a triangle round the crown: a flat side at the front and
+        // corners flaring out at the sides and back, like a real tricorne. The trim runs along its
+        // top edge all the way round.
+        BrimShape brim = new BrimShape { innerX = 0.91f, innerZ = 0.91f, apothem = 1.12f, cornerCap = 1.5f, sideCurl = 0.58f, frontCurl = 0.66f, power = 1.25f, thickness = 0.05f };
+        Vector3 brimAt = new Vector3(0f, sit * r, 0f);
+        Generated("Brim", BrimMesh(brim), Shade.Main, brimAt, Vector3.one * r, Vector3.zero, true);
+        surface = Surface.Satin;
+        Generated("Trim", BrimEdge(brim, 0.045f), Shade.Light, brimAt, Vector3.one * r, Vector3.zero, false);
+        // A satin bead on each corner
         for (int i = 0; i < 3; i++)
         {
-            const float cornerHeight = 0.5f;
-            Vector3 corner = Quaternion.Euler(0f, 60f + i * 120f, 0f) * Vector3.forward * ((2f * inset + 2f * Mathf.Sin(lean * Mathf.Deg2Rad) * cornerHeight) * r) + Vector3.up * ((sit + cornerHeight * Mathf.Cos(lean * Mathf.Deg2Rad)) * r);
-            surface = Surface.Satin;
-            Primitive("Corner", PrimitiveType.Sphere, Shade.Light, corner, Vector3.one * (0.12f * r), Vector3.zero, false);
+            Primitive("Corner", PrimitiveType.Sphere, Shade.Light, brimAt + BrimPoint(brim, (60f + 120f * i) * Mathf.Deg2Rad, 1f) * r, Vector3.one * (0.13f * r), Vector3.zero, false);
         }
-        for (int i = 0; i < 3; i++)
-        {
-            // The first flap faces forwards, the others back to the sides; the front one is taller
-            float height = i == 0 ? 0.62f : 0.5f;
-            // Long enough that its top edge meets the next flaps at the corners
-            float flapLength = 2f * (inset + Mathf.Sin(lean * Mathf.Deg2Rad) * height) * Mathf.Tan(60f * Mathf.Deg2Rad) + 0.05f;
-            Quaternion turn = Quaternion.Euler(0f, i * 120f, 0f) * Quaternion.Euler(lean, 0f, 0f);
-            Vector3 foot = Quaternion.Euler(0f, i * 120f, 0f) * Vector3.forward * (inset * r) + Vector3.up * (sit * r);
-            Vector3 middle = foot + turn * Vector3.up * (0.5f * height * r);
-            surface = Surface.Felt;
-            Primitive("Flap", PrimitiveType.Cube, Shade.Main, middle, new Vector3(flapLength * r, height * r, 0.06f * r), turn.eulerAngles, true);
-            surface = Surface.Satin;
-            Primitive("Trim", PrimitiveType.Cube, Shade.Light, foot + turn * Vector3.up * (height * r), new Vector3(flapLength * r, 0.06f * r, 0.09f * r), turn.eulerAngles, false);
 
-            if (i != 0) continue;
-            // The skull and crossbones, on the front of the front flap
+        {
+            // The skull and crossbones, on the outside of the front flap: local z out of the flap,
+            // local y up along it
+            const float skullT = 0.56f;
+            Vector3 up = BrimOutward(brim, 0f, skullT);
+            Vector3 outside = -BrimNormal(brim, 0f, skullT);
+            Quaternion turn = Quaternion.LookRotation(outside, up);
             surface = Surface.Plastic;
-            Vector3 face = middle + turn * new Vector3(0f, 0.05f * r, 0.05f * r);
+            Vector3 face = brimAt + BrimPoint(brim, 0f, skullT) * r + outside * ((0.5f * brim.thickness + 0.02f) * r);
             for (int side = -1; side <= 1; side += 2)
             {
                 Primitive("Bone", PrimitiveType.Cube, Shade.Light, face + turn * new Vector3(0f, -0.04f * r, -0.01f * r), new Vector3(0.62f * r, 0.08f * r, 0.03f * r), (turn * Quaternion.Euler(0f, 0f, 32f * side)).eulerAngles, false);
@@ -952,13 +972,26 @@ public class PlayerCap : MonoBehaviour
     {
         surface = Surface.Felt;
         // The felt hugging the head, a little fuller than the head itself
-        Crown(new Vector3(1.06f * r, 1.1f * r, 1.06f * r));
-        // The body: one soft piece over the top, pulled down over the right side
-        Primitive("Body", PrimitiveType.Sphere, Shade.Main, new Vector3(0.32f * r, 0.7f * r, -0.03f * r), new Vector3(2.2f * r, 1.0f * r, 2.16f * r), new Vector3(0f, 0f, -24f), true);
+        Crown(new Vector3(1.05f * r, 1.08f * r, 1.05f * r));
+        // The body: a wide, flat round of felt lying on top, its right side pulled down over the
+        // ear and its left side standing a little proud of the head. A softer lip rolls round its
+        // edge, and a stitched ring marks the middle of the top.
+        Quaternion drape = Quaternion.Euler(0f, 0f, -20f);
+        Vector3 bodyAt = new Vector3(0.3f * r, 0.84f * r, -0.04f * r);
+        Primitive("Body", PrimitiveType.Sphere, Shade.Main, bodyAt, new Vector3(2.34f * r, 0.56f * r, 2.22f * r), drape.eulerAngles, true);
+        Generated("Body Lip", Torus(0.09f), Shade.Main, bodyAt + drape * new Vector3(0f, -0.05f * r, 0f), new Vector3(1.13f * r, 0.6f * r, 1.07f * r), drape.eulerAngles, false);
+        Generated("Top Stitching", Torus(0.02f), Shade.Dark, bodyAt + drape * new Vector3(0f, 0.27f * r, 0f), Vector3.one * (0.34f * r), drape.eulerAngles, false);
+        Primitive("Top Knot", PrimitiveType.Sphere, Shade.Dark, bodyAt + drape * new Vector3(0f, 0.28f * r, 0f), new Vector3(0.1f * r, 0.05f * r, 0.1f * r), drape.eulerAngles, false);
         // The leather band, with its edge piped
         surface = Surface.Satin;
         Line(Generated("Band", Frustum(0.98f, false), Shade.Dark, new Vector3(0f, 0.24f * r, 0f), new Vector3(1.01f * r, 0.12f * r, 1.01f * r), Vector3.zero, true), Frustum(0.98f, false, true));
         Generated("Band Edge", Torus(0.05f), Shade.Dark, new Vector3(0f, 0.24f * r, 0f), Vector3.one * (1.01f * r), Vector3.zero, false);
+        // The band's drawstring tied in a bow at the back, its two ribbon tails hanging down
+        Primitive("Bow", PrimitiveType.Sphere, Shade.Dark, new Vector3(0f, 0.3f * r, -1.03f * r), new Vector3(0.16f * r, 0.08f * r, 0.05f * r), Vector3.zero, false);
+        for (int side = -1; side <= 1; side += 2)
+        {
+            Primitive("Ribbon", PrimitiveType.Cube, Shade.Dark, new Vector3(0.06f * r * side, 0.08f * r, -1.02f * r), new Vector3(0.07f * r, 0.4f * r, 0.012f * r), new Vector3(-8f, 0f, 9f * side), false);
+        }
 
         // The badge: a shield (square top, pointed bottom) with a darker shield on it, and a star in
         // the middle that catches the light now and then. Placed on the felt over the left eye, lying
@@ -1256,23 +1289,50 @@ public class PlayerCap : MonoBehaviour
         StillBox(new Vector3(0f, centre * r, 0f), Vector3.one * (2f * ring * r));
     }
 
-    // Devil horns: a glossy horn on each side of the top of the head, ridged at its root, leaning out
-    // then curving up and in to a sharp point
+    // Devil horns: a big glossy horn on each side of the top of the head, thick and ringed at its
+    // root, sweeping out to the side, then up, then hooking forward and in to a sharp point, with a
+    // dark tip that smoulders
     private void BuildDevilHorns(float r)
     {
+        const float thickness = 0.28f;
         surface = Surface.Plastic;
         for (int side = -1; side <= 1; side += 2)
         {
-            Vector3 root = new Vector3(0.42f * side, 0.86f, 0.22f).normalized * (0.95f * r);
-            Vector3[] ways = { new Vector3(0.75f * side, 1f, 0.15f), new Vector3(0.45f * side, 1f, 0.1f), new Vector3(0.05f * side, 1f, 0f), new Vector3(-0.35f * side, 1f, -0.05f) };
-            float[] lengths = { 0.18f * r, 0.16f * r, 0.15f * r, 0.15f * r };
-            Horn("Horn", root, ways, lengths, 0.17f * r, Shade.Main, true);
-            Vector3 rootUp = ways[0].normalized;
-            for (int i = 0; i < 2; i++)
+            Vector3 root = new Vector3(0.5f * side, 0.8f, 0.2f).normalized * (0.94f * r);
+            Vector3[] ways =
             {
-                Generated("Horn Ridge", Torus(0.2f), Shade.Dark, root + rootUp * ((0.03f + 0.05f * i) * r), Vector3.one * ((0.16f - 0.015f * i) * r), Quaternion.FromToRotation(Vector3.up, rootUp).eulerAngles, false);
+                new Vector3(1f * side, 0.55f, 0.1f), new Vector3(0.8f * side, 1f, 0.15f), new Vector3(0.25f * side, 1f, 0.3f),
+                new Vector3(-0.2f * side, 0.85f, 0.55f), new Vector3(-0.4f * side, 0.35f, 0.8f),
+            };
+            float[] lengths = { 0.3f * r, 0.3f * r, 0.28f * r, 0.24f * r, 0.2f * r };
+            Horn("Horn", root, ways, lengths, thickness * r, Shade.Main, true);
+            // Rings round the thick first stretch, like a ram's or a goat's
+            Vector3 rootWay = ways[0].normalized;
+            Vector3 ringEuler = Quaternion.FromToRotation(Vector3.up, rootWay).eulerAngles;
+            for (int i = 0; i < 4; i++)
+            {
+                float along = (0.03f + 0.07f * i) * r;
+                float radius = thickness * (1f - along / Sum(lengths)) * 0.98f;
+                Generated("Horn Ridge", Torus(0.18f), Shade.Dark, root + rootWay * along, Vector3.one * (radius * r), ringEuler, false);
             }
+            // The last stretch in the dark shade, glowing faintly at the very point
+            Vector3 tipFrom = root;
+            for (int i = 0; i < ways.Length - 1; i++) tipFrom += ways[i].normalized * lengths[i];
+            Vector3 tipWay = ways[ways.Length - 1].normalized;
+            float tipFromRadius = thickness * lengths[ways.Length - 1] / Sum(lengths);
+            Generated("Horn Tip", Frustum(0f, false), Shade.Dark, tipFrom + tipWay * (0.003f * r), new Vector3(tipFromRadius * 1.04f * r, lengths[ways.Length - 1] * r, tipFromRadius * 1.04f * r), Quaternion.FromToRotation(Vector3.up, tipWay).eulerAngles, false);
+            surface = Surface.Glow;
+            Renderer ember = Primitive("Ember", PrimitiveType.Sphere, Shade.Light, tipFrom + tipWay * (lengths[ways.Length - 1] * 0.9f * r), Vector3.one * (0.035f * r), Vector3.zero, false);
+            HatMotion.Add(ember.gameObject, HatMotion.Kind.Pulse, Vector3.up, 0.6f, 0.6f);
+            surface = Surface.Plastic;
         }
+    }
+
+    private static float Sum(float[] values)
+    {
+        float total = 0f;
+        foreach (float v in values) total += v;
+        return total;
     }
 
     #endregion
@@ -1444,6 +1504,7 @@ public class PlayerCap : MonoBehaviour
         parts.Add(renderer);
         partShades.Add(shade);
         partSurfaces.Add(surface);
+        partGlows.Add(glowBoost);
         return renderer;
     }
 
@@ -1591,6 +1652,178 @@ public class PlayerCap : MonoBehaviour
         mesh.RecalculateTangents();
         mesh.RecalculateBounds();
         meshes[key] = mesh;
+        return mesh;
+    }
+
+    // The shape of a hat's brim, in head radii, round the crown's foot (y 0): from the inner edge (an
+    // ellipse, tucked under the crown) out to the outer edge, which is an ellipse, or a triangle with
+    // rounded corners when apothem is set (a tricorne: a flat side to the front). The brim rises
+    // towards its edge by curl * (how far out)^power: sideCurl at the sides, frontCurl at the front
+    // and back (negative: it dips), blended in between.
+    private struct BrimShape
+    {
+        public float innerX, innerZ, outerX, outerZ;
+        public float apothem, cornerCap;
+        public float sideCurl, frontCurl, power, thickness;
+
+        public string Key => string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0:0.###} {1:0.###} {2:0.###} {3:0.###} {4:0.###} {5:0.###} {6:0.###} {7:0.###} {8:0.###} {9:0.###}",
+            innerX, innerZ, outerX, outerZ, apothem, cornerCap, sideCurl, frontCurl, power, thickness);
+    }
+
+    // A point on a brim's middle surface: a is radians round from the front (+z) towards +x, t how
+    // far out (0 at the crown, 1 at the edge)
+    private static Vector3 BrimPoint(BrimShape b, float a, float t)
+    {
+        float sin = Mathf.Sin(a), cos = Mathf.Cos(a);
+        float inner = 1f / Mathf.Sqrt(sin * sin / (b.innerX * b.innerX) + cos * cos / (b.innerZ * b.innerZ));
+        float outer;
+        if (b.apothem > 0f)
+        {
+            float side = Mathf.Repeat(a * Mathf.Rad2Deg + 60f, 120f) - 60f;
+            outer = Mathf.Min(b.apothem / Mathf.Cos(side * Mathf.Deg2Rad), b.apothem * b.cornerCap);
+        }
+        else
+        {
+            outer = 1f / Mathf.Sqrt(sin * sin / (b.outerX * b.outerX) + cos * cos / (b.outerZ * b.outerZ));
+        }
+        float curl = b.sideCurl * sin * sin + b.frontCurl * cos * cos;
+        return new Vector3(sin, 0f, cos) * Mathf.Lerp(inner, outer, t) + Vector3.up * (curl * Mathf.Pow(t, b.power));
+    }
+
+    // The way a brim's top faces at a point (up, or in towards the crown where it curls up)
+    private static Vector3 BrimNormal(BrimShape b, float a, float t)
+    {
+        const float e = 0.002f;
+        Vector3 around = BrimPoint(b, a + e, t) - BrimPoint(b, a - e, t);
+        Vector3 outward = BrimPoint(b, a, Mathf.Min(1f, t + e)) - BrimPoint(b, a, Mathf.Max(0f, t - e));
+        return Vector3.Cross(outward, around).normalized;
+    }
+
+    // The way out along a brim's surface towards its edge at a point
+    private static Vector3 BrimOutward(BrimShape b, float a, float t)
+    {
+        const float e = 0.002f;
+        return (BrimPoint(b, a, Mathf.Min(1f, t + e)) - BrimPoint(b, a, Mathf.Max(0f, t - e))).normalized;
+    }
+
+    // A brim as one closed piece: a top and an underside a thickness apart. (Its inner edge is open,
+    // but it's tucked under the crown.)
+    private static Mesh BrimMesh(BrimShape b)
+    {
+        string key = "Brim " + b.Key;
+        Mesh mesh;
+        if (meshes.TryGetValue(key, out mesh) && mesh != null) return mesh;
+
+        const int rings = 10, segments = 72;
+        var vertices = new System.Collections.Generic.List<Vector3>();
+        var normals = new System.Collections.Generic.List<Vector3>();
+        var uvs = new System.Collections.Generic.List<Vector2>();
+        var triangles = new System.Collections.Generic.List<int>();
+        for (int face = 0; face < 2; face++)
+        {
+            float flip = face == 0 ? 1f : -1f;
+            int start = vertices.Count;
+            for (int i = 0; i <= rings; i++)
+            {
+                float t = (float)i / rings;
+                for (int j = 0; j < segments; j++)
+                {
+                    float a = 2f * Mathf.PI * j / segments;
+                    Vector3 n = BrimNormal(b, a, t) * flip;
+                    vertices.Add(BrimPoint(b, a, t) + n * (b.thickness * 0.5f));
+                    normals.Add(n);
+                    uvs.Add(new Vector2(4f * j / segments, t));
+                }
+            }
+            for (int i = 0; i < rings; i++)
+            {
+                for (int j = 0; j < segments; j++)
+                {
+                    int k = (j + 1) % segments;
+                    int a0 = start + i * segments + j, a1 = start + i * segments + k;
+                    int b0 = a0 + segments, b1 = a1 + segments;
+                    Quad(vertices, normals, triangles, a0, b0, a1, b1);
+                }
+            }
+        }
+        mesh = FinishMesh(key, vertices, normals, uvs, triangles);
+        meshes[key] = mesh;
+        return mesh;
+    }
+
+    // A round tube along a brim's outer edge: its rolled edge, or a trim
+    private static Mesh BrimEdge(BrimShape b, float radius)
+    {
+        string key = "Brim Edge " + b.Key + " " + radius.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        Mesh mesh;
+        if (meshes.TryGetValue(key, out mesh) && mesh != null) return mesh;
+
+        const int segments = 72, sides = 10;
+        var vertices = new System.Collections.Generic.List<Vector3>();
+        var normals = new System.Collections.Generic.List<Vector3>();
+        var uvs = new System.Collections.Generic.List<Vector2>();
+        var triangles = new System.Collections.Generic.List<int>();
+        for (int j = 0; j < segments; j++)
+        {
+            float a = 2f * Mathf.PI * j / segments;
+            Vector3 centre = BrimPoint(b, a, 1f);
+            Vector3 up = BrimNormal(b, a, 1f);
+            Vector3 outward = BrimOutward(b, a, 1f);
+            for (int k = 0; k < sides; k++)
+            {
+                float c = 2f * Mathf.PI * k / sides;
+                Vector3 n = outward * Mathf.Cos(c) + up * Mathf.Sin(c);
+                vertices.Add(centre + n * radius);
+                normals.Add(n);
+                uvs.Add(new Vector2(8f * j / segments, (float)k / sides));
+            }
+        }
+        for (int j = 0; j < segments; j++)
+        {
+            int jn = (j + 1) % segments;
+            for (int k = 0; k < sides; k++)
+            {
+                int kn = (k + 1) % sides;
+                Quad(vertices, normals, triangles, j * sides + k, jn * sides + k, j * sides + kn, jn * sides + kn);
+            }
+        }
+        mesh = FinishMesh(key, vertices, normals, uvs, triangles);
+        meshes[key] = mesh;
+        return mesh;
+    }
+
+    // Two triangles across a quad (a0 a1 along one edge, b0 b1 along the next), each wound so it
+    // faces the way its corners' normals point
+    private static void Quad(System.Collections.Generic.List<Vector3> v, System.Collections.Generic.List<Vector3> n, System.Collections.Generic.List<int> triangles, int a0, int b0, int a1, int b1)
+    {
+        Triangle(v, n, triangles, a0, b0, a1);
+        Triangle(v, n, triangles, a1, b0, b1);
+    }
+
+    private static void Triangle(System.Collections.Generic.List<Vector3> v, System.Collections.Generic.List<Vector3> n, System.Collections.Generic.List<int> triangles, int a, int b, int c)
+    {
+        // Unity draws a triangle's front where Cross(b - a, c - a) points
+        Vector3 facing = Vector3.Cross(v[b] - v[a], v[c] - v[a]);
+        if (Vector3.Dot(facing, n[a] + n[b] + n[c]) < 0f)
+        {
+            int swap = b;
+            b = c;
+            c = swap;
+        }
+        triangles.Add(a);
+        triangles.Add(b);
+        triangles.Add(c);
+    }
+
+    private static Mesh FinishMesh(string name, System.Collections.Generic.List<Vector3> vertices, System.Collections.Generic.List<Vector3> normals, System.Collections.Generic.List<Vector2> uvs, System.Collections.Generic.List<int> triangles)
+    {
+        Mesh mesh = new Mesh { name = "Hat " + name };
+        mesh.SetVertices(vertices);
+        mesh.SetNormals(normals);
+        mesh.SetUVs(0, uvs);
+        mesh.SetTriangles(triangles, 0);
+        mesh.RecalculateTangents();
+        mesh.RecalculateBounds();
         return mesh;
     }
 
