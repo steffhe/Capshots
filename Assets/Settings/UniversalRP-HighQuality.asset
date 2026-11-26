@@ -22,7 +22,7 @@ MonoBehaviour:
   m_RequireDepthTexture: 0
   m_RequireOpaqueTexture: 0
   m_OpaqueDownsampling: 1
-  m_SupportsTerrainHoles: 1
+  m_SupportsTerrainHoles: 0
   m_SupportsHDR: 1
   m_HDRColorBufferPrecision: 0
   m_MSAA: 2
@@ -72,7 +72,7 @@ MonoBehaviour:
   m_UseSRPBatcher: 1
   m_SupportsDynamicBatching: 0
   m_MixedLightingSupported: 1
-  m_SupportsLightCookies: 1
+  m_SupportsLightCookies: 0
   m_SupportsLightLayers: 0
   m_StoreActionsOptimization: 0
   m_UseAdaptivePerformance: 1
@@ -80,8 +80,8 @@ MonoBehaviour:
   m_ColorGradingLutSize: 32
   m_AllowPostProcessAlphaOutput: 0
   m_UseFastSRGBLinearConversion: 0
-  m_SupportDataDrivenLensFlare: 1
-  m_SupportScreenSpaceLensFlare: 1
+  m_SupportDataDrivenLensFlare: 0
+  m_SupportScreenSpaceLensFlare: 0
   m_GPUResidentDrawerMode: 0
   m_SmallMeshScreenPercentage: 0
   m_ShadowSmallMeshScreenPercentages: {x: 0, y: 0, z: 0, w: 0}

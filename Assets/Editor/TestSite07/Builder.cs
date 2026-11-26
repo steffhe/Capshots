@@ -196,12 +196,14 @@ namespace TestSite07
             }
             settings.bakedGI = true;
             settings.realtimeGI = false;
-            settings.mixedBakeMode = MixedLightingMode.IndirectOnly;
+            // Same lightmap modes as the other maps (Directional, Shadowmask): each extra mode in a
+            // build scene adds a set of shader variants and lengthens every build
+            settings.mixedBakeMode = MixedLightingMode.Shadowmask;
             settings.lightmapper = LightingSettings.Lightmapper.ProgressiveGPU;
             settings.lightmapResolution = 3f;
             settings.lightmapPadding = 2;
             settings.lightmapMaxSize = 1024;
-            settings.directionalityMode = LightmapsMode.NonDirectional;
+            settings.directionalityMode = LightmapsMode.CombinedDirectional;
             settings.lightmapCompression = LightmapCompression.NormalQuality;
             settings.ao = true;
             settings.aoMaxDistance = 1.2f;
