@@ -271,7 +271,7 @@ public partial class Manager
         lobbyKeyChip.gameObject.SetActive(!touch);
         if (touch)
         {
-            lobbyHint.text = $"PAUSE (II) TO {action}";
+            lobbyHint.text = $"MENU (II) TO {action}";
         }
         else
         {

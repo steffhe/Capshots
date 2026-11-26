@@ -300,7 +300,8 @@ public static partial class UITheme
             if (title != null)
             {
                 StyleText(title, 56, TextColor, TextAnchor.MiddleCenter);
-                title.text = title.text.ToUpperInvariant();
+                // The match carries on behind it, so it isn't "paused": just the menu
+                title.text = "MENU";
                 title.rectTransform.sizeDelta = new Vector2(300f, 120f);
             }
 
@@ -312,6 +313,7 @@ public static partial class UITheme
                 StyleButton(button, child.name == "Button (1)" ? ButtonStyle.Primary : ButtonStyle.Secondary);
                 Text label = button.GetComponentInChildren<Text>(true);
                 if (label != null && label.text == "QUIT") label.text = "LEAVE MATCH";
+                if (label != null && label.text == "RESUME") label.text = "BACK TO MATCH";
             }
         }
 
