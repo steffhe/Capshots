@@ -7,6 +7,7 @@ using UnityEngine.UI;
 public partial class Manager
 {
     private Text raceScore;
+    private Image raceScoreBackdrop;
 
     private void CreateRaceScore()
     {
@@ -20,8 +21,9 @@ public partial class Manager
 
         RectTransform rect = (RectTransform)scoreObject.transform;
         RectTransform timerRect = (RectTransform)timer.transform;
-        rect.anchoredPosition = timerRect.anchoredPosition - new Vector2(0f, timerRect.sizeDelta.y + 6f);
+        rect.anchoredPosition = timerRect.anchoredPosition - new Vector2(0f, timerRect.sizeDelta.y + 4f);
         raceScore.fontSize = 18;
+        raceScore.color = UITheme.TextColor;
         UITheme.AddShadow(raceScore);
 
         RefreshRaceScore();
@@ -44,5 +46,6 @@ public partial class Manager
             ? $"<color={accent}>YOU LEAD {mine}</color>   <color={muted}>NEXT</color> {others}"
             : $"<color={muted}>YOU</color> {mine}   <color={muted}>LEADER</color> {others}";
         raceScore.text = $"<color={muted}>{goal}</color>   {race}";
+        raceScoreBackdrop = UITheme.FitBackdrop(raceScoreBackdrop, raceScore);
     }
 }

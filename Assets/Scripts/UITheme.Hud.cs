@@ -17,6 +17,10 @@ public static partial class UITheme
     {
         if (hud == null) return;
         UseFontIn(hud.root);
+        ScaleConsistently(hud);
+        Image healthTrack = null;
+        Text healthValue = null;
+        Text weaponLabel = null;
 
         // Health: a slim bar on a dark track in the bottom left, with the player's name above it
         RectTransform health = hud.Find("Health") as RectTransform;
@@ -40,6 +44,18 @@ public static partial class UITheme
             Place(bar, Vector2.zero, barPosition, barSize);
             Image barImage = bar.GetComponent<Image>();
             if (barImage != null) barImage.color = HealthFull;
+            healthTrack = track;
+
+            // The number, just right of the bar: "100 HP" (set by HudFeedback)
+            healthValue = health.Find("Value")?.GetComponent<Text>();
+            if (healthValue == null) healthValue = NewText("Value", health, 30, HealthFull, TextAnchor.LowerLeft);
+            StyleText(healthValue, 30, HealthFull, TextAnchor.LowerLeft);
+            healthValue.text = "";
+            // Pivot on the left of the baseline, so the hit flash grows the number away from the bar
+            Place(healthValue.rectTransform, Vector2.zero, new Vector2(barPosition.x + barSize.x + 14f, barPosition.y - 8f), new Vector2(150f, 36f));
+            healthValue.rectTransform.pivot = new Vector2(0f, 0.25f);
+            healthValue.rectTransform.anchoredPosition += new Vector2(0f, 9f);
+            AddShadow(healthValue, 0.75f);
         }
 
         RectTransform username = hud.Find("Username") as RectTransform;
@@ -67,8 +83,16 @@ public static partial class UITheme
                 StyleText(text, 46, TextColor, TextAnchor.LowerRight);
                 text.horizontalOverflow = HorizontalWrapMode.Overflow;
                 Place(text.rectTransform, new Vector2(1f, 0f), Vector2.zero, new Vector2(300f, 60f));
-                AddShadow(text);
+                AddShadow(text, 0.75f);
             }
+
+            // The active gun form's name, small and in the accent colour above the count (set by HudFeedback)
+            weaponLabel = ammo.Find("Weapon")?.GetComponent<Text>();
+            if (weaponLabel == null) weaponLabel = NewText("Weapon", ammo, 18, AccentText, TextAnchor.LowerRight);
+            StyleText(weaponLabel, 18, AccentText, TextAnchor.LowerRight);
+            weaponLabel.text = "";
+            Place(weaponLabel.rectTransform, new Vector2(1f, 0f), new Vector2(0f, 62f), new Vector2(300f, 24f));
+            AddShadow(weaponLabel, 0.75f);
         }
 
         // Gun form icons: stacked up the right side from just above the ammo count. Anchored to the
@@ -77,23 +101,30 @@ public static partial class UITheme
         RectTransform arsenal = hud.Find("Arsenal") as RectTransform;
         if (arsenal != null) Place(arsenal, new Vector2(1f, 0f), new Vector2(-250f, 140f), Vector2.zero);
 
-        // Timer: top centre on a dark pill
+        // Timer: top centre on a dark pill with a thin accent line along its bottom, so it reads as
+        // the match clock at a glance (the Manager turns it amber, then red, near the end)
         RectTransform timer = hud.Find("Timer") as RectTransform;
         if (timer != null)
         {
             Place(timer, new Vector2(0.5f, 1f), new Vector2(0f, -20f), Vector2.zero);
-            if (timer.Find("Backdrop") == null)
+            Image backdrop = timer.Find("Backdrop")?.GetComponent<Image>();
+            if (backdrop == null)
             {
-                Image backdrop = NewImage("Backdrop", timer, new Color(0f, 0f, 0f, 0.6f), 22f);
+                backdrop = NewImage("Backdrop", timer, TimerBackdrop, TimerSize.y / 2f);
                 backdrop.transform.SetAsFirstSibling();
-                Place(backdrop.rectTransform, new Vector2(0.5f, 1f), Vector2.zero, new Vector2(150f, 44f));
+            }
+            Place(backdrop.rectTransform, new Vector2(0.5f, 1f), Vector2.zero, TimerSize);
+            if (backdrop.transform.Find("Accent") == null)
+            {
+                Image accent = NewImage("Accent", backdrop.transform, Accent, 1.5f);
+                Place(accent.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 4f), new Vector2(TimerSize.x - 48f, 3f));
             }
             Text text = timer.Find("Text")?.GetComponent<Text>();
             if (text != null)
             {
-                StyleText(text, 28, TextColor, TextAnchor.MiddleCenter);
+                StyleText(text, 30, TextColor, TextAnchor.MiddleCenter);
                 text.horizontalOverflow = HorizontalWrapMode.Overflow;
-                Place(text.rectTransform, new Vector2(0.5f, 1f), Vector2.zero, new Vector2(150f, 44f));
+                Place(text.rectTransform, new Vector2(0.5f, 1f), Vector2.zero, TimerSize);
             }
         }
 
@@ -122,6 +153,50 @@ public static partial class UITheme
         }
 
         StyleLeaderboard(hud.Find("Leaderboard"));
+
+        HudFeedback.Attach(hud, health != null ? health.Find("Bar") as RectTransform : null, healthTrack, healthValue, weaponLabel, hud.Find("Crosshair"));
+    }
+
+    public static readonly Vector2 TimerSize = new Vector2(168f, 46f);
+    public static readonly Color TimerBackdrop = new Color(0f, 0f, 0f, 0.6f);
+    // The timer near the end of a timed match: amber for the last 30 seconds, red for the last 10
+    public static readonly Color TimerWarning = new Color(1f, 0.78f, 0.3f);
+    public static readonly Color TimerCritical = new Color(1f, 0.35f, 0.3f);
+
+    // The map scenes' canvases scale with the screen's width, so on wide screens and phones (which
+    // are wider than 16:9) the whole HUD grew taller than the screen allowed and crowded together.
+    // Expand keeps the canvas at least 1920 x 1080: the HUD is the same size relative to the screen's
+    // height on any wide screen, and nothing laid out for 1920 wide is ever cut off on narrower ones.
+    private static void ScaleConsistently(Transform hud)
+    {
+        Canvas canvas = hud.GetComponentInParent<Canvas>();
+        CanvasScaler scaler = canvas != null ? canvas.rootCanvas.GetComponent<CanvasScaler>() : null;
+        if (scaler == null || scaler.uiScaleMode != CanvasScaler.ScaleMode.ScaleWithScreenSize) return;
+        scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.Expand;
+    }
+
+    // A dark pill behind a line of text, sized to the text: for the score lines under the timer,
+    // which sit over the bright sky. Call again after the text changes.
+    public static Image FitBackdrop(Image backdrop, Text text, float padding = 14f, float height = 30f)
+    {
+        if (text == null) return backdrop;
+        RectTransform rect = text.rectTransform;
+        if (backdrop == null)
+        {
+            backdrop = NewImage(text.name + " Backdrop", rect.parent, new Color(0f, 0f, 0f, 0.5f), height / 2f);
+            backdrop.transform.SetSiblingIndex(rect.GetSiblingIndex());
+        }
+        bool show = text.gameObject.activeSelf && !string.IsNullOrEmpty(text.text);
+        backdrop.gameObject.SetActive(show);
+        if (!show) return backdrop;
+        RectTransform b = backdrop.rectTransform;
+        b.anchorMin = rect.anchorMin;
+        b.anchorMax = rect.anchorMax;
+        b.pivot = new Vector2(0.5f, 0.5f);
+        // The text's middle, wherever its pivot is
+        b.anchoredPosition = rect.anchoredPosition + new Vector2((0.5f - rect.pivot.x) * rect.sizeDelta.x, (0.5f - rect.pivot.y) * rect.sizeDelta.y);
+        b.sizeDelta = new Vector2(text.preferredWidth + padding * 2f, height);
+        return backdrop;
     }
 
     private static void StatLine(Transform line, float y, Color color)

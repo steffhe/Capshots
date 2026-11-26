@@ -231,10 +231,10 @@ public class TouchControls : MonoBehaviour
         AddButton("SWAP", new[] { GameInput.WeaponNext }, new Vector2(1f, 0f), new Vector2(-440f, 480f), 55f);
         grenadeButton = AddButton("NADE", new[] { GameInput.Grenade }, new Vector2(1f, 0f), new Vector2(-280f, 560f), 50f);
 
-        // Top middle, either side of the match timer, clear of the kill feed (top right) and the
-        // player card (top left)
-        AddButton("II", null, new Vector2(0.5f, 1f), new Vector2(165f, -70f), 45f).onPress = OpenPauseMenu;
-        AddButton("SCORE", new[] { GameInput.Scoreboard }, new Vector2(0.5f, 1f), new Vector2(-165f, -70f), 45f);
+        // Top middle, either side of the match timer and the score line on its plate under it, clear
+        // of the kill feed (top right) and the player card (top left)
+        AddButton("II", null, new Vector2(0.5f, 1f), new Vector2(215f, -70f), 45f).onPress = OpenPauseMenu;
+        AddButton("SCORE", new[] { GameInput.Scoreboard }, new Vector2(0.5f, 1f), new Vector2(-215f, -70f), 45f);
 
         // Joystick: rests in the lower left and follows the thumb to wherever it lands
         stickBase = NewCircle("Stick", root, StickRadius, new Color(1f, 1f, 1f, 0.12f));

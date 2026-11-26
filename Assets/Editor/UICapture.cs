@@ -149,6 +149,10 @@ static class UICapture
                 bar.localScale = new Vector3(0.72f, 1f, 1f);
                 if (Styled) bar.GetComponent<Image>().color = UITheme.HealthColor(0.72f);
             }
+            Text healthValue = hud != null ? hud.Find("Health/Value")?.GetComponent<Text>() : null;
+            if (healthValue != null)
+                healthValue.text = $"72<size={Mathf.RoundToInt(healthValue.fontSize * 0.55f)}><color={UITheme.Hex(UITheme.MutedText)}> HP</color></size>";
+            SetText(hud, "Ammo/Weapon", "MACHINE GUN");
             FillLeaderboard(hud != null ? hud.Find("Leaderboard") : null);
             FillLeaderboard(end != null ? end.Find("Leaderboard") : null);
 

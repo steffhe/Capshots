@@ -735,6 +735,7 @@ public class Player : NetworkBehaviour
         float healthRatio = (float)Health / (float)maxHealth;
         uiHealthBar.localScale = new Vector3(healthRatio, 1, 1);
         if (uiHealthBarImage != null) uiHealthBarImage.color = UITheme.HealthColor(healthRatio);
+        HudFeedback.SetHealth(Health, maxHealth);
     }
 
     #endregion
