@@ -29,6 +29,7 @@ public class OfficeMapTests
             "b wood 0 1 0 1 1 1 n\n" +
             "p 2 1.54 5 1.4 2.92 0.03 1.35 0.8\n" +
             "s 1.5 1.2 -2 90\n" +
+            "s 3 1.2 4 180 1\n" +
             "l 0 2.75 1 180 0.3 0.1 0.1 0.1 H  Bakrommet\n" +
             "c 1 2 3 10 45\n";
         OfficeMapData d = OfficeMapData.Parse(text);
@@ -47,6 +48,8 @@ public class OfficeMapTests
         Assert.AreEqual(1.35f, d.panes[0].frostY, 1e-5f);
         Assert.AreEqual(0.8f, d.panes[0].frostHeight, 1e-5f);
         Assert.AreEqual(90f, d.spawns[0].yaw);
+        Assert.AreEqual(-1, d.spawns[0].team, "a spawn point without a team is anyone's");
+        Assert.AreEqual(1, d.spawns[1].team);
         Assert.AreEqual("H Bakrommet", d.signs[0].text);
         Assert.IsTrue(d.hasCamera);
         Assert.AreEqual(45f, d.cameraYaw);
@@ -105,6 +108,26 @@ public class OfficeMapTests
             Assert.IsEmpty(blocking, "the spawn at " + spawn.position + " is blocked");
             Assert.IsFalse(Data.panes.Any(p => p.Bounds.Intersects(body)), "the spawn at " + spawn.position + " is in a glass pane");
         }
+    }
+
+    [Test]
+    public void GeneratedMap_FrostedFilmIsTheMountainPattern()
+    {
+        // The film on the glass walls has see-through parts, drawn with world-position UVs
+        OfficeMapData.MaterialDef frost = Data.materials.First(m => m.name == "frost");
+        Assert.AreEqual("mountains", frost.texture);
+        Assert.Greater(frost.tile, 1f);
+        Assert.IsTrue(Data.panes.Any(p => p.frostHeight > 0f), "rooms have the film");
+        Assert.IsTrue(Data.panes.Any(p => p.frostHeight == 0f), "print rooms and the glass over doors are clear");
+    }
+
+    [Test]
+    public void GeneratedMap_CourtyardIsWalledInBreakableGlass()
+    {
+        // The courtyard is on the floor's level, so its glass walls break like the others: tall
+        // panes standing on the floor, far more of them than the rooms' glass over doors
+        var tall = Data.panes.Where(p => p.Bounds.min.y < 0.2f && p.Bounds.max.y > 2.9f && p.frostHeight == 0f).ToList();
+        Assert.Greater(tall.Count, 40);
     }
 
     private static bool Contains2D(Bounds b, Vector3 p, float pad)

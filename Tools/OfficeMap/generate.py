@@ -9,7 +9,7 @@ Only the Python standard library is needed (the preview also needs Pillow).
 Output format, one item per line (world units are metres, y up, the office floor at y = 0):
     m <name> <r> <g> <b> <a> <texture> <tile> <smoothness> <kind>   a material
     b <material> <cx> <cy> <cz> <sx> <sy> <sz> <flags>              a box
-    s <x> <y> <z> <yaw>                                             a spawn point
+    s <x> <y> <z> <yaw> [team]                                      a spawn point (team -1 or none: anyone's)
     l <x> <y> <z> <yaw> <height> <r> <g> <b> <text...>              a sign
     c <x> <y> <z> <pitch> <yaw>                                     the map camera
     p <cx> <cy> <cz> <sx> <sy> <sz> <frost cy> <frost sy>          a glass pane that shatters
@@ -34,54 +34,70 @@ FRAME_INSET = 0.003  # keeps glass wall frames off the faces of the walls they m
 EXT_T = 0.3        # outside wall thickness
 DOOR_W = 1.5
 DOOR_H = 2.5
-GARDEN_Y = -3.75   # the courtyard is one floor down
+GARDEN_Y = 0.0     # the courtyard garden is on the same level as the floor
+FLOOR_H = 3.75     # storey height of the floors above, round the courtyard
+FLOORS_ABOVE = 3
 GROUND_Y = -7.5    # street level, two floors down
 
 MATERIALS = [
     # name, r, g, b, a, texture, tile (m), smoothness, kind
-    ("wood", 0.66, 0.48, 0.32, 1, "wood", 2.4, 0.45, "opaque"),
-    ("carpet", 0.40, 0.42, 0.46, 1, "carpet", 1.2, 0.05, "opaque"),
-    ("carpet_blue", 0.27, 0.33, 0.50, 1, "carpet", 1.2, 0.05, "opaque"),
+    ("wood", 0.80, 0.62, 0.43, 1, "wood", 2.4, 0.5, "opaque"),          # oak floor
+    ("carpet", 0.58, 0.59, 0.60, 1, "checker", 1.0, 0.05, "opaque"),    # grey squares
+    ("carpet_blue", 0.30, 0.31, 0.34, 1, "carpet", 1.2, 0.05, "opaque"),  # meeting rooms: dark grey
     ("vinyl", 0.78, 0.78, 0.76, 1, "tile", 0.6, 0.3, "opaque"),
     ("rubber", 0.20, 0.21, 0.23, 1, "carpet", 1.0, 0.1, "opaque"),
-    ("wall", 0.88, 0.88, 0.86, 1, "none", 1, 0.1, "opaque"),
+    ("wall", 0.90, 0.90, 0.89, 1, "none", 1, 0.1, "opaque"),
+    ("grey_wall", 0.42, 0.44, 0.47, 1, "none", 1, 0.1, "opaque"),
     ("ext", 0.72, 0.71, 0.69, 1, "concrete", 3, 0.1, "opaque"),
-    ("ceiling", 0.93, 0.93, 0.92, 1, "tile", 1.2, 0.0, "opaque"),
-    ("frame", 0.24, 0.25, 0.27, 1, "none", 1, 0.55, "opaque"),
-    ("glass", 0.78, 0.90, 0.94, 0.14, "none", 1, 0.95, "glass"),
-    ("frost", 0.93, 0.95, 0.96, 0.7, "none", 1, 0.5, "glass"),
-    ("window", 0.60, 0.74, 0.84, 0.22, "none", 1, 0.95, "glass"),
-    ("facade_glass", 0.20, 0.27, 0.33, 1, "none", 1, 0.9, "opaque"),
+    ("ceiling", 0.93, 0.93, 0.92, 1, "tile", 0.6, 0.0, "opaque"),
+    ("frame", 0.10, 0.10, 0.11, 1, "none", 1, 0.55, "opaque"),
+    ("glass", 0.80, 0.90, 0.94, 0.12, "none", 1, 0.95, "glass"),
+    ("frost", 0.94, 0.96, 0.97, 0.72, "mountains", 6, 0.5, "glass"),
+    ("window", 0.60, 0.74, 0.84, 0.2, "none", 1, 0.95, "glass"),
+    ("dark_glass", 0.16, 0.20, 0.24, 1, "none", 1, 0.92, "opaque"),
+    ("terracotta", 0.80, 0.50, 0.33, 1, "panels", 2.4, 0.25, "opaque"),
+    ("facade_dark", 0.17, 0.18, 0.19, 1, "none", 1, 0.3, "opaque"),
     ("light", 1.0, 0.97, 0.90, 1, "none", 1, 0.0, "glow"),
-    ("desk", 0.86, 0.80, 0.70, 1, "none", 1, 0.35, "opaque"),
-    ("metal", 0.32, 0.33, 0.35, 1, "none", 1, 0.6, "opaque"),
-    ("divider", 0.38, 0.52, 0.44, 1, "carpet", 0.5, 0.05, "opaque"),
-    ("monitor", 0.07, 0.07, 0.08, 1, "none", 1, 0.7, "opaque"),
+    ("desk", 0.93, 0.93, 0.91, 1, "none", 1, 0.35, "opaque"),
+    ("metal", 0.10, 0.10, 0.11, 1, "none", 1, 0.5, "opaque"),
+    ("chrome", 0.55, 0.56, 0.58, 1, "none", 1, 0.9, "opaque"),
+    ("divider", 0.60, 0.62, 0.58, 1, "carpet", 0.5, 0.05, "opaque"),
+    ("monitor", 0.05, 0.05, 0.06, 1, "none", 1, 0.7, "opaque"),
     ("screen", 0.30, 0.45, 0.70, 1, "none", 1, 0.0, "glow"),
-    ("chair", 0.14, 0.15, 0.17, 1, "none", 1, 0.25, "opaque"),
-    ("sofa", 0.30, 0.44, 0.40, 1, "carpet", 0.5, 0.05, "opaque"),
-    ("sofa_red", 0.62, 0.28, 0.24, 1, "carpet", 0.5, 0.05, "opaque"),
-    ("table", 0.93, 0.93, 0.91, 1, "none", 1, 0.4, "opaque"),
-    ("counter", 0.96, 0.96, 0.95, 1, "none", 1, 0.5, "opaque"),
+    ("chair", 0.10, 0.10, 0.11, 1, "none", 1, 0.25, "opaque"),
+    ("sofa", 0.33, 0.34, 0.37, 1, "carpet", 0.5, 0.05, "opaque"),
+    ("sofa_red", 0.10, 0.10, 0.11, 1, "carpet", 0.5, 0.05, "opaque"),  # black lounge chairs
+    ("walnut", 0.36, 0.24, 0.16, 1, "wood", 1.2, 0.4, "opaque"),
+    ("copper", 0.72, 0.42, 0.22, 1, "none", 1, 0.7, "opaque"),
+    ("marble", 0.93, 0.93, 0.92, 1, "concrete", 1.0, 0.8, "opaque"),
+    ("table", 0.12, 0.12, 0.13, 1, "none", 1, 0.45, "opaque"),
+    ("counter", 0.13, 0.13, 0.14, 1, "none", 1, 0.5, "opaque"),
+    ("tile_black", 0.10, 0.10, 0.11, 1, "tile", 0.3, 0.6, "opaque"),
+    ("rug", 0.52, 0.45, 0.35, 1, "carpet", 0.5, 0.0, "opaque"),
+    ("rug_black", 0.09, 0.09, 0.10, 1, "carpet", 0.5, 0.0, "opaque"),
     ("door", 0.50, 0.37, 0.26, 1, "wood", 1.5, 0.35, "opaque"),
     ("exit", 0.15, 0.85, 0.35, 1, "none", 1, 0.0, "glow"),
-    ("pink", 0.86, 0.66, 0.80, 1, "none", 1, 0.1, "opaque"),
-    ("yellow", 0.93, 0.86, 0.45, 1, "none", 1, 0.1, "opaque"),
-    ("blue", 0.42, 0.52, 0.80, 1, "none", 1, 0.1, "opaque"),
-    ("green", 0.45, 0.85, 0.45, 1, "none", 1, 0.1, "opaque"),
+    ("green_light", 0.25, 0.95, 0.55, 1, "none", 1, 0.0, "glow"),
+    ("red", 0.78, 0.10, 0.10, 1, "none", 1, 0.4, "opaque"),
     ("teal", 0.36, 0.66, 0.58, 1, "none", 1, 0.1, "opaque"),
-    ("orange", 0.88, 0.58, 0.36, 1, "none", 1, 0.2, "opaque"),
-    ("plant", 0.24, 0.50, 0.24, 1, "carpet", 0.4, 0.1, "opaque"),
-    ("pot", 0.85, 0.84, 0.80, 1, "none", 1, 0.3, "opaque"),
-    ("grass", 0.34, 0.55, 0.26, 1, "grass", 2.5, 0.0, "opaque"),
-    ("path", 0.64, 0.62, 0.58, 1, "tile", 1.0, 0.1, "opaque"),
-    ("trunk", 0.40, 0.29, 0.20, 1, "wood", 1, 0.1, "opaque"),
-    ("leaves", 0.27, 0.50, 0.22, 1, "grass", 1.5, 0.0, "opaque"),
-    ("leaves2", 0.38, 0.58, 0.26, 1, "grass", 1.5, 0.0, "opaque"),
-    ("ground", 0.40, 0.50, 0.33, 1, "grass", 4, 0.0, "opaque"),
-    ("asphalt", 0.30, 0.30, 0.31, 1, "concrete", 4, 0.1, "opaque"),
+    ("orange", 0.92, 0.55, 0.20, 1, "none", 1, 0.2, "opaque"),
+    ("plant", 0.20, 0.42, 0.20, 1, "grass", 0.6, 0.1, "opaque"),
+    ("pot", 0.42, 0.33, 0.22, 1, "none", 1, 0.5, "opaque"),
+    ("gravel", 0.66, 0.60, 0.52, 1, "gravel", 1.2, 0.05, "opaque"),
+    ("paver", 0.36, 0.37, 0.38, 1, "boards", 1.2, 0.15, "opaque"),
+    ("soil", 0.33, 0.22, 0.15, 1, "gravel", 1.0, 0.0, "opaque"),
+    ("corten", 0.52, 0.26, 0.12, 1, "concrete", 1.0, 0.2, "opaque"),
+    ("shrub", 0.19, 0.31, 0.17, 1, "grass", 1.0, 0.0, "opaque"),
+    ("shrub2", 0.26, 0.37, 0.19, 1, "grass", 1.0, 0.0, "opaque"),
+    ("conifer", 0.13, 0.25, 0.15, 1, "grass", 1.0, 0.0, "opaque"),
+    ("twig", 0.30, 0.24, 0.20, 1, "none", 1, 0.1, "opaque"),
+    ("weathered", 0.58, 0.58, 0.55, 1, "boards", 1.8, 0.1, "opaque"),
+    ("ground", 0.30, 0.38, 0.24, 1, "grass", 4, 0.0, "opaque"),
+    ("asphalt", 0.27, 0.27, 0.28, 1, "concrete", 4, 0.1, "opaque"),
+    ("pavement", 0.62, 0.62, 0.60, 1, "tile", 1.2, 0.1, "opaque"),
     ("mirror", 0.70, 0.76, 0.80, 1, "none", 1, 0.98, "opaque"),
-    ("printer", 0.82, 0.82, 0.80, 1, "none", 1, 0.3, "opaque"),
+    ("printer", 0.84, 0.84, 0.82, 1, "none", 1, 0.3, "opaque"),
+    ("whiteboard", 0.97, 0.97, 0.97, 1, "none", 1, 0.8, "opaque"),
 ]
 
 out = []
@@ -135,17 +151,20 @@ def wbox(mat, axis, line, t0, t1, thick, y0, y1, flags="-"):
 labels = []
 
 
-def label(x, y, z, yaw, height, text, color=(0.12, 0.13, 0.15)):
-    """A sign: dark text on a white plate. The text faces away from its yaw direction."""
+def label(x, y, z, yaw, height, text, color=(0.12, 0.13, 0.15), plate=True):
+    """A sign: dark text on a white plate (or just the letters, plate=False). The text faces away
+    from its yaw direction."""
     labels.append((x, y, z, yaw, height, color, text))
+    if not plate:
+        return
     width = max(0.6, len(text) * height * 0.62 + 0.25)
     tall = height * 1.6
     fx, fz = math.sin(math.radians(yaw)), math.cos(math.radians(yaw))  # into the wall
     px, pz = x + fx * 0.015, z + fz * 0.015
     if abs(fz) > 0.5:
-        cbox("counter", px, y, pz, width, tall, 0.02, "ns")
+        cbox("desk", px, y, pz, width, tall, 0.02, "ns")
     else:
-        cbox("counter", px, y, pz, 0.02, tall, width, "ns")
+        cbox("desk", px, y, pz, 0.02, tall, width, "ns")
 
 
 def wall_point(axis, line, t):
@@ -269,7 +288,9 @@ def pane(axis, line, t0, t1, y0, y1, frosted):
         b = (t0, t1, y0, y1, line - 0.015, line + 0.015)
     else:
         b = (line - 0.015, line + 0.015, y0, y1, t0, t1)
-    panes.append(b + ((0.95, 1.75) if frosted else (0.0, 0.0)))
+    # The film: a mountain range with a row of orange rings below it (drawn by its texture), from
+    # 0.6 to 2.8 m. Below and above it the glass is clear, so you see feet and heads.
+    panes.append(b + ((0.6, 2.8) if frosted else (0.0, 0.0)))
 
 
 def glass_wall(axis, edge, outsign, t0, t1, doors, frosted=True):
@@ -399,7 +420,7 @@ for r in L.SLABS:
 
 
 def outline_walls(points, height_top, inner):
-    """Outside walls along a closed outline (clockwise in plan coords): a sill, windows and a header."""
+    """Outside walls along a closed outline (clockwise in plan coords): yields each straight run."""
     n = len(points)
     # Signed area tells which side is outside
     area = sum(points[i][0] * points[(i + 1) % n][1] - points[(i + 1) % n][0] * points[i][1] for i in range(n))
@@ -443,67 +464,278 @@ def outline_walls(points, height_top, inner):
         yield axis, line, t0, t1, outsign
 
 
-for axis, line, t0, t1, outsign in outline_walls(L.OUTLINE, H, False):
-    wbox("ext", axis, line, t0, t1, EXT_T, 0.0, 0.75)
-    wbox("window", axis, line, t0, t1, 0.04, 0.75, 2.85, "gs")
-    wbox("ext", axis, line, t0, t1, EXT_T, 2.85, H + 0.4)
-    n = max(1, int(round((t1 - t0) / 1.8)))
-    for i in range(1, n):
-        t = t0 + (t1 - t0) * i / n
-        wbox("frame", axis, line, t - 0.04, t + 0.04, 0.14, 0.75, 2.85, "n")
-    # Window bands on the two floors below
-    face = line + outsign * (EXT_T / 2 + 0.02)
-    for y0, y1 in ((-3.25, -1.0), (-7.0, -4.75)):
-        wbox("facade_glass", axis, face, t0, t1, 0.04, y0, y1, "n")
-    wbox("ext", axis, line, t0, t1, EXT_T, -0.4, 0.0, "n")
+def facade(axis, face, outsign, t0, t1, y_base, floors, seed, lit=True):
+    """Terracotta panels with dark window frames standing proud of them, a dark band at each floor
+    and vertical louvres on some windows, as on the real building. face: the wall's outer face."""
+    top = y_base + floors * FLOOR_H
+    wbox("terracotta", axis, face - outsign * 0.15, t0, t1, 0.3, y_base, top, "n")
+    for f in range(floors):
+        y0 = y_base + f * FLOOR_H
+        wbox("facade_dark", axis, face + outsign * 0.02, t0, t1, 0.06, y0, y0 + 0.25, "ns")
+        pitch = 3.0
+        t = t0 + 1.2 + (pitch / 2) * ((f + seed) % 2)
+        k = 0
+        while t + 1.4 < t1 - 0.6:
+            w = 1.3 if (k + f + seed) % 3 else 2.2
+            fc = face + outsign * 0.05
+            wbox("facade_dark", axis, fc, t, t + w, 0.1, y0 + 0.7, y0 + 3.3, "ns")
+            wbox("dark_glass", axis, fc + outsign * 0.04, t + 0.08, t + w - 0.08, 0.04, y0 + 0.78, y0 + 3.22, "ns")
+            if lit and (k * 7 + f * 3 + seed) % 5 == 0:
+                # A lit room behind
+                wbox("light", axis, fc + outsign * 0.065, t + 0.2, t + w - 0.2, 0.01, y0 + 2.9, y0 + 3.08, "ns")
+            if (k + 2 * f + seed) % 4 == 1:
+                for i in range(5):
+                    ft = t + 0.1 + i * (w - 0.2) / 4
+                    wbox("facade_dark", axis, fc + outsign * 0.16, ft - 0.03, ft + 0.03, 0.22, y0 + 0.75, y0 + 3.25, "ns")
+            t += w + pitch - 1.3
+            k += 1
+    wbox("facade_dark", axis, face, t0, t1, 0.36, top, top + 0.3, "ns")
 
-gx1, gy1, gx2, gy2 = L.GARDEN
-garden_outline = [(gx1, gy1), (gx2, gy1), (gx2, gy2), (gx1, gy2)]
-for axis, line, t0, t1, outsign in outline_walls(garden_outline, H, True):
-    wbox("ext", axis, line, t0, t1, EXT_T, 0.0, 0.35)
-    wbox("window", axis, line, t0, t1, 0.04, 0.35, 2.95, "gs")
+
+for k, (axis, line, t0, t1, outsign) in enumerate(outline_walls(L.OUTLINE, H, False)):
+    # Floor-to-ceiling windows with black frames
+    wbox("ext", axis, line, t0, t1, EXT_T, 0.0, 0.25)
+    wbox("window", axis, line, t0, t1, 0.04, 0.25, 2.95, "gs")
     wbox("ext", axis, line, t0, t1, EXT_T, 2.95, H + 0.4)
     n = max(1, int(round((t1 - t0) / 1.8)))
     for i in range(1, n):
         t = t0 + (t1 - t0) * i / n
-        wbox("frame", axis, line, t - 0.04, t + 0.04, 0.14, 0.35, 2.95, "n")
-    # The courtyard walls of the floor below
+        wbox("frame", axis, line, t - 0.03, t + 0.03, 0.14, 0.25, 2.95, "n")
+    wbox("frame", axis, line, t0, t1, 0.1, 2.9, 2.98, "n")
+    # Outside: the terracotta facade, on the floors below and the one above
     face = line + outsign * EXT_T / 2
-    wbox("ext", axis, line, t0, t1, EXT_T, GARDEN_Y, 0.0, "n")
-    wbox("facade_glass", axis, face + outsign * 0.02, t0, t1, 0.04, -3.25, -1.0, "n")
+    facade(axis, face + outsign * 0.15, outsign, t0, t1, GROUND_Y, 2, k, lit=False)
+    wbox("terracotta", axis, face + outsign * 0.07, t0, t1, 0.14, 2.95, H + 0.4, "n")
+    facade(axis, face + outsign * 0.15, outsign, t0, t1, H + 0.4, 1, k + 1, lit=False)
+    wbox("ext", axis, line, t0, t1, EXT_T, -0.4, 0.0, "n")
 
-# Garden
-g = wrect(L.GARDEN)
-rbox("grass", g, GARDEN_Y - 0.3, GARDEN_Y, "n")
+
+# ---------------------------------------------------------------------------------------------
+# The courtyard garden: on the floor's level, walled in glass that breaks (with doors), the
+# terracotta facade of the floors above round it, and a gravel garden like the real one
+
+gx0, gx1, gz0, gz1 = wrect(L.GARDEN)
+CDOOR_W, CDOOR_H, CGH = 2.0, 2.6, 3.0
+
+
+def court_wall(axis, line, t0, t1, doors):
+    """Tall black-framed panes, each breakable, with doors and a dark band over them"""
+    cuts = sorted((d - CDOOR_W / 2, d + CDOOR_W / 2) for d in doors)
+    pieces, cur = [], t0
+    for c0, c1 in cuts:
+        pieces.append((cur, c0))
+        cur = c1
+    pieces.append((cur, t1))
+    for p0, p1 in pieces:
+        if p1 - p0 < 0.3:
+            continue
+        wbox("frame", axis, line, p0, p1, 0.14, 0.0, 0.1)
+        n = max(1, int(math.ceil((p1 - p0) / 1.6)))
+        posts = []
+        for i in range(n + 1):
+            t = p0 + (p1 - p0) * i / n
+            t = min(max(t, p0 + 0.04), p1 - 0.04)
+            posts.append(t)
+            wbox("frame", axis, line, t - 0.04, t + 0.04, 0.16, 0.0, CGH)
+        for a, b in zip(posts, posts[1:]):
+            pane(axis, line, a + 0.04, b - 0.04, 0.1, CGH, False)
+    for c0, c1 in cuts:
+        pane(axis, line, c0, c1, CDOOR_H, CGH, False)
+        wbox("frame", axis, line, c0, c1, 0.16, CDOOR_H - 0.08, CDOOR_H)
+        if axis == "x":
+            box("rug_black", c0, c1, 0.012, 0.022, line - 1.0, line + 1.0, "ns")
+        else:
+            box("rug_black", line - 1.0, line + 1.0, 0.012, 0.022, c0, c1, "ns")
+    wbox("facade_dark", axis, line, t0, t1, 0.3, CGH, H + 0.4)
+
+
+def door_t(side, p):
+    return wx(p) if side in ("n", "s") else wz(p)
+
+
+ci = 0.12  # the glass stands this far into the courtyard
+for side, axis, line, t0, t1, outsign, seed in (
+        ("n", "x", gz1 - ci, gx0, gx1, -1, 0), ("s", "x", gz0 + ci, gx0, gx1, 1, 1),
+        ("w", "z", gx0 + ci, gz0, gz1, 1, 2), ("e", "z", gx1 - ci, gz0, gz1, -1, 3)):
+    court_wall(axis, line, t0, t1, [door_t(s, p) for s, p in L.GARDEN_DOORS if s == side])
+    # The floors above
+    edge = line - outsign * ci
+    lo, hi = (t0 - 0.3, t1 + 0.3) if axis == "x" else (t0, t1)
+    facade(axis, edge + outsign * 0.3, outsign, lo, hi, H + 0.4, FLOORS_ABOVE, seed)
+    wbox("terracotta", axis, edge + outsign * 0.15, lo, hi, 0.3, H, H + 0.4, "n")
+
+# Ground: gravel, with dark paving paths
+box("gravel", gx0, gx1, -0.02, 0.01, gz0, gz1, "s")
 for r in L.GARDEN_PATHS:
-    rbox("path", wrect(r), GARDEN_Y, GARDEN_Y + 0.03, "n")
-for i, (px, py) in enumerate(L.GARDEN_TREES):
-    x, z = wx(px), wz(py)
-    big = 1.0 + 0.25 * ((i * 7) % 3)
-    # Solid, so the canopies hide players behind them from bots (and stop shots) the way they hide
-    # them from people. The crowns reach up past the office floor across the courtyard.
-    cbox("trunk", x, GARDEN_Y + 1.6 * big, z, 0.35, 3.2 * big, 0.35)
-    leaves = "leaves" if i % 2 == 0 else "leaves2"
-    cbox(leaves, x, GARDEN_Y + 3.4 * big, z, 3.0 * big, 1.8 * big, 3.0 * big)
-    cbox(leaves, x + 0.2, GARDEN_Y + 4.7 * big, z - 0.2, 2.0 * big, 1.4 * big, 2.0 * big)
+    x0, x1, z0, z1 = wrect(r)
+    box("paver", max(x0, gx0 + 0.2), min(x1, gx1 - 0.2), 0.01, 0.03, max(z0, gz0 + 0.2), min(z1, gz1 - 0.2), "ns")
+
+
+def shrub(x, z, size, height, mat):
+    """A rounded evergreen bush: a solid core (cover) with softer lumps round it"""
+    cbox(mat, x, 0.12 + height * 0.42, z, size * 0.8, height * 0.84, size * 0.7)
+    cbox(mat, x, 0.12 + height * 0.35, z, size, height * 0.55, size * 0.5, "n")
+    cbox(mat, x, 0.12 + height * 0.35, z, size * 0.55, height * 0.55, size * 0.9, "n")
+    cbox(mat, x + size * 0.1, 0.12 + height * 0.82, z - size * 0.08, size * 0.5, height * 0.36, size * 0.45, "n")
+
+
+def conifer(x, z, height):
+    """A clipped yew: stacked layers narrowing to the top"""
+    cbox("twig", x, 0.3, z, 0.18, 0.6, 0.18, "n")
+    layers = 6
+    for i in range(layers):
+        w = 1.4 * (1 - i / (layers + 0.5)) + 0.25
+        y0 = 0.35 + i * (height - 0.35) / layers
+        cbox("conifer", x, y0 + (height - 0.35) / layers / 2 + 0.05, z, w, (height - 0.35) / layers + 0.1, w,
+             "-" if i < 3 else "n")
+
+
+def bare_tree(x, z, height):
+    """A young tree in winter: a thin trunk and bare branches (no collider above the trunk)"""
+    cbox("twig", x, height * 0.35, z, 0.14, height * 0.7, 0.14)
+    for dx, dz, h, l in ((0.5, 0.0, 0.55, 0.3), (-0.45, 0.2, 0.6, 0.35), (0.1, -0.5, 0.65, 0.3),
+                         (-0.2, 0.45, 0.75, 0.25), (0.6, 0.5, 0.8, 0.2), (-0.6, -0.4, 0.8, 0.25)):
+        y = height * h
+        if abs(dx) > abs(dz):
+            cbox("twig", x + dx / 2, y, z + dz * 0.2, abs(dx), 0.05, 0.05, "ns")
+        else:
+            cbox("twig", x + dx * 0.2, y, z + dz / 2, 0.05, 0.05, abs(dz), "ns")
+        cbox("twig", x + dx, y + height * l / 2, z + dz, 0.05, height * l, 0.05, "ns")
+        cbox("twig", x + dx * 1.3, y + height * l * 0.8, z + dz * 1.3, 0.035, height * l * 0.5, 0.035, "ns")
+
+
+def bed(r, planted):
+    x0, x1, z0, z1 = wrect(r)
+    e = 0.06
+    box("soil", x0, x1, 0.0, 0.12, z0, z1, "n")
+    for a0, a1, b0, b1 in ((x0, x1, z0, z0 + e), (x0, x1, z1 - e, z1), (x0, x0 + e, z0, z1), (x1 - e, x1, z0, z1)):
+        box("corten", a0, a1, 0.0, 0.25, b0, b1, "n")
+    cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
+    w, d = x1 - x0, z1 - z0
+    if "conifer" in planted:
+        conifer(x0 + 1.2, z1 - 1.2, 3.0)
+    if "tree" in planted:
+        bare_tree(cx + 0.4, cz - 0.3, 4.8)
+    if "shrubs" in planted:
+        shrub(x1 - 1.0, z0 + 1.0, 1.6, 1.2, "shrub")
+        if w > 5.5 or d > 5.5:
+            shrub(x0 + 1.1, z0 + 1.1, 1.5, 1.0, "shrub2")
+        if "conifer" not in planted:
+            shrub(x0 + 1.2, z1 - 1.2, 1.8, 1.3, "shrub2")
+    if "grass" in planted:
+        for dx, dz in ((0, 0), (0.35, 0.2), (-0.3, 0.25), (0.1, -0.35)):
+            cbox("rug", cx + dx, 0.32, cz + dz, 0.3, 0.45, 0.3, "n")
+
+
+for r, planted in L.GARDEN_BEDS:
+    bed(r, planted)
+
+
+def garden_house(r):
+    """The wooden garden house with a glass roof. Its long sides run north-south and its ends are
+    open, so it's a way through the middle of the garden. The west side is half glass (breakable),
+    the east side boards; the roof is glass in strips stepping up to the ridge."""
+    x0, x1, z0, z1 = wrect(r)
+    eave, ridge, t = 2.9, 4.3, 0.14
+    zm = (z0 + z1) / 2
+    # West side: boards on the north half, glass panes on the south half
+    box("weathered", x0, x0 + t, 0.0, eave, zm, z1)
+    span = zm - z0
+    n = 3
+    for i in range(n):
+        a, b = z0 + span * i / n, z0 + span * (i + 1) / n
+        wbox("frame", "z", x0 + t / 2, a, a + 0.08, t, 0.0, eave)
+        pane("z", x0 + t / 2, a + 0.08, b, 0.1, eave - 0.1, False)
+    wbox("frame", "z", x0 + t / 2, z0, zm, t, 0.0, 0.1)
+    wbox("frame", "z", x0 + t / 2, z0, zm, t, eave - 0.1, eave)
+    # East side: boards
+    box("weathered", x1 - t, x1, 0.0, eave, z0, z1)
+    # Ends: corner posts and a gable of boards over the opening
+    for ez in (z0, z1 - t):
+        for ex in (x0, x1 - 0.5):
+            box("weathered", ex, ex + 0.5, 0.0, eave, ez, ez + t)
+        box("weathered", x0, x1, 2.5, eave, ez, ez + t)
+        steps = 10
+        for i in range(steps):
+            y = eave + (ridge - eave) * i / steps
+            inset = (x1 - x0) / 2 * i / steps
+            box("weathered", x0 + inset, x1 - inset, y, y + (ridge - eave) / steps + 0.002, ez, ez + t, "n")
+    # The glass roof in strips stepping up to the ridge from both eaves, on rafters
+    steps = 10
+    half = (x1 - x0) / 2 + 0.15
+    xm = (x0 + x1) / 2
+    for i in range(steps):
+        y = eave + (ridge - eave) * i / steps
+        for sgn in (-1, 1):
+            a = xm + sgn * half * (1 - i / steps)
+            b = xm + sgn * half * (1 - (i + 1) / steps)
+            box("window", a, b + sgn * 0.01, y, y + 0.03, z0 - 0.1, z1 + 0.1, "s")
+            box("-", a, b, y, y + (ridge - eave) / steps, z0 - 0.1, z1 + 0.1, "o")
+    # Tie beams across, under the glass
+    for rz in frange(z0 + 1.0, z1 - 0.5, 2.0):
+        box("weathered", x0 + 0.1, x1 - 0.1, eave - 0.12, eave, rz - 0.05, rz + 0.05, "ns")
+    box("weathered", xm - 0.07, xm + 0.07, ridge - 0.05, ridge + 0.08, z0 - 0.1, z1 + 0.1, "n")
+    # Inside: a long table and a bench (low cover)
+    box("walnut", xm - 0.2, xm + 0.85, 0.72, 0.78, z0 + 1.4, z1 - 1.4)
+    box("metal", xm + 0.3, xm + 0.36, 0.0, 0.72, z0 + 1.6, z1 - 1.6, "n")
+    box("walnut", xm - 0.9, xm - 0.55, 0.42, 0.47, z0 + 1.6, z1 - 1.6, "n")
+    box("-", xm - 0.9, xm - 0.55, 0.0, 0.47, z0 + 1.6, z1 - 1.6, "o")
+
+
+def frange(a, b, step):
+    v = a
+    while v < b - 1e-9:
+        yield v
+        v += step
+
+
+garden_house(L.GARDEN_HOUSE)
+x0, x1, z0, z1 = wrect(L.GARDEN_VENT)
+for i in range(7):
+    inset = 0.03 * (i % 2)
+    box("ext", x0 + inset, x1 - inset, i * 0.13, i * 0.13 + 0.1, z0 + inset, z1 - inset, "-" if i == 0 else "n")
+box("-", x0, x1, 0.0, 0.94, z0, z1, "o")
+box("ext", x0 - 0.02, x1 + 0.02, 0.92, 0.96, z0 - 0.02, z1 + 0.02, "n")
 for r in L.GARDEN_BENCHES:
     x0, x1, z0, z1 = wrect(r)
-    box("trunk", x0, x1, GARDEN_Y + 0.4, GARDEN_Y + 0.48, z0, z1, "n")
-    box("metal", x0 + 0.1, x1 - 0.1, GARDEN_Y, GARDEN_Y + 0.4, z0 + 0.1, z1 - 0.1, "n")
-# Hedges along the courtyard walls
-x0, x1, z0, z1 = g
-for hx0, hx1, hz0, hz1 in ((x0, x1, z0, z0 + 0.8), (x0, x1, z1 - 0.8, z1), (x0, x0 + 0.8, z0, z1), (x1 - 0.8, x1, z0, z1)):
-    box("leaves", hx0, hx1, GARDEN_Y, GARDEN_Y + 0.9, hz0, hz1, "n")
+    box("walnut", x0, x1, 0.4, 0.46, z0, z1)
+    box("corten", x0 + 0.2, x0 + 0.3, 0.0, 0.4, z0 + 0.03, z1 - 0.03, "n")
+    box("corten", x1 - 0.3, x1 - 0.2, 0.0, 0.4, z0 + 0.03, z1 - 0.03, "n")
+    box("-", x0, x1, 0.0, 0.4, z0, z1, "o")
+for px, py in L.GARDEN_LIGHTS:
+    x, z = wx(px), wz(py)
+    cbox("chrome", x, 0.45, z, 0.14, 0.9, 0.14, "n")
+    cbox("light", x, 0.84, z, 0.15, 0.08, 0.15, "ns")
 
-# The ground around the building
+# The street two floors down, with hedges and bare trees
 box("ground", -300, 300, GROUND_Y - 0.5, GROUND_Y, -300, 300, "n")
 bx0, bx1, bz0, bz1 = wx(96), wx(1347), wz(1090), wz(55)
-box("asphalt", bx0 - 12, bx1 + 12, GROUND_Y, GROUND_Y + 0.02, bz0 - 12, bz1 + 12, "n")
+box("asphalt", bx0 - 14, bx1 + 14, GROUND_Y, GROUND_Y + 0.02, bz0 - 14, bz1 + 14, "n")
+box("pavement", bx0 - 4, bx1 + 4, GROUND_Y + 0.02, GROUND_Y + 0.12, bz0 - 4, bz1 + 4, "n")
+
+
+def street_tree(x, z, height):
+    cbox("twig", x, GROUND_Y + height * 0.3, z, 0.25, height * 0.6, 0.25, "n")
+    for dx, dz, h in ((1.1, 0.2, 0.55), (-1.0, 0.5, 0.6), (0.3, -1.1, 0.65), (-0.4, 1.0, 0.75), (0.8, 0.9, 0.8), (-0.9, -0.8, 0.7)):
+        y = GROUND_Y + height * h
+        cbox("twig", x + dx / 2, y, z + dz / 2, abs(dx) + 0.06, 0.07, abs(dz) + 0.06, "ns")
+        cbox("twig", x + dx, y + height * 0.18, z + dz, 0.07, height * 0.36, 0.07, "ns")
+
+
+for axis, line, t0, t1, outsign in outline_walls(L.OUTLINE, H, False):
+    face = line + outsign * 2.6
+    for t in frange(t0 + 2.0, t1 - 2.0, 7.0):
+        if axis == "x":
+            box("shrub", t, t + 4.4, GROUND_Y, GROUND_Y + 1.1, face - 0.6, face + 0.6, "n")
+            street_tree(t + 5.6, face + outsign * 1.2, 8.0)
+        else:
+            box("shrub", face - 0.6, face + 0.6, GROUND_Y, GROUND_Y + 1.1, t, t + 4.4, "n")
+            street_tree(face + outsign * 1.2, t + 5.6, 8.0)
 
 # ---------------------------------------------------------------------------------------------
 # The closed blocks
 
-CORE_ACCENT = {"stair": "pink", "lift": "pink", "wc": "yellow", "store": "wall", "shaft": "ext"}
+CORE_ACCENT = {"stair": "copper", "lift": "copper", "wc": "grey_wall", "store": "grey_wall", "shaft": "ext"}
 for kind, sign, r in cores:
     rbox("wall", wrect(r), 0.0, H)
     if kind == "shaft":
@@ -521,7 +753,7 @@ for kind, sign, r in cores:
     waxis, line, t0, t1, outsign = world_run(axis, fixed, a, b, outv)
     t = (t0 + t1) / 2
     face = line + outsign * 0.03
-    wbox("door", waxis, face, t - 0.5, t + 0.5, 0.06, 0.0, 2.2)
+    wbox("grey_wall" if kind != "lift" else "chrome", waxis, face, t - 0.5, t + 0.5, 0.06, 0.0, 2.2)
     wbox("frame", waxis, face, t - 0.58, t + 0.58, 0.04, 0.0, 2.28, "n")
     wbox(CORE_ACCENT[kind], waxis, line + outsign * 0.01, t - 0.9, t + 0.9, 0.04, 2.35, 3.0, "n")
     if kind == "stair":
@@ -774,9 +1006,83 @@ def armchair(r, back, mat="sofa"):
         box(mat, x1 - 0.2, x1, 0.42, 0.85, z0, z1)
 
 
+def ring_light(x, z, y, r):
+    """A black ring lamp hanging from the ceiling, glowing underneath"""
+    n = 40
+    for i in range(n):
+        a = 2 * math.pi * i / n
+        px, pz = x + r * math.cos(a), z + r * math.sin(a)
+        cbox("metal", px, y + 0.05, pz, 0.15, 0.1, 0.15, "ns")
+        cbox("light", px, y - 0.005, pz, 0.11, 0.012, 0.11, "ns")
+    for a in (0.6, 2.7, 4.8):
+        cbox("chrome", x + r * math.cos(a), (y + H) / 2, z + r * math.sin(a), 0.01, H - y, 0.01, "ns")
+
+
+def wingback(x, z, back, collider=True):
+    """A black wingback chair on copper legs, its back towards 'back' (world n, s, e or w)"""
+    bx, bz = {"e": (1, 0), "w": (-1, 0), "n": (0, 1), "s": (0, -1)}[back]
+    cbox("sofa_red", x, 0.42, z, 0.75, 0.14, 0.75, "n")
+    cbox("sofa_red", x + bx * 0.32, 0.85, z + bz * 0.32, 0.14 if bx else 0.8, 0.95, 0.8 if bx else 0.14, "n")
+    for sgn in (-1, 1):
+        if bx:
+            cbox("sofa_red", x + bx * 0.18, 0.95, z + sgn * 0.36, 0.3, 0.45, 0.1, "n")
+        else:
+            cbox("sofa_red", x + sgn * 0.36, 0.95, z + bz * 0.18, 0.1, 0.45, 0.3, "n")
+    for lx, lz in ((-0.3, -0.3), (0.3, -0.3), (-0.3, 0.3), (0.3, 0.3)):
+        cbox("copper", x + lx, 0.17, z + lz, 0.03, 0.34, 0.03, "n")
+    if collider:
+        cbox("-", x, 0.65, z, 0.8, 1.3, 0.8, "o")
+
+
+def round_rug(x, z, r, mat):
+    for i, (w, d) in enumerate(((2 * r, 1.1 * r), (1.1 * r, 2 * r), (1.75 * r, 1.45 * r), (1.45 * r, 1.75 * r))):
+        cbox(mat, x, 0.014 + i * 0.002, z, w, 0.004, d, "ns")
+
+
 def hall_item(kind, where, opts):
     if kind == "plant":
         plant(wx(where[0]), wz(where[1]))
+        return
+    if kind == "rings":
+        x, z = wx(where[0]), wz(where[1])
+        ring_light(x, z, 2.75, 1.1)
+        ring_light(x + 0.25, z - 0.2, 2.5, 0.7)
+        return
+    if kind == "wingbacks":
+        # Three black wingback chairs round a small table on a round black rug, under pendants
+        x, z = wx(where[0]), wz(where[1])
+        # (Colliders as the round table and chairs that stood here: just the table)
+        round_rug(x, z, 1.4, "rug_black")
+        for w, d in ((0.8, 0.5), (0.5, 0.8), (0.7, 0.7)):
+            cbox("table", x, 0.48, z, w, 0.03, d, "n")
+        cbox("metal", x, 0.24, z, 0.05, 0.48, 0.05, "n")
+        cbox("-", x, 0.74, z, 0.9, 0.04, 0.9, "o")
+        cbox("orange", x, 0.53, z, 0.22, 0.07, 0.22, "n")
+        for dx, dz, back in ((-1.0, 0.0, "w"), (1.0, 0.0, "e"), (0.0, 1.0, "n")):
+            wingback(x + dx, z + dz, back, collider=False)
+        for dx, dz in ((0.3, 0.2), (-0.3, -0.2)):
+            cbox("chrome", x + dx, (2.4 + H) / 2, z + dz, 0.01, H - 2.4, 0.01, "ns")
+            cbox("chrome", x + dx, 2.4, z + dz, 0.3, 0.3, 0.3, "ns")
+            cbox("light", x + dx, 2.24, z + dz, 0.18, 0.02, 0.18, "ns")
+        return
+    if kind == "plinth":
+        x, z = wx(where[0]), wz(where[1])
+        cbox("marble", x, 0.4, z, 0.6, 0.8, 0.6)
+        cbox("dark_glass", x, 1.0, z, 0.25, 0.4, 0.25, "n")
+        cbox("red", x, 1.45, z, 0.35, 0.3, 0.2, "n")
+        return
+    if kind == "slats":
+        # Black floor-to-ceiling slats with gaps: you can see and shoot through, not walk through
+        x0, x1, z0, z1 = wrect(where)
+        along_x = x1 - x0 > z1 - z0
+        a, b = (x0, x1) if along_x else (z0, z1)
+        t = a + 0.06
+        while t < b - 0.02:
+            if along_x:
+                box("metal", t - 0.025, t + 0.025, 0.0, H, (z0 + z1) / 2 - 0.04, (z0 + z1) / 2 + 0.04)
+            else:
+                box("metal", (x0 + x1) / 2 - 0.04, (x0 + x1) / 2 + 0.04, 0.0, H, t - 0.025, t + 0.025)
+            t += 0.14
         return
     if kind == "roundtable":
         x, z = wx(where[0]), wz(where[1])
@@ -801,11 +1107,11 @@ def hall_item(kind, where, opts):
         box("metal", (x0 + x1) / 2 - 0.05, (x0 + x1) / 2 + 0.05, 0.0, 1.02, z0 + 0.2, z1 - 0.2)
     elif kind == "counter":
         box("counter", x0, x1, 0.0, 0.9, z0, z1)
-        box("table", x0 - 0.01, x1 + 0.01, 0.9, 0.94, z0 - 0.01, z1 + 0.01, "n")
+        box("walnut", x0 - 0.01, x1 + 0.01, 0.9, 0.94, z0 - 0.01, z1 + 0.01, "n")
         if opts.get("coffee"):
             cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
-            cbox("monitor", cx, 1.16, cz, 0.38, 0.44, 0.38, "n")
-            cbox("orange", cx, 1.25, cz, 0.39, 0.06, 0.39, "ns")
+            cbox("chrome", cx, 1.16, cz, 0.38, 0.44, 0.38, "n")
+            cbox("monitor", cx, 1.25, cz, 0.39, 0.06, 0.39, "ns")
     elif kind == "bench":
         box("metal", x0, x1, 0.0, 0.42, z0, z1)
         n = max(1, int((max(x1 - x0, z1 - z0)) // 0.7))
@@ -843,36 +1149,147 @@ for room in rooms:
     if not room.doors:
         continue
     axis, line, outsign, t = room.doors[0]
+    # The room's number or letter in copper over the door, its name on a small plate beside it
     sx, sz = wall_point(axis, line + outsign * 0.06, t)
-    text = room.label if not room.name else "%s – %s" % (room.label, room.name)
-    label(sx, 2.75, sz, yaw_facing(axis, outsign), 0.24 if room.name else 0.32, text)
+    yaw = yaw_facing(axis, outsign)
+    label(sx, 2.76, sz, yaw, 0.36, room.label, (0.72, 0.42, 0.22), plate=False)
+    if room.name:
+        # Beside the door, on the glass at eye height
+        right = -1 if yaw in (0.0, 270.0) else 1
+        nx, nz = wall_point(axis, line + outsign * 0.06, t + right * (DOOR_W / 2 + 0.2 + 0.045 * len(room.name)))
+        label(nx, 1.6, nz, yaw, 0.13, room.name)
 
 # ---------------------------------------------------------------------------------------------
 # Spawns and the map camera
 
+SPAWN_LIFT = 1.2
 spawns = []
 for px, py, facing in L.SPAWNS:
-    spawns.append((wx(px), 1.2, wz(py), facing % 360))
+    spawns.append((wx(px), SPAWN_LIFT, wz(py), facing % 360, -1))
 
 cam = L.MAP_CAMERA
 camera = (wx(cam[0]), cam[2], wz(cam[1]), cam[3], cam[4])
 
 
+def solids(glass_blocks=True):
+    out = []
+    for mat, x0, x1, y0, y1, z0, z1, flags in boxes:
+        if "n" in flags and "o" not in flags:
+            continue
+        out.append((x0, x1, y0, y1, z0, z1, "g" in flags))
+    if glass_blocks:
+        out += [p[:6] + (True,) for p in panes]
+    return out
+
+
+CELL = 0.25
+GX0, GZ0 = wx(96) - 1, wz(1090) - 1
+NX, NZ = int((wx(1347) + 1 - GX0) / CELL), int((wz(55) + 1 - GZ0) / CELL)
+
+
+def walk_grid():
+    """Where a player can stand: each cell's floor height, and whether the player's body (0.45 m
+    round, 2 m tall, stepping up 0.3 m) fits there"""
+    solid = solids()
+    surf = [[-9.0] * NZ for _ in range(NX)]
+    for x0, x1, y0, y1, z0, z1, g in solid:
+        if y1 > 2.0 or y1 < -0.05 or g:
+            continue
+        for i in range(max(0, int((x0 - GX0) / CELL)), min(NX, int(math.ceil((x1 - GX0) / CELL)))):
+            cx = GX0 + (i + 0.5) * CELL
+            if x0 <= cx <= x1:
+                for j in range(max(0, int((z0 - GZ0) / CELL)), min(NZ, int(math.ceil((z1 - GZ0) / CELL)))):
+                    cz = GZ0 + (j + 0.5) * CELL
+                    if z0 <= cz <= z1 and y1 > surf[i][j]:
+                        surf[i][j] = y1
+    clear = [[surf[i][j] > -1 for j in range(NZ)] for i in range(NX)]
+    r = 0.45
+    for x0, x1, y0, y1, z0, z1, g in solid:
+        for i in range(max(0, int((x0 - r - GX0) / CELL)), min(NX, int(math.ceil((x1 + r - GX0) / CELL)))):
+            cx = GX0 + (i + 0.5) * CELL
+            for j in range(max(0, int((z0 - r - GZ0) / CELL)), min(NZ, int(math.ceil((z1 + r - GZ0) / CELL)))):
+                if not clear[i][j]:
+                    continue
+                cz = GZ0 + (j + 0.5) * CELL
+                dx, dz = max(x0 - cx, 0, cx - x1), max(z0 - cz, 0, cz - z1)
+                if dx * dx + dz * dz <= r * r and y0 < surf[i][j] + 1.95 and y1 > surf[i][j] + 0.31:
+                    clear[i][j] = False
+    return surf, clear
+
+
+def cell_of(x, z):
+    return int((x - GX0) / CELL), int((z - GZ0) / CELL)
+
+
+def reach(surf, clear, starts):
+    seen = [[False] * NZ for _ in range(NX)]
+    dist = {}
+    queue = []
+    for x, z in starts:
+        i, j = cell_of(x, z)
+        if clear[i][j]:
+            seen[i][j] = True
+            dist[(i, j)] = 0
+            queue.append((i, j))
+    k = 0
+    while k < len(queue):
+        i, j = queue[k]
+        k += 1
+        for a, b in ((i + 1, j), (i - 1, j), (i, j + 1), (i, j - 1)):
+            if 0 <= a < NX and 0 <= b < NZ and not seen[a][b] and clear[a][b] and surf[a][b] - surf[i][j] <= 0.3:
+                seen[a][b] = True
+                dist[(a, b)] = dist[(i, j)] + 1
+                queue.append((a, b))
+    return seen, dist
+
+
+def ray_blocked(p, q, solid):
+    for x0, x1, y0, y1, z0, z1, g in solid:
+        t0, t1 = 0.0, 1.0
+        for a, b, lo, hi in ((p[0], q[0], x0, x1), (p[1], q[1], y0, y1), (p[2], q[2], z0, z1)):
+            d = b - a
+            if abs(d) < 1e-9:
+                if a < lo or a > hi:
+                    t0 = 2.0
+                    break
+                continue
+            u0, u1 = sorted(((lo - a) / d, (hi - a) / d))
+            t0, t1 = max(t0, u0), min(t1, u1)
+            if t0 > t1:
+                break
+        if t0 <= t1:
+            return True
+    return False
+
+
 def check():
-    """Spawns must stand on the floor in open space."""
-    ok = True
-    for i, (x, y, z, _) in enumerate(spawns):
+    """Spawn points must stand on the floor in open space (problems: the run fails). Rooms nobody
+    can walk into are listed as notes (it walks the floor on a 25 cm grid with the player's size and
+    step height)."""
+    problems = []
+    for x, y, z, _, team in spawns:
         px, py = x / S + CX, -z / S + CY
         if not in_slab(px, py):
-            print("spawn %d is off the floor" % i, file=sys.stderr); ok = False
+            problems.append("spawn (%.0f, %.0f) is off the floor" % (px, py))
         for b in boxes + [("glass",) + p[:6] + ("g",) for p in panes]:
             mat, x0, x1, y0, y1, z0, z1, flags = b
             if "n" in flags and "o" not in flags:
                 continue
             if x0 - 0.6 < x < x1 + 0.6 and z0 - 0.6 < z < z1 + 0.6 and y0 < 2.1 and y1 > 0.05:
-                print("spawn %d (%.0f, %.0f) is blocked by %s" % (i, px, py, mat), file=sys.stderr); ok = False
+                problems.append("spawn (%.0f, %.0f) is blocked by %s" % (px, py, mat))
                 break
-    return ok
+    surf, clear = walk_grid()
+    seen, dist = reach(surf, clear, [(x, z) for x, y, z, _, t in spawns])
+    places = [(room.label, r) for room in rooms for r in room.rects] + [("the courtyard", L.GARDEN), ("the garden house", L.GARDEN_HOUSE)]
+    for name, r in places:
+        if True:
+            x0, x1, z0, z1 = wrect(r)
+            i0, j0 = cell_of(x0 + 0.2, z0 + 0.2)
+            i1, j1 = cell_of(x1 - 0.2, z1 - 0.2)
+            if not any(seen[i][j] for i in range(i0, i1 + 1) for j in range(j0, j1 + 1)):
+                print("note: nobody can walk into " + name)
+    print("walkable floor: %.0f m2" % (sum(sum(c) for c in seen) * CELL * CELL))
+    return problems
 
 
 def fmt(v):
@@ -883,8 +1300,11 @@ def fmt(v):
 
 def write(path):
     lines = ["# Generated by Tools/OfficeMap/generate.py from layout.py. Don't edit by hand."]
+    used = {b[0] for b in boxes} | {"glass", "frost"}
     for m in MATERIALS:
         name, r, gc, b, a, tex, tile, smooth, kind = m
+        if name not in used:
+            continue
         lines.append("m %s %s %s %s %s %s %s %s %s" % (name, fmt(r), fmt(gc), fmt(b), fmt(a), tex, fmt(tile), fmt(smooth), kind))
     for mat, x0, x1, y0, y1, z0, z1, flags in boxes:
         lines.append("b %s %s %s %s %s %s %s %s" % (
@@ -892,8 +1312,8 @@ def write(path):
     for x0, x1, y0, y1, z0, z1, f0, f1 in panes:
         lines.append("p %s %s %s %s %s %s %s %s" % (
             fmt((x0 + x1) / 2), fmt((y0 + y1) / 2), fmt((z0 + z1) / 2), fmt(x1 - x0), fmt(y1 - y0), fmt(z1 - z0), fmt((f0 + f1) / 2), fmt(f1 - f0)))
-    for x, y, z, yaw in spawns:
-        lines.append("s %s %s %s %s" % (fmt(x), fmt(y), fmt(z), fmt(yaw)))
+    for x, y, z, yaw, team in spawns:
+        lines.append("s %s %s %s %s" % (fmt(x), fmt(y), fmt(z), fmt(yaw)) + (" %d" % team if team >= 0 else ""))
     for x, y, z, yaw, height, color, text in labels:
         lines.append("l %s %s %s %s %s %s %s %s %s" % (fmt(x), fmt(y), fmt(z), fmt(yaw), fmt(height), fmt(color[0]), fmt(color[1]), fmt(color[2]), text))
     lines.append("c %s %s %s %s %s" % tuple(fmt(v) for v in camera))
@@ -910,13 +1330,13 @@ def preview(path):
     d = ImageDraw.Draw(img)
     for b in sorted(boxes + [("glass",) + p[:6] + ("g",) for p in panes], key=lambda b: b[4]):
         mat, bx0, bx1, by0, by1, bz0, bz1, flags = b
-        if by0 >= H - 0.1 or mat in ("-", "ground", "asphalt", "light") or by1 < -0.5 and mat not in ("grass", "path", "leaves", "leaves2", "trunk"):
+        if by0 >= H - 0.1 or mat in ("-", "ground", "asphalt", "pavement", "light") or by1 < -0.5 and mat not in ("gravel", "paver", "conifer", "shrub", "shrub2", "corten", "walnut"):
             continue
         c = colors[mat]
         if mat in ("glass", "window"):
             c = (90, 200, 230)
         d.rectangle([(bx0 - x0) * k, (z1 - bz1) * k, (bx1 - x0) * k, (z1 - bz0) * k], fill=c)
-    for x, y, z, yaw in spawns:
+    for x, y, z, yaw, team in spawns:
         px, py = (x - x0) * k, (z1 - z) * k
         d.ellipse([px - 6, py - 6, px + 6, py + 6], fill=(255, 0, 0))
         a = math.radians(yaw)
@@ -930,7 +1350,7 @@ if __name__ == "__main__":
     root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
     target = os.path.join(root, "Assets", "Resources", "Maps", "Office.txt")
     os.makedirs(os.path.dirname(target), exist_ok=True)
-    good = check()
+    problems = check()
     write(target)
     print("%d glass panes" % len(panes))
     print("%d boxes, %d desks, %d signs, %d spawns -> %s" % (len(boxes), desk_count, len(labels), len(spawns), target))
@@ -939,4 +1359,6 @@ if __name__ == "__main__":
         p = sys.argv[i + 1] if i + 1 < len(sys.argv) else os.path.join(os.path.dirname(os.path.abspath(__file__)), "preview.png")
         preview(p)
         print("preview -> " + p)
-    sys.exit(0 if good else 1)
+    for problem in problems:
+        print("PROBLEM: " + problem, file=sys.stderr)
+    sys.exit(1 if problems else 0)
