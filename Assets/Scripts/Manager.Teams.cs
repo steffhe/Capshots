@@ -30,6 +30,7 @@ public partial class Manager
     public static int TeamsVersion { get; private set; }
 
     private Text teamScore;
+    private Image teamScoreBackdrop;
     private int announcedTeam = -1;
 
     // The player's team in team mode, or -1 in free for all or if they aren't known yet
@@ -116,8 +117,9 @@ public partial class Manager
         RectTransform rect = (RectTransform)scoreObject.transform;
         RectTransform timerRect = (RectTransform)timer.transform;
         // The timer sits at the top of the screen, so the score goes below it
-        rect.anchoredPosition = timerRect.anchoredPosition - new Vector2(0f, timerRect.sizeDelta.y + 6f);
+        rect.anchoredPosition = timerRect.anchoredPosition - new Vector2(0f, timerRect.sizeDelta.y + 4f);
         teamScore.fontSize = 20;
+        teamScore.color = UITheme.TextColor;
         UITheme.AddShadow(teamScore);
 
         RefreshTeamScore();
@@ -128,6 +130,7 @@ public partial class Manager
         RefreshRaceScore();
         if (teamScore == null) return;
         teamScore.text = $"<color={TeamHex(0)}>{TeamNames[0]} {TeamKills(0)}</color>  -  <color={TeamHex(1)}>{TeamKills(1)} {TeamNames[1]}</color>";
+        teamScoreBackdrop = UITheme.FitBackdrop(teamScoreBackdrop, teamScore);
     }
 
     private void AnnounceTeam()

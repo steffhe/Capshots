@@ -94,13 +94,27 @@ public partial class Manager
 
     #region Panel
 
-    // Top left, under the kills and deaths: the room code, who's in and who's ready, and how to ready up
+    // Top left, under the kills and deaths: a card with the room code, how many are ready (with a
+    // bar), a row per person with a READY / NOT READY pill, the countdown, and how to ready up
     private RectTransform lobbyPanel;
-    private Text lobbyTitle, lobbyStatus, lobbyHint, lobbyBots;
-    private readonly List<Text> lobbyNames = new List<Text>();
-    private readonly List<Text> lobbyStates = new List<Text>();
+    private Text lobbyTitle, lobbyCode, lobbyCount, lobbyBots, lobbyCountdown, lobbyStatus, lobbyKey, lobbyHint, lobbyHostHint;
+    private RectTransform lobbyCodeChip, lobbyKeyChip, lobbyProgress, lobbyProgressFill;
+    private readonly List<LobbyRow> lobbyRows = new List<LobbyRow>();
 
-    private const float LobbyWidth = 400f, LobbyPadding = 16f, LobbyRowHeight = 26f, LobbyListTop = 52f;
+    private class LobbyRow
+    {
+        public RectTransform root;
+        public Image plate, stripe, pill;
+        public Text name, host, state;
+    }
+
+    private const float LobbyWidth = 420f, LobbyPadding = 18f;
+    private const float LobbyRowHeight = 34f, LobbyRowGap = 4f, LobbyPillWidth = 104f;
+    // Rows for the people, from under the ready bar
+    private const float LobbyListTop = 96f;
+
+    private static readonly Color LobbyRowColor = new Color(1f, 1f, 1f, 0.06f);
+    private static readonly Color LobbyMyRowColor = new Color(0.45f, 0.78f, 1f, 0.14f);
 
     private void CreateLobbyPanel(Transform canvas)
     {
@@ -113,26 +127,60 @@ public partial class Manager
         if (Hud != null && Hud.transform.parent == canvas) lobbyPanel.SetSiblingIndex(Hud.transform.GetSiblingIndex() + 1);
         UITheme.Place(lobbyPanel, new Vector2(0f, 1f), new Vector2(28f, -100f), new Vector2(LobbyWidth, 200f));
 
-        Image background = UITheme.NewImage("Background", lobbyPanel, UITheme.Panel, 10f);
+        Image background = UITheme.NewImage("Background", lobbyPanel, UITheme.Panel, 12f);
         UITheme.Stretch(background.rectTransform);
+        // A thin accent line along the top, like the match clock's
+        Image accent = UITheme.NewImage("Accent", lobbyPanel, UITheme.Accent, 1.5f);
+        LobbyPlace(accent.rectTransform, 0f, 3f, 12f, 12f);
 
-        lobbyTitle = LobbyLine("Title", 18, UITheme.AccentText, TextAnchor.MiddleLeft, LobbyPadding, 24f);
-        lobbyTitle.supportRichText = true;
-        lobbyBots = LobbyLine("Bots", 16, UITheme.MutedText, TextAnchor.MiddleLeft, 0f, LobbyRowHeight);
-        lobbyStatus = LobbyLine("Status", 16, UITheme.TextColor, TextAnchor.MiddleLeft, 0f, 24f);
-        lobbyHint = LobbyLine("Hint", 15, UITheme.MutedText, TextAnchor.UpperLeft, 0f, 44f);
-        lobbyHint.supportRichText = true;
+        // Header: LOBBY on the left, the room code on a chip on the right
+        lobbyTitle = UITheme.NewText("Title", lobbyPanel, 24, UITheme.TextColor, TextAnchor.MiddleLeft);
+        LobbyPlace(lobbyTitle.rectTransform, 14f, 34f, LobbyPadding, LobbyPadding);
+        lobbyTitle.text = "LOBBY";
+        UITheme.AddShadow(lobbyTitle);
+
+        Image codeChip = UITheme.NewImage("Code", lobbyPanel, UITheme.Field, 8f);
+        lobbyCodeChip = codeChip.rectTransform;
+        UITheme.Place(lobbyCodeChip, new Vector2(1f, 1f), new Vector2(-LobbyPadding, -14f), new Vector2(140f, 34f));
+        lobbyCode = UITheme.NewText("Text", lobbyCodeChip, 22, UITheme.TextColor, TextAnchor.MiddleCenter);
+        lobbyCode.supportRichText = true;
+
+        // How many are ready, and a bar filling up as they do
+        lobbyCount = UITheme.NewText("Count", lobbyPanel, 15, UITheme.MutedText, TextAnchor.MiddleLeft);
+        lobbyCount.supportRichText = true;
+        LobbyPlace(lobbyCount.rectTransform, 56f, 20f, LobbyPadding, LobbyPadding);
+        Image track = UITheme.NewImage("Ready Bar", lobbyPanel, UITheme.Track, 2f);
+        lobbyProgress = track.rectTransform;
+        LobbyPlace(lobbyProgress, 80f, 4f, LobbyPadding, LobbyPadding);
+        Image fill = UITheme.NewImage("Fill", lobbyProgress, UITheme.AccentText, 2f);
+        lobbyProgressFill = fill.rectTransform;
+        lobbyProgressFill.pivot = new Vector2(0f, 0.5f);
+        lobbyProgressFill.offsetMin = lobbyProgressFill.offsetMax = Vector2.zero;
+
+        lobbyBots = UITheme.NewText("Bots", lobbyPanel, 16, UITheme.MutedText, TextAnchor.MiddleLeft);
+
+        // The countdown, big, and the status line under it
+        lobbyCountdown = UITheme.NewText("Countdown", lobbyPanel, 28, UITheme.AccentText, TextAnchor.MiddleLeft);
+        UITheme.AddShadow(lobbyCountdown);
+        lobbyStatus = UITheme.NewText("Status", lobbyPanel, 17, UITheme.TextColor, TextAnchor.MiddleLeft);
+        lobbyStatus.supportRichText = true;
+
+        // How to ready up: the key on a keycap, then what it does
+        Image keyChip = UITheme.NewImage("Key", lobbyPanel, UITheme.Track, 6f);
+        lobbyKeyChip = keyChip.rectTransform;
+        lobbyKey = UITheme.NewText("Text", lobbyKeyChip, 16, UITheme.TextColor, TextAnchor.MiddleCenter);
+        lobbyHint = UITheme.NewText("Hint", lobbyPanel, 16, UITheme.TextColor, TextAnchor.MiddleLeft);
+        lobbyHostHint = UITheme.NewText("Host Hint", lobbyPanel, 14, UITheme.MutedText, TextAnchor.MiddleLeft);
 
         RefreshLobbyPanel();
     }
 
-    private Text LobbyLine(string name, int size, Color color, TextAnchor anchor, float top, float height)
+    // A strip 'top' units down the panel, 'height' tall, inset from its sides
+    private void LobbyPlace(RectTransform rect, float top, float height, float left, float right)
     {
-        Text text = UITheme.NewText(name, lobbyPanel, size, color, anchor);
-        UITheme.Row(text.rectTransform, top, height);
-        text.rectTransform.offsetMin = new Vector2(LobbyPadding, text.rectTransform.offsetMin.y);
-        text.rectTransform.offsetMax = new Vector2(-LobbyPadding, text.rectTransform.offsetMax.y);
-        return text;
+        UITheme.Row(rect, top, height);
+        rect.offsetMin = new Vector2(left, rect.offsetMin.y);
+        rect.offsetMax = new Vector2(-right, rect.offsetMax.y);
     }
 
     private void RefreshLobbyPanel()
@@ -141,7 +189,12 @@ public partial class Manager
 
         string muted = UITheme.Hex(UITheme.MutedText);
         string code = NetworkSession.RoomCode;
-        lobbyTitle.text = code != null ? $"LOBBY   <color={muted}>ROOM CODE</color>  <color=#FFFFFFFF>{code}</color>" : "LOBBY";
+        lobbyCodeChip.gameObject.SetActive(code != null);
+        if (code != null)
+        {
+            lobbyCode.text = $"<size=13><color={muted}>CODE</color></size>  {code}";
+            lobbyCodeChip.sizeDelta = new Vector2(lobbyCode.preferredWidth + 28f, 34f);
+        }
 
         int hostActor = Object != null && Object.IsValid && HostPlayer.IsRealPlayer ? HostPlayer.PlayerId : -1;
         int people = 0, ready = 0, botCount = 0;
@@ -153,93 +206,138 @@ public partial class Manager
                 botCount++;
                 continue;
             }
-            if (people >= lobbyNames.Count) AddLobbyRow();
-            Text name = lobbyNames[people], status = lobbyStates[people];
-            PlaceLobbyRow(name, y);
-            PlaceLobbyRow(status, y);
-            name.gameObject.SetActive(true);
-            status.gameObject.SetActive(true);
+            if (people >= lobbyRows.Count) lobbyRows.Add(NewLobbyRow());
+            LobbyRow row = lobbyRows[people];
+            row.root.gameObject.SetActive(true);
+            LobbyPlace(row.root, y, LobbyRowHeight, LobbyPadding - 6f, LobbyPadding - 6f);
 
             bool isMe = p.actor == LocalActor;
-            name.text = string.IsNullOrEmpty(p.profile.username) ? "PLAYER" : p.profile.username;
-            name.color = isMe ? UITheme.AccentText : UITheme.TextColor;
-            string hostTag = p.actor == hostActor ? $"<color={muted}>HOST</color>   " : "";
-            status.text = hostTag + (p.ready ? $"<color={UITheme.Hex(UITheme.AccentText)}>READY</color>" : $"<color={muted}>NOT READY</color>");
+            bool isHost = p.actor == hostActor;
+            row.plate.color = isMe ? LobbyMyRowColor : LobbyRowColor;
+            row.stripe.gameObject.SetActive(isMe);
+            row.name.text = string.IsNullOrEmpty(p.profile.username) ? "PLAYER" : p.profile.username;
+            row.name.color = isMe ? UITheme.AccentText : UITheme.TextColor;
+            row.host.gameObject.SetActive(isHost);
+            // The name stops short of the HOST tag and the pill
+            row.name.rectTransform.offsetMax = new Vector2(-(10f + LobbyPillWidth + (isHost ? 58f : 10f)), 0f);
+
+            row.pill.color = p.ready ? UITheme.Accent : UITheme.Field;
+            row.state.text = p.ready ? "READY" : "NOT READY";
+            row.state.color = p.ready ? UITheme.TextColor : UITheme.MutedText;
 
             people++;
             if (p.ready) ready++;
-            y += LobbyRowHeight;
+            y += LobbyRowHeight + LobbyRowGap;
         }
-        for (int i = people; i < lobbyNames.Count; i++)
-        {
-            lobbyNames[i].gameObject.SetActive(false);
-            lobbyStates[i].gameObject.SetActive(false);
-        }
+        for (int i = people; i < lobbyRows.Count; i++) lobbyRows[i].root.gameObject.SetActive(false);
 
         lobbyBots.gameObject.SetActive(botCount > 0);
         if (botCount > 0)
         {
-            PlaceLobbyRow(lobbyBots, y);
+            LobbyPlace(lobbyBots.rectTransform, y, 24f, LobbyPadding, LobbyPadding);
             lobbyBots.text = botCount == 1 ? "+ 1 BOT" : $"+ {botCount} BOTS";
-            y += LobbyRowHeight;
+            y += 26f;
         }
 
+        // Ready count and bar
+        lobbyCount.text = people > 0 ? $"<color=#FFFFFFFF>{ready}</color> / {people} READY" : "NOBODY HERE YET";
+        float fraction = people > 0 ? (float)ready / people : 0f;
+        lobbyProgressFill.anchorMin = Vector2.zero;
+        lobbyProgressFill.anchorMax = new Vector2(fraction, 1f);
+        lobbyProgressFill.offsetMin = lobbyProgressFill.offsetMax = Vector2.zero;
+        lobbyProgressFill.gameObject.SetActive(fraction > 0f);
+
+        // The countdown, or what it's waiting for
         y += 8f;
         bool counting = state == GameState.Starting;
-        string statusLine = LobbyRules.Status(people, ready, counting);
-        if (counting) statusLine += $"   <color={UITheme.Hex(UITheme.AccentText)}>STARTING IN {Mathf.Max(0, currentMatchTime)}</color>";
-        lobbyStatus.supportRichText = true;
-        lobbyStatus.text = statusLine;
-        PlaceLobbyRow(lobbyStatus, y);
-        y += 26f;
+        lobbyCountdown.gameObject.SetActive(counting);
+        if (counting)
+        {
+            lobbyCountdown.text = $"STARTING IN {Mathf.Max(0, currentMatchTime)}";
+            LobbyPlace(lobbyCountdown.rectTransform, y, 36f, LobbyPadding, LobbyPadding);
+            y += 36f;
+        }
+        lobbyStatus.text = LobbyRules.Status(people, ready, counting);
+        // Under the countdown it's a muted footnote; otherwise accent once everyone's ready
+        bool allReady = people > 0 && ready >= people;
+        lobbyStatus.color = counting ? UITheme.MutedText : allReady ? UITheme.AccentText : UITheme.TextColor;
+        LobbyPlace(lobbyStatus.rectTransform, y, 26f, LobbyPadding, LobbyPadding);
+        y += 32f;
 
-        lobbyHint.text = LobbyHint();
-        PlaceLobbyRow(lobbyHint, y);
-        int hintLines = lobbyHint.text.Split('\n').Length;
-        y += hintLines * 20f + LobbyPadding;
-
-        lobbyPanel.sizeDelta = new Vector2(LobbyWidth, y);
-    }
-
-    // How to ready up (as the key is bound now), and for the host how to start anyway
-    private string LobbyHint()
-    {
+        // How to ready up: a keycap with the key as bound now (none on touch: it's in the pause menu)
         string action = LocalReady ? "NOT READY AFTER ALL" : "READY UP";
-        string line;
-        if (TouchControls.UsingTouch) line = $"PAUSE (II) TO {action}";
+        float hintLeft = LobbyPadding;
+        bool touch = TouchControls.UsingTouch;
+        lobbyKeyChip.gameObject.SetActive(!touch);
+        if (touch)
+        {
+            lobbyHint.text = $"MENU (II) TO {action}";
+        }
         else
         {
             string key = GameInput.BindingText(GameInput.Ready, GameInput.KeyboardBindingIndex(GameInput.Ready));
             if (Gamepad.current != null) key += " / D-PAD UP";
-            line = $"<color=#FFFFFFFF>{key}</color>  {action}";
+            lobbyKey.text = key;
+            float keyWidth = Mathf.Max(30f, lobbyKey.preferredWidth + 18f);
+            UITheme.Place(lobbyKeyChip, new Vector2(0f, 1f), new Vector2(LobbyPadding, -y), new Vector2(keyWidth, 28f));
+            hintLeft += keyWidth + 10f;
+            lobbyHint.text = action;
         }
-        if (CanForceStart) line += "\nHOST: START NOW FROM THE PAUSE MENU";
-        return line;
+        lobbyHint.color = LocalReady ? UITheme.MutedText : UITheme.TextColor;
+        LobbyPlace(lobbyHint.rectTransform, y, 28f, hintLeft, LobbyPadding);
+        y += 32f;
+
+        bool hostHint = CanForceStart;
+        lobbyHostHint.gameObject.SetActive(hostHint);
+        if (hostHint)
+        {
+            lobbyHostHint.text = "HOST: START NOW FROM THE PAUSE MENU";
+            LobbyPlace(lobbyHostHint.rectTransform, y, 22f, LobbyPadding, LobbyPadding);
+            y += 24f;
+        }
+
+        lobbyPanel.sizeDelta = new Vector2(LobbyWidth, y + LobbyPadding - 6f);
     }
 
-    private void AddLobbyRow()
+    // A person's row: a faint plate (tinted, with an accent stripe, for you), their name, a HOST tag
+    // for the host, and a READY / NOT READY pill on the right
+    private LobbyRow NewLobbyRow()
     {
-        Text name = UITheme.NewText("Name", lobbyPanel, 17, UITheme.TextColor, TextAnchor.MiddleLeft);
-        // Long names are cut short rather than running into the ready column
-        name.horizontalOverflow = HorizontalWrapMode.Wrap;
-        name.verticalOverflow = VerticalWrapMode.Truncate;
-        name.rectTransform.anchorMax = new Vector2(0.55f, 1f);
-        Text status = UITheme.NewText("Ready", lobbyPanel, 16, UITheme.TextColor, TextAnchor.MiddleRight);
-        status.supportRichText = true;
-        lobbyNames.Add(name);
-        lobbyStates.Add(status);
-    }
+        LobbyRow row = new LobbyRow();
+        GameObject go = new GameObject("Player", typeof(RectTransform));
+        row.root = (RectTransform)go.transform;
+        row.root.SetParent(lobbyPanel, false);
 
-    // A row of the panel 'top' units down, keeping the row's own share of the width
-    private static void PlaceLobbyRow(Text text, float top)
-    {
-        RectTransform rect = text.rectTransform;
-        float xMin = rect.anchorMin.x, xMax = rect.anchorMax.x;
-        UITheme.Row(rect, top, Mathf.Max(LobbyRowHeight, rect.sizeDelta.y));
-        rect.anchorMin = new Vector2(xMin, 1f);
-        rect.anchorMax = new Vector2(xMax, 1f);
-        rect.offsetMin = new Vector2(LobbyPadding, rect.offsetMin.y);
-        rect.offsetMax = new Vector2(-LobbyPadding, rect.offsetMax.y);
+        row.plate = UITheme.NewImage("Plate", row.root, LobbyRowColor, 6f);
+        UITheme.Stretch(row.plate.rectTransform);
+        row.stripe = UITheme.NewImage("Stripe", row.root, UITheme.AccentText, 1.5f);
+        RectTransform stripe = row.stripe.rectTransform;
+        stripe.anchorMin = Vector2.zero;
+        stripe.anchorMax = new Vector2(0f, 1f);
+        stripe.pivot = new Vector2(0f, 0.5f);
+        stripe.offsetMin = new Vector2(0f, 6f);
+        stripe.offsetMax = new Vector2(3f, -6f);
+
+        row.name = UITheme.NewText("Name", row.root, 19, UITheme.TextColor, TextAnchor.MiddleLeft);
+        // Long names are cut short rather than running into the pill
+        row.name.horizontalOverflow = HorizontalWrapMode.Wrap;
+        row.name.verticalOverflow = VerticalWrapMode.Truncate;
+        row.name.rectTransform.offsetMin = new Vector2(14f, 0f);
+        UITheme.AddShadow(row.name, 0.5f);
+
+        row.host = UITheme.NewText("Host", row.root, 13, UITheme.MutedText, TextAnchor.MiddleRight);
+        row.host.text = "HOST";
+        RectTransform host = row.host.rectTransform;
+        host.anchorMin = new Vector2(1f, 0f);
+        host.anchorMax = Vector2.one;
+        host.pivot = new Vector2(1f, 0.5f);
+        host.offsetMin = new Vector2(-(8f + LobbyPillWidth + 50f), 0f);
+        host.offsetMax = new Vector2(-(8f + LobbyPillWidth + 10f), 0f);
+
+        row.pill = UITheme.NewImage("Pill", row.root, UITheme.Field, 12f);
+        UITheme.Place(row.pill.rectTransform, new Vector2(1f, 0.5f), new Vector2(-5f, 0f), new Vector2(LobbyPillWidth, 24f));
+        row.state = UITheme.NewText("Text", row.pill.rectTransform, 14, UITheme.MutedText, TextAnchor.MiddleCenter);
+        return row;
     }
 
     #endregion

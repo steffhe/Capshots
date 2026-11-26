@@ -280,6 +280,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         if (state == GameState.Waiting)
         {
             timer.text = IsLobby ? "LOBBY" : "WAITING";
+            timer.color = UITheme.MutedText;
             return;
         }
 
@@ -287,6 +288,39 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         string minutes = (time / 60).ToString("00");
         string seconds = (time % 60).ToString("00");
         timer.text = $"{minutes}:{seconds}";
+
+        // The countdown to the start in the accent colour; the last 30 seconds of a timed match in
+        // amber and the last 10 in red, each second giving the clock a little pulse
+        Color color = UITheme.TextColor;
+        bool pulse = false;
+        if (state == GameState.Starting) color = UITheme.AccentText;
+        else if (state == GameState.Playing && HasTimeLimit && time <= 30)
+        {
+            color = time <= 10 ? UITheme.TimerCritical : UITheme.TimerWarning;
+            pulse = time <= 10 && time > 0;
+        }
+        timer.color = color;
+        if (pulse)
+        {
+            if (timerPulse != null) StopCoroutine(timerPulse);
+            timerPulse = StartCoroutine(PulseTimer());
+        }
+    }
+
+    private Coroutine timerPulse;
+
+    private System.Collections.IEnumerator PulseTimer()
+    {
+        Transform t = timer.transform;
+        const float time = 0.35f;
+        for (float e = 0f; e < time && t != null; e += Time.unscaledDeltaTime)
+        {
+            float k = 1f - e / time;
+            t.localScale = Vector3.one * (1f + 0.18f * k * k);
+            yield return null;
+        }
+        if (t != null) t.localScale = Vector3.one;
+        timerPulse = null;
     }
 
     private void RefreshMyStats()

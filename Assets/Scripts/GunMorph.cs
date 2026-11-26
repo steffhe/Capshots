@@ -21,9 +21,26 @@ public class GunMorph : MonoBehaviour
         public Vector3 fromScale, toScale;
         public float start, end; // the share of the morph this part moves in
         public bool temporary;   // a copy of an old part, removed at the end
+        // One of the gun's machined parts (GunModel): moved in stages, with a lift as it comes
+        // loose and a small overshoot as it locks into place
+        public bool staged;
+        public Vector3 release;
     }
 
     private readonly List<Part> parts = new List<Part>();
+    private GunModel newModel, oldModel;
+
+    // The stages of a change of form for the machined parts (GunModel), as shares of it. The glow
+    // follows the same stages (GunModel.MorphGlow):
+    //  1. energy activation (0 to 0.2): the core flares, nothing moves yet
+    //  2. mechanical release (0.1 to 0.3): clamps open, modules and the front assembly lift away
+    //  3. reconfiguration (0.2 to 0.8): every part slides to where the new form has it
+    //  4. mechanical lock (0.8 to 0.9): the parts overshoot a touch and seat, the lift closes up
+    //  5. energy stabilisation (0.9 to 1): the glow settles
+    private const float StagedStart = 0.2f, StagedEnd = 0.8f, LiftStart = 0.1f, LiftEnd = 0.9f;
+
+    // How far through the change of form it is, 0 to 1 (GunModel's glow follows it)
+    public float Progress => duration > 0f ? Mathf.Clamp01((Time.time - startTime) / duration) : 1f;
     private float startTime;
     private float duration;
 
@@ -42,6 +59,8 @@ public class GunMorph : MonoBehaviour
         GunMorph morph = newGun.AddComponent<GunMorph>();
         morph.duration = seconds;
         morph.startTime = Time.time;
+        morph.newModel = newGun.GetComponent<GunModel>();
+        morph.oldModel = oldGun.GetComponent<GunModel>();
         morph.Build(newDesign, oldDesign);
         morph.Apply(0f);
         return morph;
@@ -91,6 +110,14 @@ public class GunMorph : MonoBehaviour
                 part.fromScale = Divide(DesignScale(oldDesign, old.transform), DesignScale(newDesign, t.parent));
                 part.start = 0.15f;
                 part.end = 0.85f;
+                if (newModel != null && t.parent != null && t.parent.name == GunModel.GroupName)
+                {
+                    part.staged = true;
+                    part.start = StagedStart;
+                    part.end = StagedEnd;
+                    // Lifts the way it sits in the new form, or in the old one if it's tucking away
+                    part.release = !newModel.IsCollapsed(r.name) || oldModel == null ? newModel.ReleaseOf(r.name) : oldModel.ReleaseOf(r.name);
+                }
             }
             else
             {
@@ -148,7 +175,18 @@ public class GunMorph : MonoBehaviour
         foreach (Part p in parts)
         {
             if (p.transform == null) continue;
-            float k = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(p.start, p.end, t));
+            float k = Mathf.InverseLerp(p.start, p.end, t);
+            if (p.staged)
+            {
+                // Overshoots a touch and settles: the lock
+                float eased = EaseOutBack(k);
+                float lift = Mathf.Sin(Mathf.PI * Mathf.InverseLerp(LiftStart, LiftEnd, t));
+                p.transform.localPosition = Vector3.LerpUnclamped(p.fromPosition, p.toPosition, eased) + p.release * lift;
+                p.transform.localRotation = Quaternion.SlerpUnclamped(p.fromRotation, p.toRotation, eased);
+                p.transform.localScale = Vector3.Max(Vector3.zero, Vector3.LerpUnclamped(p.fromScale, p.toScale, eased));
+                continue;
+            }
+            k = Mathf.SmoothStep(0f, 1f, k);
             p.transform.localPosition = Vector3.LerpUnclamped(p.fromPosition, p.toPosition, k);
             p.transform.localRotation = Quaternion.Slerp(p.fromRotation, p.toRotation, k);
             p.transform.localScale = Vector3.LerpUnclamped(p.fromScale, p.toScale, k);
@@ -190,6 +228,14 @@ public class GunMorph : MonoBehaviour
         {
             Apply(duration > 0f ? Mathf.Clamp01((Time.time - startTime) / duration) : 1f);
         }
+    }
+
+    // From 0 to 1 with a small overshoot past 1 just before the end
+    private static float EaseOutBack(float k)
+    {
+        const float c1 = 1.2f, c3 = c1 + 1f;
+        float m = k - 1f;
+        return 1f + c3 * m * m * m + c1 * m * m;
     }
 
     #region Design space

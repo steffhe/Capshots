@@ -382,6 +382,7 @@ public class AwardStage : MonoBehaviour
             holder.localPosition = new Vector3(-0.031f, RootToGun, 0f);
             GameObject gun = Instantiate(form.prefab, holder, false);
             gun.name = form.prefab.name;
+            GunModel.Build(gun, form);
             foreach (Sway sway in gun.GetComponentsInChildren<Sway>(true)) sway.enabled = false;
             foreach (Collider c in gun.GetComponentsInChildren<Collider>(true)) c.enabled = false;
             foreach (LineRenderer line in gun.GetComponentsInChildren<LineRenderer>(true)) line.enabled = false;

@@ -442,6 +442,25 @@ public class GunSatellites : MonoBehaviour
         }
         placed = true;
         heldSpace = space;
+
+        // The gun's machined parts: their floating, glow and the core's part in the cell swap
+        GunModel model = shownGun != null ? shownGun.GetComponent<GunModel>() : null;
+        if (model != null)
+        {
+            model.Drive(new GunModel.State
+            {
+                lastShotTime = lastShot,
+                aim = aim,
+                reload = reload,
+                loose = loose,
+                energy = EnergyFraction,
+                color = color,
+                ghost = player != null && player.IsProtected,
+                ghostAlpha = player != null ? player.protectionAlpha : 1f,
+                // Other players' guns leave out the small parts
+                detail = player == null || player == Player.Local,
+            });
+        }
     }
 
     private void OnDestroy()

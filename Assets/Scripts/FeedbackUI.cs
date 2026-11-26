@@ -347,11 +347,8 @@ public class FeedbackUI : MonoBehaviour
         if (Instance == null) return;
         FeedbackUI ui = Instance;
 
-        GameObject entry = new GameObject("Kill Feed Entry", typeof(RectTransform));
-        RectTransform rect = (RectTransform)entry.transform;
-        rect.SetParent(ui.killFeed, false);
-        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(1f, 1f);
-        rect.sizeDelta = new Vector2(600f, 26f);
+        RectTransform rect = ui.NewKillFeedEntry("Kill Feed Entry", involvesMe);
+        GameObject entry = rect.gameObject;
 
         if (killerColor == null) killerColor = involvesMe ? "#ffd84a" : "#ff6a5a";
         if (victimColor == null) victimColor = involvesMe ? "#ffd84a" : "#ffffff";
@@ -365,14 +362,15 @@ public class FeedbackUI : MonoBehaviour
         if (iconSprite == null)
         {
             Text line = ui.NewText("Text", rect, 20, TextAnchor.MiddleRight);
-            UITheme.Stretch(line.rectTransform);
+            FeedInset(line.rectTransform, 0f);
             line.text = killerPart + "  " + weaponPart + "  " + victimPart;
+            FitKillFeedEntry(rect, line.preferredWidth);
         }
         else
         {
             // Right to left: weapon and victim, the cap logo, then the killer
             Text right = ui.NewText("Text", rect, 20, TextAnchor.MiddleRight);
-            UITheme.Stretch(right.rectTransform);
+            FeedInset(right.rectTransform, 0f);
             right.text = weaponPart + "  " + victimPart;
             float iconRight = right.preferredWidth + IconGap;
 
@@ -381,13 +379,13 @@ public class FeedbackUI : MonoBehaviour
             icon.preserveAspect = true;
             RectTransform iconRect = icon.rectTransform;
             iconRect.anchorMin = iconRect.anchorMax = iconRect.pivot = new Vector2(1f, 0.5f);
-            iconRect.anchoredPosition = new Vector2(-iconRight, 0f);
+            iconRect.anchoredPosition = new Vector2(-(FeedPadding + iconRight), 0f);
             iconRect.sizeDelta = new Vector2(CapshotIconSize, CapshotIconSize);
 
             Text left = ui.NewText("Killer", rect, 20, TextAnchor.MiddleRight);
-            UITheme.Stretch(left.rectTransform);
-            left.rectTransform.offsetMax = new Vector2(-(iconRight + CapshotIconSize + IconGap), 0f);
+            FeedInset(left.rectTransform, iconRight + CapshotIconSize + IconGap);
             left.text = killerPart;
+            FitKillFeedEntry(rect, iconRight + CapshotIconSize + IconGap + left.preferredWidth);
         }
 
         ui.AddKillFeedEntry(entry);
@@ -398,16 +396,60 @@ public class FeedbackUI : MonoBehaviour
     {
         if (Instance == null) return;
         FeedbackUI ui = Instance;
-        GameObject entry = new GameObject("Kill Feed Note", typeof(RectTransform));
-        RectTransform rect = (RectTransform)entry.transform;
-        rect.SetParent(ui.killFeed, false);
-        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(1f, 1f);
-        rect.sizeDelta = new Vector2(600f, 26f);
+        RectTransform rect = ui.NewKillFeedEntry("Kill Feed Note", false);
         Text line = ui.NewText("Text", rect, 18, TextAnchor.MiddleRight);
-        UITheme.Stretch(line.rectTransform);
+        FeedInset(line.rectTransform, 0f);
         line.color = new Color(0.85f, 0.85f, 0.85f);
         line.text = text;
-        ui.AddKillFeedEntry(entry);
+        FitKillFeedEntry(rect, line.preferredWidth);
+        ui.AddKillFeedEntry(rect.gameObject);
+    }
+
+    // Kill feed rows: each on its own dark, see-through plate sized to its text, so the names stay
+    // readable over a bright sky. Your own kills and deaths get a gold stripe on the plate's left.
+    private const float FeedRowHeight = 30f;
+    private const float FeedRowGap = 5f;
+    private const float FeedPadding = 12f;
+    private static readonly Color FeedPlate = new Color(0.02f, 0.03f, 0.06f, 0.55f);
+    private static readonly Color FeedStripe = new Color(1f, 0.85f, 0.29f, 0.95f);
+
+    private RectTransform NewKillFeedEntry(string name, bool involvesMe)
+    {
+        GameObject entry = new GameObject(name, typeof(RectTransform));
+        RectTransform rect = (RectTransform)entry.transform;
+        rect.SetParent(killFeed, false);
+        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(1f, 1f);
+        rect.sizeDelta = new Vector2(600f, FeedRowHeight);
+
+        Image plate = UITheme.NewImage("Plate", rect, FeedPlate, 6f);
+        RectTransform plateRect = plate.rectTransform;
+        plateRect.anchorMin = plateRect.anchorMax = plateRect.pivot = new Vector2(1f, 0.5f);
+        plateRect.anchoredPosition = Vector2.zero;
+        plateRect.sizeDelta = new Vector2(0f, FeedRowHeight);
+        if (involvesMe)
+        {
+            Image stripe = UITheme.NewImage("Stripe", plateRect, FeedStripe, 1.5f);
+            RectTransform stripeRect = stripe.rectTransform;
+            stripeRect.anchorMin = new Vector2(0f, 0f);
+            stripeRect.anchorMax = new Vector2(0f, 1f);
+            stripeRect.pivot = new Vector2(0f, 0.5f);
+            stripeRect.offsetMin = new Vector2(0f, 4f);
+            stripeRect.offsetMax = new Vector2(3f, -4f);
+        }
+        return rect;
+    }
+
+    // The row's text: the full row, minus the padding and 'right' more on the right
+    private static void FeedInset(RectTransform rect, float right)
+    {
+        Stretch(rect);
+        rect.offsetMax = new Vector2(-(FeedPadding + right), 0f);
+    }
+
+    private static void FitKillFeedEntry(RectTransform entry, float contentWidth)
+    {
+        RectTransform plate = entry.Find("Plate") as RectTransform;
+        if (plate != null) plate.sizeDelta = new Vector2(contentWidth + FeedPadding * 2f, FeedRowHeight);
     }
 
     private void AddKillFeedEntry(GameObject entry)
@@ -523,7 +565,7 @@ public class FeedbackUI : MonoBehaviour
     {
         for (int i = 0; i < killFeedEntries.Count; i++)
         {
-            ((RectTransform)killFeedEntries[i].transform).anchoredPosition = new Vector2(0f, -i * 28f);
+            ((RectTransform)killFeedEntries[i].transform).anchoredPosition = new Vector2(0f, -i * (FeedRowHeight + FeedRowGap));
         }
     }
 

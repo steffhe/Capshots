@@ -735,6 +735,7 @@ public class Player : NetworkBehaviour
         float healthRatio = (float)Health / (float)maxHealth;
         uiHealthBar.localScale = new Vector3(healthRatio, 1, 1);
         if (uiHealthBarImage != null) uiHealthBarImage.color = UITheme.HealthColor(healthRatio);
+        HudFeedback.SetHealth(Health, maxHealth);
     }
 
     #endregion
@@ -1059,8 +1060,9 @@ public class Player : NetworkBehaviour
     {
         if (!(r is MeshRenderer || r is SkinnedMeshRenderer)) return false;
         if (r.GetComponent<TextMeshPro>() != null) return false;
-        // The gun's floating pieces see to their own (GunSatellites)
+        // The gun's floating pieces see to their own (GunSatellites), and so do its machined parts (GunModel)
         if (r.GetComponentInParent<GunSatellites>() != null) return false;
+        if (r.transform.parent != null && r.transform.parent.name == GunModel.GroupName && r.GetComponentInParent<GunModel>() != null) return false;
         // The scope's reticle keeps glowing: it's only seen through the scope, by its owner, and a
         // see-through copy would lose its glow
         if (r.name == DroneHands.ReticleGlowName) return false;

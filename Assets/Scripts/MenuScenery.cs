@@ -123,6 +123,7 @@ public class MenuScenery : MonoBehaviour
         {
             GameObject model = Instantiate(gun.prefab, gunHolder, false);
             model.name = gun.prefab.name;
+            GunModel.Build(model, gun);
             if (heldGun != null)
             {
                 model.transform.localPosition = heldGun.transform.localPosition;

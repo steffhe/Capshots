@@ -76,6 +76,8 @@ public class Weapon : NetworkBehaviour
     private Graphic crosshairDot;
     private float crosshairAlpha = 1f;
     private readonly List<Image> arsenalImages = new List<Image>();
+    // An accent bar beside the equipped form's icon
+    private RectTransform arsenalMarker;
     // The gun form icons' holder on the HUD; hidden while touch controls are showing, which cover it
     private GameObject arsenalRoot;
     private const float ArsenalIconStep = 120f;
@@ -187,6 +189,12 @@ public class Weapon : NetworkBehaviour
                 arsenalImages.Add(image);
                 ind += 1;
             }
+            // Right of the icons (200 x 100 each), moved to the equipped one in ShowGun
+            Image marker = UITheme.NewImage("Active Marker", arsenal.transform, UITheme.Accent, 2f);
+            arsenalMarker = marker.rectTransform;
+            arsenalMarker.anchorMin = arsenalMarker.anchorMax = Vector2.zero;
+            arsenalMarker.pivot = new Vector2(0f, 0.5f);
+            arsenalMarker.sizeDelta = new Vector2(4f, 56f);
 
             hitmark = GameObject.Find("HUD/Crosshair/Hitmark");
             if (hitmark != null) hitmarkImage = hitmark.GetComponent<Image>();
@@ -349,7 +357,12 @@ public class Weapon : NetworkBehaviour
         // Reloading is animated by DroneHands: the gun stays out and its energy cell is swapped
 
         if (HasInputAuthority && !Pause.paused) Aim(isAiming);
-        if (HasInputAuthority) SetCrosshairAlpha(Mathf.MoveTowards(crosshairAlpha, isAiming ? 0f : 1f, Time.deltaTime * 6f));
+        if (HasInputAuthority)
+        {
+            SetCrosshairAlpha(Mathf.MoveTowards(crosshairAlpha, isAiming ? 0f : 1f, Time.deltaTime * 6f));
+            // The spread ticks round the dot follow the gun's current spread
+            HudFeedback.SetSpread(CurrentBloom(), crosshairAlpha);
+        }
 
         //weapon position elasticity
         currentWeapon.transform.localPosition = Vector3.Lerp(currentWeapon.transform.localPosition, Vector3.zero, Time.deltaTime * 4f);
@@ -389,7 +402,10 @@ public class Weapon : NetworkBehaviour
         int shots = GunEnergy.ShotsLeft(Energy, gun.energyPerShot);
         int full = GunEnergy.ShotsLeft(maxEnergy, gun.energyPerShot);
         text.supportRichText = true;
-        text.text = shots.ToString("d2") + $"<size={Mathf.RoundToInt(text.fontSize * 0.55f)}><color={UITheme.Hex(UITheme.MutedText)}> / " + full.ToString("d2") + "</color></size>";
+        // The count turns amber when a quarter of the cell or less is left, as a hint to swap it
+        string count = shots.ToString("d2");
+        if (shots * 4 <= full) count = $"<color={UITheme.Hex(UITheme.TimerWarning)}>{count}</color>";
+        text.text = count + $"<size={Mathf.RoundToInt(text.fontSize * 0.55f)}><color={UITheme.Hex(UITheme.MutedText)}> / " + full.ToString("d2") + "</color></size>";
         RefreshGrenadeIndicator();
     }
 
@@ -733,7 +749,7 @@ public class Weapon : NetworkBehaviour
     private void RPC_HitConfirm(NetworkBool headshot, NetworkBool killed)
     {
         if (hitmarkRoutine != null) StopCoroutine(hitmarkRoutine);
-        hitmarkRoutine = StartCoroutine(HitPlayer(killed));
+        hitmarkRoutine = StartCoroutine(HitPlayer(headshot, killed));
         FeedbackUI.Hit(headshot);
         if (Manager.Instance != null && Manager.Instance.CountsForSummary) Manager.Summary.Hit();
         // A kill shakes the view a little, a cap shot more
@@ -779,32 +795,42 @@ public class Weapon : NetworkBehaviour
         if (sounds != null) sounds.PlayReload(reloadTime);
     }
 
-    IEnumerator HitPlayer(bool targetIsDead)
+    // Hit marker colours: a hit white, a cap shot (headshot) the cap logo's gold, a kill red
+    static readonly Color HitColor = Color.white;
+    static readonly Color CapshotHitColor = new Color(1f, 0.8f, 0.3f, 1f);
+    static readonly Color KillColor = new Color(1f, 0.22f, 0.18f, 1f);
+
+    // Every hit pops in and fades fast, so a stream of hits reads as separate ticks. A cap shot is
+    // gold and bigger; a kill pops out big and holds a moment, red, or gold and bigger still for a
+    // cap shot kill.
+    IEnumerator HitPlayer(bool headshot, bool targetIsDead)
     {
         if (hitmark == null) yield break;
 
         Transform marker = hitmark.transform;
-        Color color = targetIsDead ? Color.red : Color.white;
+        Color color = targetIsDead && !headshot ? KillColor : headshot ? CapshotHitColor : HitColor;
         hitmarkImage.color = color;
-        marker.localScale = Vector3.one;
         hitmark.SetActive(true);
 
-        if (!targetIsDead)
+        float pop, hold, fadeOut, from, to;
+        if (targetIsDead)
         {
-            yield return new WaitForSeconds(0.5f);
+            pop = 0.15f; hold = headshot ? 0.45f : 0.3f; fadeOut = headshot ? 0.3f : 0.25f;
+            from = headshot ? 2.4f : 2f; to = headshot ? 1.2f : 1f;
         }
         else
         {
-            // A kill: the red marker pops out big, settles back, stays a moment and fades away
-            const float pop = 0.15f, hold = 0.3f, fadeOut = 0.25f;
-            for (float t = 0f; t < pop + hold + fadeOut; t += Time.deltaTime)
-            {
-                float scale = t < pop ? Mathf.Lerp(2f, 1f, 1f - Mathf.Pow(1f - t / pop, 3f)) : 1f;
-                marker.localScale = Vector3.one * scale;
-                color.a = t < pop + hold ? 1f : 1f - (t - pop - hold) / fadeOut;
-                hitmarkImage.color = color;
-                yield return null;
-            }
+            pop = 0.07f; hold = headshot ? 0.16f : 0.1f; fadeOut = 0.15f;
+            from = headshot ? 1.5f : 1.25f; to = headshot ? 1.1f : 0.9f;
+        }
+
+        for (float t = 0f; t < pop + hold + fadeOut; t += Time.deltaTime)
+        {
+            float scale = t < pop ? Mathf.Lerp(from, to, 1f - Mathf.Pow(1f - t / pop, 3f)) : to;
+            marker.localScale = Vector3.one * scale;
+            color.a = t < pop + hold ? 1f : 1f - (t - pop - hold) / fadeOut;
+            hitmarkImage.color = color;
+            yield return null;
         }
 
         HideHitmark();
@@ -888,6 +914,8 @@ public class Weapon : NetworkBehaviour
         newWeapon.GetComponent<Sway>().isMine = HasInputAuthority;
         // Bullets never hit guns, and a collider here would block the player's own character controller
         foreach (Collider c in newWeapon.GetComponentsInChildren<Collider>(true)) c.enabled = false;
+        // The machined body every form is built from (before the morph, which moves its parts)
+        global::GunModel.Build(newWeapon, loadout[ind]);
 
         currentWeapon = newWeapon;
         if (oldWeapon != null)
@@ -903,13 +931,14 @@ public class Weapon : NetworkBehaviour
         stateAds = currentWeapon.transform.Find("States/ADS");
         stateHip = currentWeapon.transform.Find("States/Hip");
 
-        // Highlight the equipped gun in the HUD
+        // Highlight the equipped gun in the HUD: bright white with an accent bar beside it, the others
+        // dim grey, and its name above the ammo count
         for (int i = 0; i < arsenalImages.Count; i++)
         {
-            Color c = arsenalImages[i].color;
-            c.a = i == ind ? 0.75f : 0.30f;
-            arsenalImages[i].color = c;
+            arsenalImages[i].color = i == ind ? new Color(1f, 1f, 1f, 0.95f) : new Color(0.55f, 0.55f, 0.55f, 0.3f);
         }
+        if (arsenalMarker != null) arsenalMarker.anchoredPosition = new Vector2(206f, ind * ArsenalIconStep + 50f);
+        if (HasInputAuthority) HudFeedback.SetWeapon(loadout[ind].gunName);
     }
 
     // The local player's gun goes on the LocalGun layer, which only the viewmodel camera draws, so it
@@ -1063,6 +1092,7 @@ public class Weapon : NetworkBehaviour
         if (sounds != null) sounds.PlayShot(gun);
         MuzzleFlash();
         LastShotTime = Time.time;
+        if (HasInputAuthority) HudFeedback.Fired();
 
         //gun fx
         if (currentWeapon != null)
