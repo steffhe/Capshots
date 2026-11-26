@@ -17,7 +17,8 @@ public class OfficeMapData
     {
         public string name;
         public Color color;
-        // "none", "wood", "carpet", "tile", "concrete" or "grass": a pattern drawn by OfficeMap
+        // "none", "wood", "carpet", "checker", "tile", "concrete", "grass", "gravel", "boards",
+        // "panels" or "mountains" (the frosted film, with see-through parts): a pattern drawn by OfficeMap
         public string texture;
         // Metres one repeat of the texture covers
         public float tile;
@@ -58,6 +59,8 @@ public class OfficeMapData
     {
         public Vector3 position;
         public float yaw;
+        // The team whose side it's on (see SpawnSide), or -1 for anyone
+        public int team;
     }
 
     public readonly List<MaterialDef> materials = new List<MaterialDef>();
@@ -121,7 +124,12 @@ public class OfficeMapData
                         });
                         break;
                     case "s":
-                        data.spawns.Add(new Spawn { position = new Vector3(F(p[1]), F(p[2]), F(p[3])), yaw = F(p[4]) });
+                        data.spawns.Add(new Spawn
+                        {
+                            position = new Vector3(F(p[1]), F(p[2]), F(p[3])),
+                            yaw = F(p[4]),
+                            team = p.Length > 5 ? int.Parse(p[5], NumberStyles.Integer, CultureInfo.InvariantCulture) : -1,
+                        });
                         break;
                     case "l":
                         data.signs.Add(new Sign

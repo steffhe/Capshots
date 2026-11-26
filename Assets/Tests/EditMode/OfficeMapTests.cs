@@ -29,6 +29,7 @@ public class OfficeMapTests
             "b wood 0 1 0 1 1 1 n\n" +
             "p 2 1.54 5 1.4 2.92 0.03 1.35 0.8\n" +
             "s 1.5 1.2 -2 90\n" +
+            "s 3 1.2 4 180 1\n" +
             "l 0 2.75 1 180 0.3 0.1 0.1 0.1 H  Bakrommet\n" +
             "c 1 2 3 10 45\n";
         OfficeMapData d = OfficeMapData.Parse(text);
@@ -47,6 +48,8 @@ public class OfficeMapTests
         Assert.AreEqual(1.35f, d.panes[0].frostY, 1e-5f);
         Assert.AreEqual(0.8f, d.panes[0].frostHeight, 1e-5f);
         Assert.AreEqual(90f, d.spawns[0].yaw);
+        Assert.AreEqual(-1, d.spawns[0].team, "a spawn point without a team is anyone's");
+        Assert.AreEqual(1, d.spawns[1].team);
         Assert.AreEqual("H Bakrommet", d.signs[0].text);
         Assert.IsTrue(d.hasCamera);
         Assert.AreEqual(45f, d.cameraYaw);
@@ -105,6 +108,30 @@ public class OfficeMapTests
             Assert.IsEmpty(blocking, "the spawn at " + spawn.position + " is blocked");
             Assert.IsFalse(Data.panes.Any(p => p.Bounds.Intersects(body)), "the spawn at " + spawn.position + " is in a glass pane");
         }
+    }
+
+    [Test]
+    public void GeneratedMap_HasEightSpawnPointsForEachTeam()
+    {
+        Assert.AreEqual(8, Data.spawns.Count(s => s.team == 0));
+        Assert.AreEqual(8, Data.spawns.Count(s => s.team == 1));
+        // Team 1 starts in the north wing, team 0 in the south wing
+        float south = Data.spawns.Where(s => s.team == 0).Max(s => s.position.z);
+        float north = Data.spawns.Where(s => s.team == 1).Min(s => s.position.z);
+        Assert.Less(south, north);
+    }
+
+    [Test]
+    public void GeneratedMap_CourtyardIsWalledInBreakableGlass()
+    {
+        // The courtyard is on the floor's level, so its glass walls break like the others: panes
+        // standing on the floor that are taller than a door, along the courtyard's four sides
+        var tall = Data.panes.Where(p => p.Bounds.min.y < 0.2f && p.Bounds.max.y > 2.9f).ToList();
+        Assert.Greater(tall.Count, 40);
+        // And the frosted film is the mountain pattern, which has see-through parts
+        OfficeMapData.MaterialDef frost = Data.materials.First(m => m.name == "frost");
+        Assert.AreEqual("mountains", frost.texture);
+        Assert.Greater(frost.tile, 1f);
     }
 
     private static bool Contains2D(Bounds b, Vector3 p, float pad)

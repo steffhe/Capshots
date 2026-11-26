@@ -51,6 +51,7 @@ public class OfficeGlass : MonoBehaviour
     private readonly List<Shard> shards = new List<Shard>();
     private readonly OfficeMap.MeshBuilder builder = new OfficeMap.MeshBuilder();
     private int glassMask;
+    private float frostTile;
     private Material shardMaterial;
     private Mesh shardMesh;
     // This frame's shards, drawn together in one instanced call (a draw call each is a lot in a browser)
@@ -71,9 +72,12 @@ public class OfficeGlass : MonoBehaviour
         if (Instance == this) Instance = null;
     }
 
-    public void Build(List<OfficeMapData.Pane> paneData, Material glass, Material frost, int glassLayer)
+    // frostTile: metres one repeat of the frost material's texture covers (the film is drawn with
+    // world-position UVs so its pattern runs on across panes), or 0 for a plain frosted band
+    public void Build(List<OfficeMapData.Pane> paneData, Material glass, Material frost, int glassLayer, float frostTile = 0f)
     {
         Instance = this;
+        this.frostTile = frostTile;
         glassMask = 1 << glassLayer;
 
         // Cracked glass: the glass colour, with the cracks drawn in its texture
@@ -266,7 +270,7 @@ public class OfficeGlass : MonoBehaviour
                 Vector3 size = d.size;
                 if (size.x < size.z) size.x += 0.01f; else size.z += 0.01f;
                 size.y = d.frostHeight;
-                OfficeMap.AddBox(builder, new Vector3(d.center.x, d.frostY, d.center.z), size, 0f);
+                OfficeMap.AddBox(builder, new Vector3(d.center.x, d.frostY, d.center.z), size, frostTile);
             }
             else if (pane.state == state)
             {

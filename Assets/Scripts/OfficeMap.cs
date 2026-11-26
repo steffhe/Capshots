@@ -188,11 +188,12 @@ public class OfficeMap : MonoBehaviour
     }
 
     // Light grey patterns that tint the material's colour: planks, carpet weave, tiles and so on.
-    // null for plain materials.
+    // null for plain materials. "mountains" is the frosted film on the glass walls: see Mountains.
     private static Texture2D Pattern(string kind)
     {
         if (kind == "none") return null;
         if (textures.TryGetValue(kind, out Texture2D cached) && cached != null) return cached;
+        if (kind == "mountains") return textures[kind] = Mountains();
 
         const int size = 256;
         var random = new System.Random(kind.GetHashCode() & 0x7fffffff);
@@ -245,6 +246,26 @@ public class OfficeMap : MonoBehaviour
                     case "grass":
                         v = 0.72f + 0.28f * n;
                         break;
+                    case "checker":
+                        // Carpet tiles laid in alternating directions: a soft check
+                        v = ((((x >> 6) + (y >> 6)) & 1) == 0 ? 1f : 0.88f) * (0.9f + 0.1f * n);
+                        break;
+                    case "panels":
+                        // Facade panels: two to a repeat, with a dark joint between them
+                        v = 0.94f + 0.06f * n;
+                        if (x % (size / 2) < 3) v *= 0.55f;
+                        break;
+                    case "boards":
+                        // Wide boards running one way (decking, paving, weathered cladding)
+                    {
+                        int board = x * 6 / size;
+                        v = (0.85f + 0.15f * ((board * 37) % 7) / 7f) * (0.95f + 0.05f * n);
+                        if (x % (size / 6) < 2) v *= 0.55f;
+                        break;
+                    }
+                    case "gravel":
+                        v = 0.65f + 0.35f * n * n + (noise[(x * 7 + y * 13) % noise.Length] < 0.08f ? 0.2f : 0f);
+                        break;
                 }
                 byte b = (byte)Mathf.Clamp(Mathf.RoundToInt(v * 255f), 0, 255);
                 pixels[y * size + x] = new Color32(b, b, b, 255);
@@ -258,6 +279,57 @@ public class OfficeMap : MonoBehaviour
         texture.SetPixels32(pixels);
         texture.Apply(true, true);
         textures[kind] = texture;
+        return texture;
+    }
+
+    // The frosted film on the glass walls, as in the real offices: a range of mountains from 0.95 m
+    // up to about 2.6 m (two tones, the far peaks lighter), with a row of small orange rings at 0.72
+    // m, clear glass everywhere else. One repeat covers 6 m by 6 m of wall (the frost material's
+    // tile) with v = 0 at the floor, so the panes are drawn with world-position UVs.
+    private static Texture2D Mountains()
+    {
+        const int size = 512;
+        const float span = 6f, foot = 0.95f;
+        // (middle, half width, height in m, tone) along one 6 m repeat
+        float[,] peaks =
+        {
+            { 0.08f, 0.20f, 2.55f, 1f }, { 0.40f, 0.24f, 2.25f, 1f }, { 0.74f, 0.17f, 2.65f, 1f },
+            { 0.25f, 0.09f, 1.75f, 0.86f }, { 0.58f, 0.11f, 1.95f, 0.86f }, { 0.93f, 0.10f, 1.70f, 0.86f },
+        };
+        var pixels = new Color32[size * size];
+        for (int y = 0; y < size; y++)
+        {
+            float h = span * (y + 0.5f) / size;
+            for (int x = 0; x < size; x++)
+            {
+                float u = (x + 0.5f) / size;
+                float best = 0f, tone = 0f;
+                for (int i = 0; i < peaks.GetLength(0); i++)
+                {
+                    float du = Mathf.Abs(u - peaks[i, 0]);
+                    du = Mathf.Min(du, 1f - du);
+                    float ridge = peaks[i, 2] - du / peaks[i, 1] * (peaks[i, 2] - foot);
+                    if (h >= foot && ridge > h && ridge > best) { best = ridge; tone = peaks[i, 3]; }
+                }
+                Color32 c = new Color32(255, 255, 255, 0);
+                if (tone > 0f)
+                {
+                    byte v = (byte)Mathf.RoundToInt(tone * 255f);
+                    c = new Color32(v, v, v, 255);
+                }
+                // Rings: 24 to a repeat (one every 25 cm)
+                float rx = ((u * 24f) % 1f - 0.5f) * (span / 24f), ry = h - 0.72f;
+                float r = Mathf.Sqrt(rx * rx + ry * ry);
+                if (r > 0.04f && r < 0.065f) c = new Color32(235, 125, 45, 255);
+                pixels[y * size + x] = c;
+            }
+        }
+        var texture = new Texture2D(size, size, TextureFormat.RGBA32, true) { name = "Office mountains" };
+        texture.wrapMode = TextureWrapMode.Repeat;
+        texture.filterMode = FilterMode.Trilinear;
+        texture.anisoLevel = 4;
+        texture.SetPixels32(pixels);
+        texture.Apply(true, true);
         return texture;
     }
 
@@ -425,7 +497,9 @@ public class OfficeMap : MonoBehaviour
         }
         int glassLayer = LayerMask.NameToLayer("Glass");
         if (glassLayer < 0) glassLayer = Layers.Glass;
-        gameObject.AddComponent<OfficeGlass>().Build(data.panes, glass, frost, glassLayer);
+        int frostIndex = data.materials.FindIndex(m => m.name == "frost");
+        float frostTile = frostIndex >= 0 && data.materials[frostIndex].texture != "none" ? data.materials[frostIndex].tile : 0f;
+        gameObject.AddComponent<OfficeGlass>().Build(data.panes, glass, frost, glassLayer, frostTile);
     }
 
     private void BuildSigns(OfficeMapData data, Transform root)
@@ -458,6 +532,8 @@ public class OfficeMap : MonoBehaviour
             var go = new GameObject("Spawn Point (" + i + ")");
             go.transform.SetParent(parent, false);
             go.transform.SetPositionAndRotation(data.spawns[i].position, Quaternion.Euler(0f, data.spawns[i].yaw, 0f));
+            // A team's own side: in team modes its players come in there (Manager.ChooseSpawnPoint)
+            if (data.spawns[i].team >= 0) go.AddComponent<SpawnSide>().team = data.spawns[i].team;
             points[i] = go.transform;
         }
         if (manager != null && points.Length > 0) manager.spawnPoints = points;
