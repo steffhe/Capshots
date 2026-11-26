@@ -111,27 +111,14 @@ public class OfficeMapTests
     }
 
     [Test]
-    public void GeneratedMap_HasEightSpawnPointsForEachTeam()
+    public void GeneratedMap_FrostedFilmIsTheMountainPattern()
     {
-        Assert.AreEqual(8, Data.spawns.Count(s => s.team == 0));
-        Assert.AreEqual(8, Data.spawns.Count(s => s.team == 1));
-        // Team 1 starts in the north wing, team 0 in the south wing
-        float south = Data.spawns.Where(s => s.team == 0).Max(s => s.position.z);
-        float north = Data.spawns.Where(s => s.team == 1).Min(s => s.position.z);
-        Assert.Less(south, north);
-    }
-
-    [Test]
-    public void GeneratedMap_CourtyardIsWalledInBreakableGlass()
-    {
-        // The courtyard is on the floor's level, so its glass walls break like the others: panes
-        // standing on the floor that are taller than a door, along the courtyard's four sides
-        var tall = Data.panes.Where(p => p.Bounds.min.y < 0.2f && p.Bounds.max.y > 2.9f).ToList();
-        Assert.Greater(tall.Count, 40);
-        // And the frosted film is the mountain pattern, which has see-through parts
+        // The film on the glass walls has see-through parts, drawn with world-position UVs
         OfficeMapData.MaterialDef frost = Data.materials.First(m => m.name == "frost");
         Assert.AreEqual("mountains", frost.texture);
         Assert.Greater(frost.tile, 1f);
+        Assert.IsTrue(Data.panes.Any(p => p.frostHeight > 0f), "rooms have the film");
+        Assert.IsTrue(Data.panes.Any(p => p.frostHeight == 0f), "print rooms and the glass over doors are clear");
     }
 
     private static bool Contains2D(Bounds b, Vector3 p, float pad)

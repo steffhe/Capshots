@@ -22,7 +22,7 @@ SLABS = [
 # The building's outside walls, clockwise (in plan coordinates, i.e. y down)
 OUTLINE = [(622, 55), (1347, 55), (1347, 1090), (96, 1090), (96, 836), (838, 836), (838, 705), (622, 705)]
 
-# The courtyard garden (on the same level as the floor, open to the sky)
+# The courtyard garden, one floor down
 GARDEN = (870, 342, 1098, 836)
 
 # Rooms: (kind, label, rect, name). Rooms with the same label are one room (no wall between them).
@@ -148,7 +148,7 @@ HALL_FURNITURE = [
     ("plant", (1085, 325), {}),
     # By K, at the south end of the west corridor
     ("counter", (800, 550, 846, 560), {"coffee": True}),
-    ("wingbacks", (822, 594), {}),
+    ("wingbacks", (822, 592), {}),
     ("plant", (780, 625), {}),
     # East lounge, by Utgang 28
     ("counter", (1263, 520, 1272, 568), {"coffee": True}),
@@ -160,8 +160,6 @@ HALL_FURNITURE = [
     ("armchair", (1300, 580, 1312, 592), {"back": "w"}),
     ("table", (1316, 556, 1330, 582), {}),
     ("rings", (1323, 569), {}),
-    ("slats", (1295, 474, 1297, 530), {}),
-    ("plinth", (1300, 625), {}),
     ("plant", (1340, 625), {}),
     ("plant", (1340, 465), {}),
     # Between the east lifts and the gym
@@ -193,56 +191,35 @@ HALL_FURNITURE = [
     ("plant", (860, 850), {}),
 ]
 
-# The courtyard garden, at the same level as the floor and walled in glass that breaks. A gravel
-# garden in the style of the real one: planted beds with corten edges, dark paving paths, a wooden
-# garden house with a glass roof in the middle (open at both ends: a way through), a vent stack and
-# benches. Rects are plan rects as above.
-GARDEN_DOORS = [("n", 984), ("s", 984), ("w", 450), ("w", 730), ("e", 450), ("e", 730)]  # (side, position along it)
+# Trees and paths in the courtyard garden
+GARDEN_TREES = [(912, 400), (1052, 430), (958, 540), (1046, 640), (908, 700), (990, 790), (1060, 790), (915, 560)]
 GARDEN_PATHS = [
-    (972, 342, 996, 836),   # north-south, through the garden house
-    (870, 438, 1098, 462),  # east-west, between the north doors
-    (870, 718, 1098, 742),  # east-west, between the south doors
+    (976, 342, 994, 836),  # north-south
+    (870, 600, 1098, 616),  # east-west
 ]
-# (rect, what's planted): conifer, shrubs, tree (a bare young tree), grass
-GARDEN_BEDS = [
-    ((882, 356, 958, 430), "conifer tree shrubs"),
-    ((1010, 356, 1086, 430), "shrubs grass"),
-    ((882, 470, 944, 530), "shrubs"),
-    ((1024, 470, 1086, 530), "conifer shrubs"),
-    ((882, 648, 944, 708), "conifer shrubs"),
-    ((1024, 648, 1086, 708), "shrubs"),
-    ((882, 750, 958, 824), "shrubs grass"),
-    ((1010, 750, 1086, 824), "conifer tree shrubs"),
-]
-GARDEN_HOUSE = (959, 539, 1009, 639)  # open at the north and south ends
-GARDEN_BENCHES = [(905, 580, 935, 586), (1033, 592, 1063, 598)]
-GARDEN_VENT = (1040, 560, 1062, 574)
-GARDEN_LIGHTS = [(876, 445), (1092, 735), (978, 352), (990, 826), (950, 600), (1018, 580)]
+GARDEN_BENCHES = [(950, 600, 970, 607), (1000, 470, 1007, 490), (1000, 700, 1007, 720)]
 
-# Where players appear: (x, y, facing, team) with facing in degrees on the plan, 0 = up (north),
-# 90 = right (east). Team 1 starts in the north wing, team 0 in the south wing; in free for all
-# everyone uses them all. Checked by generate.py: no spawn point can see one of the other team's.
+# Where players appear: (x, y, facing) with facing in degrees on the plan, 0 = up (north),
+# 90 = right (east). They're all in corridors and lounges, spread around the floor.
 SPAWNS = [
-    # North wing
-    (760, 139, 90, 1),
-    (880, 139, 90, 1),
-    (1010, 140, 270, 1),
-    (1120, 139, 270, 1),
-    (783, 260, 180, 1),
-    (1190, 230, 180, 1),
-    (1115, 245, 180, 1),
-    (1190, 345, 180, 1),
-    # South wing
-    (300, 1001, 90, 0),
-    (500, 1001, 90, 0),
-    (700, 1001, 270, 0),
-    (860, 1001, 270, 0),
-    (1020, 958, 270, 0),
-    (1140, 920, 0, 0),
-    (856, 905, 0, 0),
-    (1262, 728, 270, 0),
+    (783, 290, 180),
+    (800, 622, 0),
+    (854, 770, 0),
+    (180, 1000, 90),
+    (500, 1000, 90),
+    (700, 1000, 270),
+    (1000, 960, 270),
+    (1110, 600, 0),
+    (1110, 400, 180),
+    (1190, 200, 180),
+    (1000, 140, 270),
+    (800, 139, 90),
+    (1312, 465, 270),
+    (1262, 728, 270),
+    (1010, 328, 270),
+    (1140, 920, 0),
 ]
 
-# The camera shown while you're dead: in the courtyard's south-west corner, looking north over
-# the garden. (x, y, height in metres above the floor, pitch, facing)
-MAP_CAMERA = (882, 826, 6.0, 18, 15)
+# The camera shown while you're dead: in the courtyard, looking north-east over the garden.
+# (x, y, height in metres above the office floor, pitch, facing)
+MAP_CAMERA = (884, 822, 1.0, 8, 25)
