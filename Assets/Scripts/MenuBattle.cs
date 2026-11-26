@@ -34,6 +34,7 @@ public class MenuBattle : MonoBehaviour
         public LineRenderer lineTemplate;
         public DroneHands hands;
         public GunSatellites satellites;
+        public DroneBody drone;
 
         public Vector3 position, velocity, destination;
         public float yaw;
@@ -186,7 +187,7 @@ public class MenuBattle : MonoBehaviour
         DestroyImmediate(head.GetComponent<Collider>());
 
         // Each with a face of its own, as in a match
-        DroneBody.Dress(body, head, bot.color, false, false, Random.Range(0, Faces.Count));
+        bot.drone = DroneBody.Dress(body, head, bot.color, false, false, Random.Range(0, Faces.Count));
         PlayerCap.Attach(head, bot.color, false, Random.Range(0, Hats.BotHatCount));
 
         bot.holder = new GameObject("Weapon").transform;
@@ -245,6 +246,7 @@ public class MenuBattle : MonoBehaviour
         bot.destination = spot;
         bot.velocity = Vector3.zero;
         bot.health = MaxHealth;
+        if (bot.drone != null) bot.drone.SetHealth(1f);
         bot.dead = false;
         bot.placed = true;
         bot.burstLeft = 0;
@@ -427,7 +429,17 @@ public class MenuBattle : MonoBehaviour
 
         if (damage <= 0f) return;
         target.health -= damage;
-        if (target.health <= 0f) Kill(target, (target.root.position - muzzle).normalized);
+        // The target winces (and droops when badly hurt); the shooter cheers a kill
+        if (target.drone != null)
+        {
+            target.drone.Hit();
+            target.drone.SetHealth(Mathf.Max(0f, target.health) / MaxHealth);
+        }
+        if (target.health <= 0f)
+        {
+            Kill(target, (target.root.position - muzzle).normalized);
+            if (bot.drone != null) bot.drone.Celebrate();
+        }
     }
 
     private void Beam(Bot bot, Vector3 from, Vector3 to, bool pellet)

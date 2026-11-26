@@ -48,8 +48,8 @@ public class PlayerCap : MonoBehaviour
     private bool solid;
     // The head's radius (metres), while building
     private float headRadius;
-    // The meshes of this hat's prints, made for it alone (destroyed with it)
-    private readonly System.Collections.Generic.List<Mesh> printMeshes = new System.Collections.Generic.List<Mesh>();
+    // How many prints this hat has made so far, while building (see Print)
+    private int printCount;
 
     // Puts a hat on a head made from Unity's sphere mesh, sized to it and drawn on the head's layer.
     // solid gives the hat colliders, for a ragdoll: on the head it tips over onto its brim instead of
@@ -143,6 +143,7 @@ public class PlayerCap : MonoBehaviour
     private void Build(int hat, float r)
     {
         headRadius = r;
+        printCount = 0;
         switch (hat)
         {
             case Hats.BackwardsCap: BuildCap(r, -1f); break;
@@ -1477,14 +1478,31 @@ public class PlayerCap : MonoBehaviour
 
     // Prints an outline (head radii across the surface, see SurfacePrint) where map puts it. The part
     // sits at the print's middle, so it scales round it (a twinkling star).
+    // A hat is built the same way every time, so its n-th print on a head this size (and whether
+    // it's a ragdoll's, whose parts sit differently) is always the same: made once, then shared by
+    // every hat like it.
     private Renderer Print(string name, Shade shade, SurfacePrint.Map map, System.Collections.Generic.List<Vector2> outline, int layer = 0, Transform parent = null)
     {
         float r = headRadius;
-        for (int k = 0; k < outline.Count; k++) outline[k] *= r;
-        Mesh mesh = SurfacePrint.Build("Hat " + name, outline, map, (PrintLift + layer * PrintLayerStep) * r, PrintStep * r, 0.3f / r, out Vector3 at);
-        printMeshes.Add(mesh);
-        return Generated(name, mesh, shade, at, Vector3.one, Vector3.zero, false, parent);
+        string key = Hat + (solid ? " solid " : " ") + Mathf.RoundToInt(r * 1000f) + " " + printCount++;
+        if (!prints.TryGetValue(key, out SharedPrint print) || print.mesh == null)
+        {
+            for (int k = 0; k < outline.Count; k++) outline[k] *= r;
+            Mesh mesh = SurfacePrint.Build("Hat " + name, outline, map, (PrintLift + layer * PrintLayerStep) * r, PrintStep * r, 0.3f / r, out Vector3 at);
+            // Kept between scenes: it's shared, and made again only if it's gone
+            mesh.hideFlags = HideFlags.DontUnloadUnusedAsset;
+            print = new SharedPrint { mesh = mesh, at = at };
+            prints[key] = print;
+        }
+        return Generated(name, print.mesh, shade, print.at, Vector3.one, Vector3.zero, false, parent);
     }
+
+    private struct SharedPrint
+    {
+        public Mesh mesh;
+        public Vector3 at;
+    }
+    private static readonly System.Collections.Generic.Dictionary<string, SharedPrint> prints = new System.Collections.Generic.Dictionary<string, SharedPrint>();
 
     // A shape for Print: an outline (head radii) moved to x, y across the surface and turned by roll
     private static System.Collections.Generic.List<Vector2> At(System.Collections.Generic.List<Vector2> outline, float x, float y, float roll = 0f) => SurfacePrint.Turned(outline, x, y, roll);
@@ -1508,15 +1526,6 @@ public class PlayerCap : MonoBehaviour
             if (Vector3.Dot(up, wanted) < 0f) up = -up;
         }
         return SurfacePrint.Ellipsoid(centre, radii, centre + local, across, up);
-    }
-
-    private void OnDestroy()
-    {
-        foreach (Mesh mesh in printMeshes)
-        {
-            if (mesh != null) Destroy(mesh);
-        }
-        printMeshes.Clear();
     }
 
     // A part made from one of Unity's primitives. collide: gets a box collider on a ragdoll's hat.

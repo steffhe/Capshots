@@ -121,6 +121,7 @@ public class DroneBody : MonoBehaviour
     {
         if (dead) return;
         hitFlash = 1f;
+        Wince();
     }
 
     // Health from 0 to 1. Below LowHealth the drone flickers and sparks.
@@ -135,24 +136,7 @@ public class DroneBody : MonoBehaviour
         float time = Time.time;
         UpdateDamage(time);
 
-        // Blink every few seconds: the eyes squash shut and open again over about a tenth of a second
-        if (blinkingShapes.Count > 0)
-        {
-            if (blinkStart < 0f && time >= nextBlink) blinkStart = time;
-            float squash = 1f;
-            if (blinkStart >= 0f)
-            {
-                float t = (time - blinkStart) / 0.14f;
-                if (t >= 1f)
-                {
-                    blinkStart = -1f;
-                    // Now and then a quick double blink
-                    nextBlink = time + (Random.value < 0.2f ? 0.18f : Random.Range(2f, 5.5f));
-                }
-                else squash = Mathf.Lerp(1f, 0.1f, 1f - Mathf.Abs(t * 2f - 1f));
-            }
-            SquashEyes(squash);
-        }
+        UpdateFace(time);
 
         // The thruster flickers gently (and cuts out now and then when badly hurt)
         if (thruster != null && block != null)
@@ -289,13 +273,13 @@ public class DroneBody : MonoBehaviour
         float r = 0.5f * Mathf.Max(head.lossyScale.x, head.lossyScale.z);
 
         // Face screen: a dark glossy bulge on the front, a little below the middle (the cap's brim is above it)
-        Vector3 visorCentre = new Vector3(0f, -0.14f * r, 0.6f * r);
-        Vector3 visorRadii = new Vector3(0.8f * r, 0.46f * r, 0.47f * r);
+        Vector3 visorCentre = FaceDesigns.ScreenCentre * r;
+        Vector3 visorRadii = FaceDesigns.ScreenRadii * r;
         Renderer visor = Part(root, "Face", PrimitiveType.Sphere, VisorMaterial, visorCentre, visorRadii * 2f);
         Paint(visor, VisorColor, Color.black);
 
         // The face: eyes (and cheeks, for some faces) on the screen's surface. Built by BuildFace, so
-        // a different face can be put on later (SetFace).
+        // a different face can be put on later (SetFace). The eyes start off looking straight ahead.
         faceRoot = root;
         faceCentre = visorCentre;
         faceRadii = visorRadii;
@@ -314,13 +298,17 @@ public class DroneBody : MonoBehaviour
 
     #region Face
 
-    // The face is drawn on the face screen itself: every eye, brow, mouth and cheek is a flat shape
-    // whose mesh follows the screen's curve a hair in front of it, nothing sticking out. Shapes drawn
-    // over others (a pupil over an eye, a glint over a pupil) are each a hair further out: a layer.
-    // In head radii: how far the first layer is off the screen, and each next one off the last.
-    private const float FaceLift = 0.008f, FaceLayerStep = 0.006f;
+    // The face is drawn on the face screen itself (see FaceDesigns): every eye, brow, mouth and cheek
+    // is a flat shape whose mesh follows the screen's curve a hair in front of it. The meshes are
+    // made once for each face, mood and head size and shared by every drone; a drone only moves its
+    // shapes about: squashing them shut to blink, sliding them along the screen to look round, and
+    // switching to another mood's shapes in the middle of a blink.
     // Longest edge between two points of a shape's mesh, in head radii, so it hugs the curve
     private const float FaceMeshStep = 0.025f;
+    // How long a reaction shows (seconds)
+    private const float HurtTime = 0.5f, HappyTime = 1.6f;
+    // How far away the eyes notice other drones (and the camera), and how far round to the side
+    private const float LookRange = 14f, LookCone = 0.35f;
 
     // Where the face goes: the head's part root, the face screen's centre and radii, and the head's radius
     private Transform faceRoot;
@@ -331,29 +319,53 @@ public class DroneBody : MonoBehaviour
     private Transform faceParts;
     // Shapes drawn in the face screen's own dark colour (pupils, cuts), over the glowing ones
     private Renderer[] darkParts;
-    // The face's meshes (destroyed with it), and the shapes that blink with their eye
-    private readonly List<Mesh> faceMeshes = new List<Mesh>();
-    private readonly List<FaceShape> blinkingShapes = new List<FaceShape>();
-    private float faceSquash = 1f;
+    private readonly List<Renderer> glowList = new List<Renderer>(), darkList = new List<Renderer>(), blushList = new List<Renderer>();
 
-    // One shape on the screen: its outline and inner rings as points across the screen (metres in
-    // the head's part root, before the curve), and its mesh, which puts them on the curve
-    private sealed class FaceShape
+    // One shape of a face, shared by every drone showing it: its mesh, measured from where its
+    // anchor (the middle of its eye, brow or mouth) lands on the screen, lifted, facing out of it
+    private sealed class FaceTemplate
     {
         public Mesh mesh;
-        public Vector2[] points;
-        public float blinkY;   // the eye's middle, which a blink squashes towards
+        public FaceInk ink;
+        public Vector2 anchor; // metres across the screen
         public float lift;     // metres off the screen
-        public Vector3[] vertices, normals;
+        public bool blinks;
+        public float look;
+    }
+    private static readonly Dictionary<string, FaceTemplate[]> faceTemplates = new Dictionary<string, FaceTemplate[]>();
+
+    // One mood's shapes on this drone
+    private sealed class MoodParts
+    {
+        public GameObject root;
+        public FaceTemplate[] shapes;
+        public Transform[] parts;
+    }
+    private readonly Dictionary<FaceMood, MoodParts> moodParts = new Dictionary<FaceMood, MoodParts>();
+    private MoodParts shown;
+    private FaceMood shownMood = FaceMood.Normal;
+    // A reaction to something (Hurt or Happy) and when it ends
+    private FaceMood reaction = FaceMood.Normal;
+    private float reactionUntil;
+    // This blink is switching moods
+    private bool switchingMood;
+
+    // Where the eyes are looking (metres across the screen, now and where they're going), what at,
+    // and the idle glances when there's nothing to look at
+    private Vector2 lookNow, lookAim;
+    private Transform lookTarget;
+    private float nextLookPick, nextGlance;
+    private Vector2 glance;
+    private float placedSquash = -1f;
+    private Vector2 placedLook;
+    private static readonly List<DroneBody> living = new List<DroneBody>();
+
+    private void OnEnable()
+    {
+        if (!living.Contains(this)) living.Add(this);
     }
 
-    // Where a group of shapes goes on the screen (head radii), and whether it blinks
-    private struct Spot
-    {
-        public float x, y;
-        public bool blinks;
-        public Spot(float x, float y, bool blinks) { this.x = x; this.y = y; this.blinks = blinks; }
-    }
+    private void OnDisable() => living.Remove(this);
 
     // Shows a different face (see Faces). A dead drone keeps its X-es.
     public void SetFace(int face)
@@ -363,15 +375,28 @@ public class DroneBody : MonoBehaviour
         BuildFace(face);
     }
 
-    // Squashes the blinking shapes towards their eyes' middles (1: open)
-    private void SquashEyes(float squash)
+    // A wince, after a hit
+    private void Wince() => React(FaceMood.Hurt, HurtTime);
+
+    // A happy face for a moment (after a kill), or for as long as seconds
+    public void Celebrate(float seconds = HappyTime) => React(FaceMood.Happy, seconds);
+
+    private void React(FaceMood mood, float seconds)
     {
-        if (Mathf.Approximately(squash, faceSquash)) return;
-        faceSquash = squash;
-        foreach (FaceShape shape in blinkingShapes) PlaceShape(shape, squash);
+        if (dead) return;
+        float until = Time.time + seconds;
+        reactionUntil = reaction == mood ? Mathf.Max(reactionUntil, until) : until;
+        reaction = mood;
     }
 
-    // Builds the eyes (and brows, mouth, cheeks) for a face, as flat shapes on the screen
+    // The mood the face should be showing now
+    private FaceMood WantedMood(float time)
+    {
+        if (dead) return FaceMood.Normal;
+        if (time < reactionUntil) return reaction;
+        return health > 0f && health < LowHealth ? FaceMood.Tired : FaceMood.Normal;
+    }
+
     private void BuildFace(int face)
     {
         currentFace = face;
@@ -380,224 +405,228 @@ public class DroneBody : MonoBehaviour
             if (Application.isPlaying) Destroy(faceParts.gameObject);
             else DestroyImmediate(faceParts.gameObject);
         }
-        DestroyFaceMeshes();
-        blinkingShapes.Clear();
-        faceSquash = 1f;
+        moodParts.Clear();
+        glowList.Clear();
+        darkList.Clear();
+        blushList.Clear();
+        shown = null;
         faceParts = new GameObject("Face Parts").transform;
         faceParts.gameObject.layer = faceRoot.gameObject.layer;
         faceParts.SetParent(faceRoot, false);
-
-        var glow = new List<Renderer>();
-        var dark = new List<Renderer>();
-        var cheeks = new List<Renderer>();
-
-        // The shapes, in head radii from their spot: w across, h up, turned by roll degrees
-        List<Vector2> Oval(float x, float y, float w, float h, float roll = 0f) => SurfacePrint.Turned(SurfacePrint.Ellipse(w, h), x, y, roll);
-        // A bar with round ends, w thick and length long, lying up and down before it's turned
-        List<Vector2> Bar(float x, float y, float w, float length, float roll = 0f) => SurfacePrint.Turned(SurfacePrint.Bar(w, length), x, y, roll);
-        List<Vector2> Box(float x, float y, float w, float h, float roll = 0f) => SurfacePrint.Turned(SurfacePrint.Box(w, h), x, y, roll);
-
-        void Glow(Spot spot, List<Vector2> outline, int layer = 0) => glow.Add(Shape(spot, outline, layer, GlowMaterial));
-        void Dark(Spot spot, List<Vector2> outline, int layer = 1) => dark.Add(Shape(spot, outline, layer, VisorMaterial));
-        // An upturned V, like a smiling closed eye: two short bars meeting at the top
-        void Chevron(Spot spot)
+        // Every mood's shapes up front (hidden till shown), so a reaction never stalls a frame, and
+        // anything looking for the drone's parts (a spawn-protected player's see-through look) finds
+        // them all
+        if (!dead)
         {
-            Glow(spot, Bar(-0.065f, -0.02f, 0.07f, 0.2f, -55f));
-            Glow(spot, Bar(0.065f, -0.02f, 0.07f, 0.2f, 55f));
+            foreach (FaceMood mood in new[] { FaceMood.Normal, FaceMood.Hurt, FaceMood.Happy, FaceMood.Tired }) moodParts[mood] = BuildMood(mood);
         }
-        // A four-pointed twinkle: two thin crossed ovals, the across one a little shorter
-        void Twinkle(Spot spot, float x, float y, float size, int layer)
-        {
-            Glow(spot, Oval(x, y, 0.22f * size, size), layer);
-            Glow(spot, Oval(x, y, 0.8f * size, 0.22f * size), layer);
-        }
+        ShowMood(WantedMood(Time.time));
+    }
 
-        for (int i = 0; i < 2; i++)
+    // Shows a mood's shapes (building them if they aren't yet) and hides the others
+    private void ShowMood(FaceMood mood)
+    {
+        if (!moodParts.TryGetValue(mood, out MoodParts parts))
         {
-            float side = i == 0 ? -1f : 1f;
-            // Towards the middle of the face, from this eye
-            float inner = -side;
-            if (dead)
-            {
-                // An X of two crossed rounded bars for each eye
-                Spot cross = new Spot(side * 0.24f, -0.06f, false);
-                Glow(cross, Bar(0f, 0f, 0.075f, 0.34f, 45f));
-                Glow(cross, Bar(0f, 0f, 0.075f, 0.34f, -45f));
-                continue;
-            }
-            Spot eye = new Spot(side * 0.24f, -0.06f, true);
-            switch (face)
-            {
-                case Faces.Happy:
-                    Chevron(new Spot(side * 0.24f, -0.02f, true));
-                    break;
-                case Faces.Wink:
-                    if (i == 0) Glow(eye, Oval(0f, 0f, 0.2f, 0.3f));
-                    else Chevron(new Spot(side * 0.24f, -0.02f, true));
-                    break;
-                case Faces.Sleepy:
-                {
-                    // Half shut: a low flat oval under a heavy lid
-                    Spot low = new Spot(side * 0.24f, -0.1f, true);
-                    Glow(low, Oval(0f, -0.01f, 0.22f, 0.12f));
-                    Glow(low, Bar(0f, 0.07f, 0.035f, 0.26f, 90f));
-                    break;
-                }
-                case Faces.Visor:
-                    // One wide bar across the face: built once
-                    if (i == 0) Glow(new Spot(0f, -0.06f, true), Bar(0f, 0f, 0.12f, 0.72f, 90f));
-                    break;
-                case Faces.Angry:
-                {
-                    // Narrowed eyes, their tops cut off along a slant down to the middle, under thick
-                    // glowing brows on the same slant, and a small frown (built once)
-                    const float slant = 30f;
-                    Spot angry = new Spot(side * 0.24f, -0.08f, true);
-                    Glow(angry, Oval(0f, 0f, 0.23f, 0.24f));
-                    Dark(angry, Box(inner * 0.06f, 0.1f, 0.36f, 0.14f, -inner * slant));
-                    // The brow: a bar along the cut, with a dark gap between them
-                    Glow(new Spot(side * 0.24f, -0.08f, false), Bar(inner * 0.04f, 0.085f, 0.06f, 0.3f, 90f - inner * slant), 2);
-                    if (i == 0)
-                    {
-                        // A frown: two short bars meeting at the top, flatter than a smiling eye
-                        Spot mouth = new Spot(0f, -0.33f, false);
-                        Glow(mouth, Bar(-0.045f, 0f, 0.045f, 0.13f, -68f));
-                        Glow(mouth, Bar(0.045f, 0f, 0.045f, 0.13f, 68f));
-                    }
-                    break;
-                }
-                case Faces.Hearts:
-                {
-                    // Two round lobes over a point
-                    Spot heart = new Spot(side * 0.24f, -0.04f, true);
-                    Glow(heart, Oval(-0.055f, 0.04f, 0.14f, 0.14f));
-                    Glow(heart, Oval(0.055f, 0.04f, 0.14f, 0.14f));
-                    Glow(heart, Box(0f, -0.035f, 0.135f, 0.135f, 45f));
-                    break;
-                }
-                case Faces.Stars:
-                {
-                    // A four-pointed star, with shorter points between
-                    Spot star = new Spot(side * 0.24f, -0.05f, true);
-                    Glow(star, Oval(0f, 0f, 0.08f, 0.34f));
-                    Glow(star, Oval(0f, 0f, 0.08f, 0.34f, 90f));
-                    Glow(star, Oval(0f, 0f, 0.05f, 0.18f, 45f));
-                    Glow(star, Oval(0f, 0f, 0.05f, 0.18f, -45f));
-                    break;
-                }
-                case Faces.Cyclops:
-                {
-                    // One big round lens in the middle, built once: a glowing rim, a dark ring, a glowing
-                    // iris round a dark pupil, and glints; with short sight marks either side, like a scope
-                    if (i != 0) break;
-                    Spot lens = new Spot(0f, -0.07f, true);
-                    Glow(lens, Oval(0f, 0f, 0.48f, 0.48f));
-                    Dark(lens, Oval(0f, 0f, 0.38f, 0.38f), 1);
-                    Glow(lens, Oval(0f, -0.01f, 0.27f, 0.27f), 2);
-                    Dark(lens, Oval(0f, -0.015f, 0.12f, 0.12f), 3);
-                    Glow(lens, Oval(0.06f, 0.055f, 0.06f, 0.06f), 4);
-                    Glow(lens, Oval(-0.035f, -0.085f, 0.025f, 0.025f), 4);
-                    for (int mark = -1; mark <= 1; mark += 2) Glow(lens, Bar(mark * 0.32f, 0f, 0.035f, 0.1f, 90f));
-                    break;
-                }
-                case Faces.Dots:
-                    // Small round eyes, and a little mouth below them (built once)
-                    Glow(new Spot(side * 0.2f, -0.02f, true), Oval(0f, 0f, 0.12f, 0.13f));
-                    if (i == 0) Glow(new Spot(0f, -0.25f, false), Bar(0f, 0f, 0.035f, 0.14f, 90f));
-                    break;
-                case Faces.Sparkle:
-                {
-                    // Big glossy eyes: a glowing rim round a large dark iris with a four-pointed twinkle
-                    // high up and a small glint low down, and a little twinkle floating off each eye's
-                    // outer top corner
-                    Spot sparkle = new Spot(side * 0.24f, -0.07f, true);
-                    Glow(sparkle, Oval(0f, 0f, 0.27f, 0.36f));
-                    Dark(sparkle, Oval(0f, -0.01f, 0.2f, 0.29f), 1);
-                    Twinkle(sparkle, side * 0.025f, 0.05f, 0.14f, 2);
-                    Glow(sparkle, Oval(inner * 0.04f, -0.08f, 0.04f, 0.04f), 2);
-                    Twinkle(new Spot(side * 0.46f, 0.14f, false), 0f, 0f, 0.12f, 0);
-                    break;
-                }
-                default:
-                    // Classic and Blushing: the two big ovals
-                    Glow(eye, Oval(0f, 0f, 0.2f, 0.3f));
-                    break;
-            }
+            parts = BuildMood(mood);
+            moodParts[mood] = parts;
+        }
+        foreach (MoodParts other in moodParts.Values) other.root.SetActive(other == parts);
+        shown = parts;
+        shownMood = mood;
+        placedSquash = -1f;
+        PlaceFace(1f);
+    }
+
+    private MoodParts BuildMood(FaceMood mood)
+    {
+        FaceTemplate[] shapes = Templates(currentFace, mood);
+        var parts = new MoodParts { root = new GameObject(mood.ToString()), shapes = shapes, parts = new Transform[shapes.Length] };
+        parts.root.layer = faceParts.gameObject.layer;
+        parts.root.transform.SetParent(faceParts, false);
+        for (int i = 0; i < shapes.Length; i++)
+        {
+            FaceTemplate shape = shapes[i];
+            GameObject part = new GameObject(shape.ink == FaceInk.Dark ? "Face Dark" : shape.ink == FaceInk.Blush ? "Blush" : "Face Glow");
+            part.layer = parts.root.layer;
+            part.transform.SetParent(parts.root.transform, false);
+            part.AddComponent<MeshFilter>().sharedMesh = shape.mesh;
+            MeshRenderer renderer = part.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = shape.ink == FaceInk.Dark ? VisorMaterial : GlowMaterial;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            (shape.ink == FaceInk.Dark ? darkList : shape.ink == FaceInk.Blush ? blushList : glowList).Add(renderer);
+            parts.parts[i] = part.transform;
         }
 
-        // Pink cheeks under the eyes
-        if (Faces.HasCheeks(face))
-        {
-            for (int i = 0; i < 2; i++)
-            {
-                float side = i == 0 ? -1f : 1f;
-                cheeks.Add(Shape(new Spot(side * 0.44f, -0.3f, false), SurfacePrint.Ellipse(0.14f, 0.07f), 0, GlowMaterial));
-            }
-        }
-
-        eyes = glow.ToArray();
-        darkParts = dark.ToArray();
-        blush = cheeks.ToArray();
-
+        eyes = glowList.ToArray();
+        darkParts = darkList.ToArray();
+        blush = blushList.ToArray();
         if (block == null) block = new MaterialPropertyBlock();
         Paint(eyes, eyeColor, eyeColor * EyeGlow);
         Paint(darkParts, VisorColor, Color.black);
         Paint(blush, BlushColor, dead ? Color.black : BlushColor * 0.6f);
+        return parts;
     }
 
-    // Makes one shape: a mesh of rings from its middle out to its outline, placed on the screen
-    private Renderer Shape(Spot spot, List<Vector2> outline, int layer, Material material)
+    // A face's shapes in a mood for a head of this drone's size, made once and shared
+    private FaceTemplate[] Templates(int face, FaceMood mood)
     {
+        string key = face + " " + (int)mood + (dead ? " dead " : " ") + Mathf.RoundToInt(faceSize * 1000f);
+        if (faceTemplates.TryGetValue(key, out FaceTemplate[] cached) && cached.Length > 0 && cached[0].mesh != null) return cached;
+
+        List<FaceShape> design = FaceDesigns.Design(face, mood, dead);
         float r = faceSize;
-        // Points across the shape (head radii), and its triangles, which face out of the screen
-        // (seen from the front, x runs right to left, so anticlockwise across is clockwise there)
-        SurfacePrint.Fill(outline, FaceMeshStep, out Vector2[] across, out int[] triangles);
-        var points = new Vector2[across.Length];
-        Vector2 offset = new Vector2(spot.x, spot.y);
-        for (int i = 0; i < across.Length; i++) points[i] = (across[i] + offset) * r;
-
-        var shape = new FaceShape
+        var templates = new FaceTemplate[design.Count];
+        for (int i = 0; i < design.Count; i++)
         {
-            mesh = new Mesh { name = "Face Shape" },
-            points = points,
-            blinkY = spot.y * r,
-            lift = (FaceLift + layer * FaceLayerStep) * r,
-            vertices = new Vector3[points.Length],
-            normals = new Vector3[points.Length],
-        };
-        shape.mesh.MarkDynamic();
-        PlaceShape(shape, 1f);
-        shape.mesh.triangles = triangles;
-        shape.mesh.RecalculateBounds();
-        faceMeshes.Add(shape.mesh);
-        if (spot.blinks) blinkingShapes.Add(shape);
+            FaceShape shape = design[i];
+            var outline = new List<Vector2>(shape.outline.Count);
+            foreach (Vector2 p in shape.outline) outline.Add(p * r);
+            SurfacePrint.Fill(outline, FaceMeshStep * r, out Vector2[] points, out int[] triangles);
 
-        GameObject part = new GameObject(material == VisorMaterial ? "Face Dark" : "Face Glow");
-        part.layer = faceParts.gameObject.layer;
-        part.transform.SetParent(faceParts, false);
-        part.AddComponent<MeshFilter>().sharedMesh = shape.mesh;
-        MeshRenderer renderer = part.AddComponent<MeshRenderer>();
-        renderer.sharedMaterial = material;
-        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        renderer.receiveShadows = false;
-        return renderer;
+            Vector2 anchor = shape.anchor * r;
+            float lift = (FaceDesigns.Lift + shape.layer * FaceDesigns.LayerStep) * r;
+            Vector3 anchorAt = OnScreen(anchor, out Vector3 anchorNormal) + anchorNormal * lift;
+            Quaternion toAnchor = Quaternion.Inverse(Quaternion.LookRotation(anchorNormal, Vector3.up));
+            var vertices = new Vector3[points.Length];
+            var normals = new Vector3[points.Length];
+            for (int k = 0; k < points.Length; k++)
+            {
+                Vector3 at = OnScreen(points[k], out Vector3 normal);
+                vertices[k] = toAnchor * (at + normal * lift - anchorAt);
+                normals[k] = toAnchor * normal;
+            }
+            // Outlines go anticlockwise across the screen, which (x across, y up, z out of it) faces
+            // the triangles out of it
+            var mesh = new Mesh { name = "Face Shape" };
+            mesh.vertices = vertices;
+            mesh.normals = normals;
+            mesh.triangles = triangles;
+            mesh.RecalculateBounds();
+            // Kept between scenes: it's shared, and made again only if it's gone
+            mesh.hideFlags = HideFlags.DontUnloadUnusedAsset;
+            templates[i] = new FaceTemplate { mesh = mesh, ink = shape.ink, anchor = anchor, lift = lift, blinks = shape.blinks, look = shape.look };
+        }
+        faceTemplates[key] = templates;
+        return templates;
     }
 
-    // Puts a shape's points on the screen's curve, squashed up and down towards its eye's middle
-    private void PlaceShape(FaceShape shape, float squash)
+    // Blinks, reactions and looking round, every frame
+    private void UpdateFace(float time)
     {
-        for (int i = 0; i < shape.points.Length; i++)
+        if (shown == null) return;
+
+        // A different mood is wanted: blink, and switch in the middle of it
+        if (WantedMood(time) != shownMood && blinkStart < 0f)
         {
-            Vector2 p = shape.points[i];
-            p.y = shape.blinkY + (p.y - shape.blinkY) * squash;
-            Vector3 normal;
-            Vector3 at = OnScreen(p, out normal);
-            shape.vertices[i] = at + normal * shape.lift;
-            shape.normals[i] = normal;
+            blinkStart = time;
+            switchingMood = true;
         }
-        shape.mesh.vertices = shape.vertices;
-        shape.mesh.normals = shape.normals;
-        if (shape.mesh.GetIndexCount(0) > 0) shape.mesh.RecalculateBounds();
+        // Blink every few seconds: the eyes squash shut and open again over about a tenth of a second
+        if (blinkStart < 0f && time >= nextBlink) blinkStart = time;
+        float squash = 1f;
+        if (blinkStart >= 0f)
+        {
+            float t = (time - blinkStart) / 0.14f;
+            if (switchingMood && t >= 0.5f)
+            {
+                switchingMood = false;
+                ShowMood(WantedMood(time));
+            }
+            if (t >= 1f)
+            {
+                blinkStart = -1f;
+                // Now and then a quick double blink
+                nextBlink = time + (Random.value < 0.2f ? 0.18f : Random.Range(2f, 5.5f));
+            }
+            else squash = Mathf.Lerp(1f, 0.1f, 1f - Mathf.Abs(t * 2f - 1f));
+        }
+
+        UpdateLook(time);
+        PlaceFace(squash);
+    }
+
+    // Picks what to look at now and then: the nearest drone (or the camera: whoever's watching) in
+    // front of the face, or, with nothing there, a glance round now and then. The eyes dart there.
+    private void UpdateLook(float time)
+    {
+        if (time >= nextLookPick)
+        {
+            nextLookPick = time + Random.Range(0.3f, 0.5f);
+            lookTarget = FindLookTarget();
+        }
+        if (lookTarget != null && lookTarget.gameObject.activeInHierarchy) lookAim = AimAt(lookTarget.position);
+        else
+        {
+            if (time >= nextGlance)
+            {
+                nextGlance = time + Random.Range(1.2f, 3.5f);
+                glance = Random.value < 0.4f ? Vector2.zero : Random.insideUnitCircle * 0.8f;
+            }
+            lookAim = Vector2.Scale(glance, FaceDesigns.LookReach) * faceSize;
+        }
+        lookNow = Vector2.Lerp(lookNow, lookAim, 1f - Mathf.Exp(-Time.deltaTime * 14f));
+    }
+
+    private Transform FindLookTarget()
+    {
+        Vector3 from = faceRoot.position;
+        Vector3 forward = faceRoot.forward;
+        Transform best = null;
+        float bestScore = float.MaxValue;
+        void Consider(Transform t)
+        {
+            Vector3 to = t.position - from;
+            float distance = to.magnitude;
+            // Not its own camera or its other body, nor anything behind or off to the side
+            if (distance < 0.6f || distance > LookRange || Vector3.Dot(to, forward) < LookCone * distance) return;
+            // Keeps looking at what it was looking at unless something is clearly nearer
+            float score = t == lookTarget ? distance * 0.8f : distance;
+            if (score < bestScore)
+            {
+                bestScore = score;
+                best = t;
+            }
+        }
+        Camera main = Camera.main;
+        if (main != null) Consider(main.transform);
+        foreach (DroneBody other in living)
+        {
+            if (other != this && other != null && !other.dead && other.faceRoot != null) Consider(other.faceRoot);
+        }
+        return best;
+    }
+
+    // Where on the screen to put the eyes to look at a point (metres across the screen)
+    private Vector2 AimAt(Vector3 point)
+    {
+        Vector3 local = faceRoot.InverseTransformPoint(point) - faceCentre;
+        float yaw = Mathf.Atan2(local.x, local.z) * Mathf.Rad2Deg;
+        float pitch = Mathf.Atan2(local.y, new Vector2(local.x, local.z).magnitude) * Mathf.Rad2Deg;
+        Vector2 aim = new Vector2(Mathf.Clamp(yaw / 50f, -1f, 1f), Mathf.Clamp(pitch / 35f, -1f, 1f));
+        return Vector2.Scale(aim, FaceDesigns.LookReach) * faceSize;
+    }
+
+    // Puts the showing shapes on the screen: each slid along it as far as it looks round, facing
+    // out of it there, and squashed up and down if it blinks (and flattened as much again into the
+    // screen's curve, so a squashed shape still lies on it rather than sinking into it)
+    private void PlaceFace(float squash)
+    {
+        if (shown == null) return;
+        if (squash == placedSquash && (lookNow - placedLook).sqrMagnitude < 1e-10f) return;
+        placedSquash = squash;
+        placedLook = lookNow;
+        Vector3 squashed = new Vector3(1f, squash, squash * squash);
+        for (int i = 0; i < shown.parts.Length; i++)
+        {
+            FaceTemplate shape = shown.shapes[i];
+            Transform part = shown.parts[i];
+            Vector3 at = OnScreen(shape.anchor + lookNow * shape.look, out Vector3 normal);
+            part.localPosition = at + normal * shape.lift;
+            part.localRotation = Quaternion.LookRotation(normal, Vector3.up);
+            part.localScale = shape.blinks ? squashed : Vector3.one;
+        }
     }
 
     // The point on the front of the face screen (an ellipsoid) at x and y, and the way out of it there
@@ -610,19 +639,6 @@ public class DroneBody : MonoBehaviour
         normal = new Vector3(dx / radii.x, dy / radii.y, dz / radii.z).normalized;
         return at;
     }
-
-    private void DestroyFaceMeshes()
-    {
-        foreach (Mesh mesh in faceMeshes)
-        {
-            if (mesh == null) continue;
-            if (Application.isPlaying) Destroy(mesh);
-            else DestroyImmediate(mesh);
-        }
-        faceMeshes.Clear();
-    }
-
-    private void OnDestroy() => DestroyFaceMeshes();
 
     #endregion
 

@@ -895,6 +895,12 @@ public class Player : NetworkBehaviour
         return manager != null ? manager.GetPlayerFace(ActorId) : Faces.Classic;
     }
 
+    // A happy face for a moment, after a kill (seen by everyone)
+    public void Celebrate()
+    {
+        foreach (DroneBody drone in drones) if (drone != null) drone.Celebrate();
+    }
+
     // Changes the face when it changes: a new pick in the pause menu, or the host's list arriving
     // after this player spawned
     private void RefreshFace()
