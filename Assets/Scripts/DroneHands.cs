@@ -18,7 +18,8 @@ public class DroneHands : MonoBehaviour
     private const float SightGlow = 2f;
     // The glowing dots of a gun's iron sights use this material; they're tinted per player
     private const string SightMaterialName = "Sight Glow";
-    private static readonly Vector3 CellSize = new Vector3(0.07f, 0.06f, 0.07f); // a capsule, 0.12 long
+    // A capsule the size of the gun's energy core (GunDesign), which it is: 0.15 long
+    private static readonly Vector3 CellSize = new Vector3(GunDesign.CoreDiameter, GunDesign.CoreLength * 0.5f, GunDesign.CoreDiameter);
 
     private Player player;
     private Weapon weapon;
@@ -297,6 +298,9 @@ public class DroneHands : MonoBehaviour
             localGrips[1] = grip + new Vector3(-0.09f, -0.09f, 0.03f);
         }
         slot = new Vector3(grip.x, handleBottom, grip.z);
+        // The gun's energy core is the cell: it comes out of, and goes back into, the bottom of the core's window
+        Transform coreSlot = gunDesign.Find(GunModel.GroupName + "/" + GunModel.CoreSlotName);
+        if (coreSlot != null) slot = gunDesign.InverseTransformPoint(coreSlot.position);
         top = new Vector3(body.center.x, body.max.y + Size * 0.5f, grip.z + 0.1f);
         if (morph != null) morph.ShowFinalShape(false);
 
@@ -371,7 +375,8 @@ public class DroneHands : MonoBehaviour
 
     // The reload, as fractions of the reload time. The spent cell comes out with the first sound (0),
     // the fresh one goes in with the second (0.55), and the hand taps the gun with the ready chirp (0.9).
-    private const float ReachSlot = 0.16f, PulledOut = 0.36f, Flick = 0.42f, Fetched = 0.48f,
+    // (Internal: the gun's core is the cell, and GunModel takes it out and puts it back in time with these)
+    internal const float ReachSlot = 0.16f, PulledOut = 0.36f, Flick = 0.42f, Fetched = 0.48f,
         Inserted = 0.58f, Back = 0.78f, Tap = 0.9f;
 
     private static float Ease(float from, float to, float t) => Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(from, to, t));

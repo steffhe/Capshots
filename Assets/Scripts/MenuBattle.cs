@@ -206,6 +206,7 @@ public class MenuBattle : MonoBehaviour
         bot.form = form;
         bot.gun = Instantiate(form.prefab, bot.holder, false);
         bot.gun.name = form.prefab.name;
+        GunModel.Build(bot.gun, form);
         foreach (Sway sway in bot.gun.GetComponentsInChildren<Sway>(true)) sway.enabled = false;
         foreach (Collider c in bot.gun.GetComponentsInChildren<Collider>(true)) c.enabled = false;
         bot.lineTemplate = null;

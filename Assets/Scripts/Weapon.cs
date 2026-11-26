@@ -914,6 +914,8 @@ public class Weapon : NetworkBehaviour
         newWeapon.GetComponent<Sway>().isMine = HasInputAuthority;
         // Bullets never hit guns, and a collider here would block the player's own character controller
         foreach (Collider c in newWeapon.GetComponentsInChildren<Collider>(true)) c.enabled = false;
+        // The machined body every form is built from (before the morph, which moves its parts)
+        global::GunModel.Build(newWeapon, loadout[ind]);
 
         currentWeapon = newWeapon;
         if (oldWeapon != null)
