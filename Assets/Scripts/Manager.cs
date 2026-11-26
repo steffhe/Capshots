@@ -488,7 +488,6 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         }
 
         SpawnWaitingPlayers();
-        CheckPickups();
         CheckCaps();
         UpdateGrenades();
         BotNavigation.Tick();

@@ -6,8 +6,16 @@ using UnityEngine;
 // throw wherever it ended up.
 public static class PlasmaGrenadeRules
 {
-    // Everyone spawns with one, and can carry no more. An ammo box gives a used one back.
+    // Everyone spawns with one, and can carry no more. A thrown one recharges this many seconds
+    // after it was pulled.
     public const int MaxCarried = 1;
+    public const float RechargeTime = 15f;
+
+    // How far a recharge has got, 0 (just thrown) to 1 (ready), from the seconds it has left
+    public static float RechargeProgress(float secondsLeft)
+    {
+        return 1f - Mathf.Clamp01(secondsLeft / RechargeTime);
+    }
 
     // The glowing ball's radius, for bouncing off scenery
     public const float Radius = 0.12f;

@@ -21,6 +21,7 @@ public static class GameSettings
 
     private const string FovKey = "settings.fov";
     private const string VolumeKey = "settings.volume";
+    private const string MusicVolumeKey = "settings.musicVolume";
     private const string QualityKey = "settings.quality";
     private const string AdsSensitivityKey = "settings.adsSensitivity";
     private const string StartingGunKey = "settings.startingGun";
@@ -112,6 +113,17 @@ public static class GameSettings
             PlayerPrefs.SetFloat(VolumeKey, Mathf.Clamp01(value));
             PlayerPrefs.Save();
             AudioListener.volume = Mathf.Clamp01(value);
+        }
+    }
+
+    // The main menu's music, under the master volume
+    public static float MusicVolume
+    {
+        get => PlayerPrefs.GetFloat(MusicVolumeKey, 0.7f);
+        set
+        {
+            PlayerPrefs.SetFloat(MusicVolumeKey, Mathf.Clamp01(value));
+            PlayerPrefs.Save();
         }
     }
 

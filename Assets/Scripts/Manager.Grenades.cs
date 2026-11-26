@@ -4,7 +4,7 @@ using Fusion;
 
 // Plasma grenades. The host flies each one, decides who it sticks to and deals the blast; every client
 // shows its own copy (PlasmaGrenade) and the host corrects it when it bounces, sticks or goes off.
-// Like ammo boxes, they're not network objects, so nothing needs to be registered as a prefab.
+// They're not network objects, so nothing needs to be registered as a prefab.
 // A grenade is named by the thrower's body (its network id) and how many that body has thrown, so the
 // thrower's own early copy and the host's messages about it can be matched up.
 public partial class Manager

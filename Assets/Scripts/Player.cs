@@ -791,7 +791,6 @@ public class Player : NetworkBehaviour
             // In Cap Grab the cap leaves the body: knocked flying on a cap shot, gone otherwise
             bool capDrops = manager.CapDrops(ground);
             manager.SpawnRagdoll(transform.position, transform.rotation, Velocity, hitDirection.normalized, hitOffset, knockback, headshot, ActorId, capDrops);
-            manager.DropAmmo(ground);
             if (capDrops) manager.DropCap(ground, ActorId, headshot, transform.position + Vector3.up * HeadHeight, hitDirection);
             manager.PlayerKilled(Owner, attacker, weaponName, headshot);
         }
@@ -995,7 +994,7 @@ public class Player : NetworkBehaviour
 #endif
     }
 
-    // Where an ammo box dropped by this player should rest
+    // Where something dropped by this player (a Cap Grab cap) should rest
     private Vector3 GroundPosition()
     {
         RaycastHit hit;

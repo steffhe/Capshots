@@ -124,6 +124,8 @@ public class Weapon : NetworkBehaviour
     // Plasma grenades carried (see PlasmaGrenadeRules.MaxCarried), how many this body has thrown (each
     // throw's number, to tell them apart), and the moment after a throw when the gun can't fire
     [Networked] private int Grenades { get; set; }
+    // A thrown grenade recharging (see PlasmaGrenadeRules.RechargeTime)
+    [Networked] private TickTimer GrenadeRecharge { get; set; }
     [Networked] private int GrenadesThrown { get; set; }
     [Networked] private TickTimer ThrowTimer { get; set; }
     // Running while a grenade is held with the button down ("cooking"): its fuse is already burning
@@ -270,6 +272,14 @@ public class Weapon : NetworkBehaviour
             Energy = GunEnergy.Regenerate(Energy, maxEnergy, regenRate, Runner.DeltaTime);
         }
 
+        // A thrown grenade comes back once it has recharged
+        if (GrenadeRecharge.Expired(Runner))
+        {
+            GrenadeRecharge = TickTimer.None;
+            if (Grenades < PlasmaGrenadeRules.MaxCarried) Grenades++;
+            if (Grenades < PlasmaGrenadeRules.MaxCarried) GrenadeRecharge = TickTimer.CreateFromSeconds(Runner, PlasmaGrenadeRules.RechargeTime);
+        }
+
         // A grenade in the hand: thrown when the button is let go, or it goes off in the hand if held
         // for the whole fuse
         if (CookTimer.IsRunning)
@@ -354,20 +364,13 @@ public class Weapon : NetworkBehaviour
     // Plasma grenades carried
     public int GrenadeCount => Object != null && Object.IsValid ? Grenades : 0;
 
-    // Whether an ammo box would do anything: the energy isn't full, or a grenade has been used
-    public bool NeedsAmmo()
-    {
-        return Energy < maxEnergy || Grenades < PlasmaGrenadeRules.MaxCarried;
-    }
+    // How far the next grenade has recharged, 0 to 1 (1 when there's nothing recharging)
+    public float GrenadeRechargeProgress => Object != null && Object.IsValid && GrenadeRecharge.IsRunning
+        ? PlasmaGrenadeRules.RechargeProgress(GrenadeRecharge.RemainingTime(Runner) ?? 0f) : 1f;
 
-    // Host only: an ammo box was picked up. It fills the energy, gives back a used grenade, and ends
-    // a cell swap in progress.
-    public void AddAmmoPickup()
-    {
-        Energy = maxEnergy;
-        Grenades = PlasmaGrenadeRules.MaxCarried;
-        ReloadTimer = TickTimer.None;
-    }
+    // Seconds until the next grenade is back (0 when there's nothing recharging)
+    public float GrenadeRechargeSeconds => Object != null && Object.IsValid && GrenadeRecharge.IsRunning
+        ? GrenadeRecharge.RemainingTime(Runner) ?? 0f : 0f;
 
     // Host only: a grenade this player threw hurt someone. Hit marker and sound, like a shot.
     public void ConfirmHit(bool killed)
@@ -434,6 +437,7 @@ public class Weapon : NetworkBehaviour
     {
         Grenades--;
         GrenadesThrown++;
+        if (!GrenadeRecharge.IsRunning) GrenadeRecharge = TickTimer.CreateFromSeconds(Runner, PlasmaGrenadeRules.RechargeTime);
         BurstLeft = 0;
         CookTimer = TickTimer.CreateFromSeconds(Runner, PlasmaGrenadeRules.FreeFuse);
         // Pulling a grenade gives up spawn protection, like shooting
@@ -1004,13 +1008,15 @@ public class Weapon : NetworkBehaviour
         }
 
         bool has = GrenadeCount > 0;
-        // Breathes gently while ready, like the grenade itself
+        // Breathes gently while ready, like the grenade itself. Recharging, it fills in faintly in the
+        // player's colour and the label counts down the seconds.
         float pulse = 0.85f + 0.15f * Mathf.Sin(Time.time * 6f);
-        grenadeDot.color = has ? new Color(c.r * pulse, c.g * pulse, c.b * pulse, 1f) : new Color(1f, 1f, 1f, 0.15f);
+        float charge = GrenadeRechargeProgress;
+        grenadeDot.color = has ? new Color(c.r * pulse, c.g * pulse, c.b * pulse, 1f) : new Color(c.r, c.g, c.b, Mathf.Lerp(0.12f, 0.5f, charge));
         if (grenadeLabel != null)
         {
-            grenadeLabel.color = has ? UITheme.MutedText : new Color(1f, 1f, 1f, 0.25f);
-            grenadeLabel.text = "PLASMA";
+            grenadeLabel.color = has ? UITheme.MutedText : new Color(1f, 1f, 1f, 0.35f);
+            grenadeLabel.text = has ? "PLASMA" : "PLASMA  " + Mathf.CeilToInt(GrenadeRechargeSeconds);
         }
     }
 

@@ -17,8 +17,8 @@ public class SettingsMenu : MenuPanel
     private GameObject sensitivity;
     private GameObject panel;
 
-    private Text xSensValue, ySensValue, fovValue, adsValue, volumeValue;
-    private Slider xSensSlider, ySensSlider, fovSlider, adsSlider, volumeSlider;
+    private Text xSensValue, ySensValue, fovValue, adsValue, volumeValue, musicValue;
+    private Slider xSensSlider, ySensSlider, fovSlider, adsSlider, volumeSlider, musicSlider;
     private Text qualityText;
     private Text coloursText;
     private Text fpsText;
@@ -34,7 +34,7 @@ public class SettingsMenu : MenuPanel
 
     // Panel layout, in canvas units from the panel's centre
     private const float PanelWidth = 1040f;
-    private const float PanelHeight = 720f;
+    private const float PanelHeight = 760f;
     private const float LeftColumn = -250f;
     private const float RightColumn = 250f;
     private const float ColumnWidth = 400f;
@@ -172,7 +172,7 @@ public class SettingsMenu : MenuPanel
         NewLabel(rect, "GENERAL", new Vector2(LeftColumn, HeaderY), ColumnWidth, 16, TextAnchor.MiddleLeft).color = UITheme.AccentText;
 
         float y = HeaderY - 44f;
-        const float rowStep = 54f;
+        const float rowStep = 50f;
         xSensSlider = SliderRow(rect, "LOOK SENSITIVITY X", ref xSensValue, y, GameSettings.MinSensitivity, GameSettings.MaxSensitivity, true, GameSettings.XSensitivity, v =>
         {
             GameSettings.XSensitivity = v;
@@ -202,6 +202,12 @@ public class SettingsMenu : MenuPanel
             GameSettings.Volume = v;
             RefreshLabels();
         });
+        y -= rowStep;
+        musicSlider = SliderRow(rect, "MENU MUSIC", ref musicValue, y, 0f, 1f, false, GameSettings.MusicVolume, v =>
+        {
+            GameSettings.MusicVolume = v;
+            RefreshLabels();
+        });
 
         Button qualityButton = null;
         GameObject quality = NewButton(rect, "", () =>
@@ -218,7 +224,7 @@ public class SettingsMenu : MenuPanel
         });
         qualityButton = quality.GetComponent<Button>();
         UITheme.StyleSelector(quality.GetComponent<Button>());
-        Place(quality, new Vector2(LeftColumn, y - 70f), new Vector2(ColumnWidth, 48f));
+        Place(quality, new Vector2(LeftColumn, y - 66f), new Vector2(ColumnWidth, 48f));
         qualityText = quality.GetComponentInChildren<Text>();
 
         // Standard colours, or ones that stay apart with red-green colour blindness
@@ -228,7 +234,7 @@ public class SettingsMenu : MenuPanel
             RefreshLabels();
         });
         UITheme.StyleSelector(colours.GetComponent<Button>());
-        Place(colours, new Vector2(LeftColumn, y - 130f), new Vector2(ColumnWidth, 48f));
+        Place(colours, new Vector2(LeftColumn, y - 122f), new Vector2(ColumnWidth, 48f));
         coloursText = colours.GetComponentInChildren<Text>();
 
         // The frame rate readout in the corner (FpsCounter)
@@ -238,7 +244,7 @@ public class SettingsMenu : MenuPanel
             RefreshLabels();
         });
         UITheme.StyleSelector(fps.GetComponent<Button>());
-        Place(fps, new Vector2(LeftColumn, y - 190f), new Vector2(ColumnWidth, 48f));
+        Place(fps, new Vector2(LeftColumn, y - 178f), new Vector2(ColumnWidth, 48f));
         fpsText = fps.GetComponentInChildren<Text>();
 
         GameObject reset = NewButton(rect, "RESET CONTROLS", () =>
@@ -246,8 +252,8 @@ public class SettingsMenu : MenuPanel
             GameInput.ResetBindings();
             RefreshBindings();
         });
-        // The same 12 gap between the buttons as elsewhere
-        Place(reset, new Vector2(LeftColumn, y - 250f), new Vector2(ColumnWidth, 48f));
+        // An 8 gap between the buttons, so six sliders fit above them
+        Place(reset, new Vector2(LeftColumn, y - 234f), new Vector2(ColumnWidth, 48f));
 
         GameObject done = NewButton(rect, "DONE", CloseSettings);
         UITheme.StyleButton(done.GetComponent<Button>(), UITheme.ButtonStyle.Primary);
@@ -338,6 +344,7 @@ public class SettingsMenu : MenuPanel
         fovValue.text = Mathf.RoundToInt(GameSettings.Fov).ToString();
         adsValue.text = GameSettings.AdsSensitivity.ToString("0.00") + "x";
         volumeValue.text = Mathf.RoundToInt(GameSettings.Volume * 100f) + "%";
+        musicValue.text = Mathf.RoundToInt(GameSettings.MusicVolume * 100f) + "%";
         qualityText.text = UITheme.Option("GRAPHICS", GameSettings.QualityName.ToUpperInvariant());
         if (fpsText != null) fpsText.text = UITheme.Option("FPS COUNTER", GameSettings.ShowFps ? "ON" : "OFF");
         if (coloursText != null) coloursText.text = UITheme.Option("COLOURS", GameSettings.Colourblind ? "COLOUR BLIND" : "STANDARD");
@@ -354,6 +361,7 @@ public class SettingsMenu : MenuPanel
         fovSlider.SetValueWithoutNotify(GameSettings.Fov);
         adsSlider.SetValueWithoutNotify(GameSettings.AdsSensitivity);
         volumeSlider.SetValueWithoutNotify(GameSettings.Volume);
+        musicSlider.SetValueWithoutNotify(GameSettings.MusicVolume);
         RefreshLabels();
         RefreshBindings();
         MenuNavigation.Focus(xSensSlider);

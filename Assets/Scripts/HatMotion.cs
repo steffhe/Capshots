@@ -24,6 +24,8 @@ public class HatMotion : MonoBehaviour
     private Renderer glowRenderer;
     private PlayerCap cap;
     private MaterialPropertyBlock block;
+    // How much brighter than usual the part glows (see PlayerCap.GlowOf), read once the hat is built
+    private float boost = -1f;
 
     public static HatMotion Add(GameObject part, Kind kind, Vector3 axis, float speed, float amount = 0f)
     {
@@ -99,8 +101,9 @@ public class HatMotion : MonoBehaviour
         if (block == null) block = new MaterialPropertyBlock();
         glowRenderer.GetPropertyBlock(block);
         bool off = cap != null && cap.IsLocked;
+        if (boost < 0f) boost = cap != null ? cap.GlowOf(glowRenderer) : 1f;
         Color baseColor = block.GetColor("_BaseColor");
-        block.SetColor("_EmissionColor", off ? Color.black : baseColor * (PlayerCap.GlowStrength * Mathf.Max(0f, share)));
+        block.SetColor("_EmissionColor", off ? Color.black : baseColor * (PlayerCap.GlowStrength * boost * Mathf.Max(0f, share)));
         glowRenderer.SetPropertyBlock(block);
     }
 }

@@ -64,6 +64,13 @@ public class AwardStage : MonoBehaviour
     private RectTransform screen;
     private CanvasGroup titleGroup;
     private bool fogWas;
+
+    // Your own drone, if you won an award: it jumps and crouches with the game's Jump and Crouch
+    // (crouch toggles, as in a match; jumping stands it up)
+    private Drone myDrone;
+    private float myHeight, myRise, myCrouch, myLanding;
+    private bool myCrouched;
+    private const float JumpSpeed = 4.6f, JumpGravity = 15f, CrouchDrop = 0.13f;
     private Gun[] forms;
 
     // Builds the stage (nothing shows until Play). template: the camera whose look (post-processing,
@@ -347,6 +354,7 @@ public class AwardStage : MonoBehaviour
     private Drone BuildDrone(Entry entry, int index)
     {
         Drone drone = new Drone { phase = index * 1.7f };
+        if (entry.mine) myDrone = drone;
         drone.root = new GameObject("Award Drone " + (index + 1)).transform;
         drone.root.SetParent(transform, false);
 
@@ -538,10 +546,45 @@ public class AwardStage : MonoBehaviour
             float bob = Mathf.Sin((time + drone.phase) * 2.1f) * 0.05f;
             // Drops in from a little above
             float drop = age < PopTime ? (1f - age / PopTime) * 0.4f : 0f;
-            drone.root.position = drone.home + Vector3.up * (bob + drop);
+            float jump = 0f;
+            if (drone == myDrone && age >= PopTime)
+            {
+                // Jumping and crouching: squashes a little low down and on landing, stretches in the air
+                jump = MoveMine(Time.deltaTime);
+                bob *= 1f - Mathf.Clamp01(myHeight * 4f);
+                float squash = 0.2f * myCrouch + 0.18f * myLanding - Mathf.Clamp(myRise * 0.025f, -0.08f, 0.08f);
+                drone.root.localScale = new Vector3(pop * (1f + squash * 0.5f), pop * (1f - squash), pop * (1f + squash * 0.5f));
+            }
+            drone.root.position = drone.home + Vector3.up * (bob + drop + jump);
             float turn = Mathf.Sin((time + drone.phase) * 0.7f) * 8f;
             drone.root.rotation = Quaternion.Euler(0f, drone.yaw + turn, Mathf.Sin((time + drone.phase) * 1.3f) * 2f);
         }
+    }
+
+    // Your own drone's jump and crouch this frame; returns how far it's moved up (down when crouched)
+    private float MoveMine(float dt)
+    {
+        if (GameInput.Pressed(GameInput.Jump) && myHeight <= 0f && myRise <= 0f)
+        {
+            myRise = JumpSpeed;
+            myCrouched = false;
+        }
+        if (GameInput.Pressed(GameInput.Crouch)) myCrouched = !myCrouched;
+
+        if (myHeight > 0f || myRise > 0f)
+        {
+            myRise -= JumpGravity * dt;
+            myHeight += myRise * dt;
+            if (myHeight <= 0f)
+            {
+                myHeight = 0f;
+                myRise = 0f;
+                myLanding = 1f;
+            }
+        }
+        myLanding = Mathf.MoveTowards(myLanding, 0f, dt * 5f);
+        myCrouch = Mathf.MoveTowards(myCrouch, myCrouched ? 1f : 0f, dt * 7f);
+        return myHeight - CrouchDrop * myCrouch;
     }
 
     // After Update has turned the drones: your own drone's gun points where the cursor is (a point

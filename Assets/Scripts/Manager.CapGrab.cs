@@ -7,7 +7,7 @@ using UnityEngine;
 // own cap back denies it to them. Caps vanish after a while. The score is kept in the scoreboard's
 // kills (shown as CAPS), so the win checks, sorting and awards work unchanged.
 //
-// Like the ammo boxes, every client shows its own copy of each cap; the host decides who gets it.
+// Every client shows its own copy of each cap; the host decides who gets it.
 public partial class Manager
 {
     public const float CapLifetime = 15f;

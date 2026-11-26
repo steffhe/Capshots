@@ -35,7 +35,7 @@ public static class BotLogic
         public float turnSpeed, aimSharpness;
         public float aimErrorStart, aimErrorSettled, aimSettleTime;
         public float sightRange;
-        // Whether it backs off to heal when hurt and grabs ammo boxes (Hard and Normal)
+        // Whether it backs off to heal when hurt (Hard and Normal)
         public bool tactical;
     }
 
