@@ -15,8 +15,8 @@ That file is generated. To change the map:
    ```
    It writes `Office.txt`, redraws `preview.png` (a top-down view, spawn points in red) and
    fails if a spawn point is off the floor or blocked. It also walks the floor on a 25 cm grid
-   with the player's size and step height and notes any room nobody can walk into (44a and 58:
-   their doors open onto a 24 cm gap).
+   with the player's size and step height and notes any room (or the courtyard, or the garden
+   house) nobody can walk into. Today that's 44a and 58: their doors open onto a 24 cm gap.
 3. Optionally bake it in Unity: **Capshots → Bake Office Map** (`Assets/Editor/OfficeMapBaker.cs`).
    It builds the floor's meshes, colliders and signs with the same code that runs at load and saves
    them as a prefab (`Assets/Prefabs/Office Floor/`, with its meshes, materials and textures),
@@ -50,10 +50,12 @@ Taken from photos of the real offices:
 - Lounges with black ring lamps over the sofas, and black wingback chairs on a round rug by
   meeting room K.
 - White desks with black legs and grey felt screens.
-- The courtyard garden one floor down: gravel, dark paving paths, benches on corten, clipped
-  hedges, and the trees as tall clipped yews in corten planters (their solid blocks are the same as
-  before, so they still hide players across the courtyard). Round it the terracotta facade, with
-  dark window frames, louvres and lit rooms, on the floor below and three floors above.
+- The courtyard garden, on the same level as the floor and part of the fight: walled in glass that
+  breaks, with doors on all four sides. Gravel, dark paving paths, planted beds with corten edges,
+  clipped yews, shrubs and bare young trees, benches, bollard lights, a vent stack and, in the
+  middle, the weathered wooden garden house with a glass roof, open at both ends so you can run
+  through it. Round it the terracotta facade rises three more floors, with dark window frames,
+  louvres and lit rooms.
 - Outside: the terracotta facade on the floors below and above, the street with hedges and bare
   trees two floors down.
 
@@ -63,7 +65,7 @@ Glass is on the `Glass` layer: players can't walk through it, but shots go throu
 doesn't hide a spawn point from enemies. The glass walls inside the floor are written as separate
 panes (`p` lines, one between each pair of mullions and one above each door). A pane cracks the
 first time it's shot and shatters the second time (`OfficeGlass`, with the state kept on the
-Manager in `Manager.Glass.cs`). The outside windows and the courtyard glass don't break, so
-nobody can fall out of the building. The frosted film is drawn by the `mountains` texture
+Manager in `Manager.Glass.cs`). The courtyard's glass walls and the garden house's glass side
+break too. The outside windows don't, so nobody can fall out of the building. The frosted film is drawn by the `mountains` texture
 (`OfficeMap.Mountains`) with world-position UVs, so its pattern runs on from pane to pane. A map
 can have at most 1024 panes (`OfficeMapData.MaxPanes`).

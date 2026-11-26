@@ -121,6 +121,15 @@ public class OfficeMapTests
         Assert.IsTrue(Data.panes.Any(p => p.frostHeight == 0f), "print rooms and the glass over doors are clear");
     }
 
+    [Test]
+    public void GeneratedMap_CourtyardIsWalledInBreakableGlass()
+    {
+        // The courtyard is on the floor's level, so its glass walls break like the others: tall
+        // panes standing on the floor, far more of them than the rooms' glass over doors
+        var tall = Data.panes.Where(p => p.Bounds.min.y < 0.2f && p.Bounds.max.y > 2.9f && p.frostHeight == 0f).ToList();
+        Assert.Greater(tall.Count, 40);
+    }
+
     private static bool Contains2D(Bounds b, Vector3 p, float pad)
     {
         return p.x >= b.min.x - pad && p.x <= b.max.x + pad && p.z >= b.min.z - pad && p.z <= b.max.z + pad;

@@ -34,7 +34,7 @@ FRAME_INSET = 0.003  # keeps glass wall frames off the faces of the walls they m
 EXT_T = 0.3        # outside wall thickness
 DOOR_W = 1.5
 DOOR_H = 2.5
-GARDEN_Y = -3.75   # the courtyard is one floor down
+GARDEN_Y = 0.0     # the courtyard garden is on the same level as the floor
 FLOOR_H = 3.75     # storey height of the floors above, round the courtyard
 FLOORS_ABOVE = 3
 GROUND_Y = -7.5    # street level, two floors down
@@ -511,31 +511,175 @@ for k, (axis, line, t0, t1, outsign) in enumerate(outline_walls(L.OUTLINE, H, Fa
 
 
 # ---------------------------------------------------------------------------------------------
-# The courtyard, one floor down: windows round it (they don't break, so nobody falls in), the
-# terracotta facade of the floor below and the floors above, and a gravel garden in the style of
-# the real one
+# The courtyard garden: on the floor's level, walled in glass that breaks (with doors), the
+# terracotta facade of the floors above round it, and a gravel garden like the real one
 
-gx1, gy1, gx2, gy2 = L.GARDEN
-garden_outline = [(gx1, gy1), (gx2, gy1), (gx2, gy2), (gx1, gy2)]
-for k, (axis, line, t0, t1, outsign) in enumerate(outline_walls(garden_outline, H, True)):
-    wbox("facade_dark", axis, line, t0, t1, EXT_T, 0.0, 0.35)
-    wbox("window", axis, line, t0, t1, 0.04, 0.35, 2.95, "gs")
-    wbox("facade_dark", axis, line, t0, t1, EXT_T, 2.95, H + 0.4)
-    n = max(1, int(round((t1 - t0) / 1.8)))
-    for i in range(1, n):
-        t = t0 + (t1 - t0) * i / n
-        wbox("frame", axis, line, t - 0.04, t + 0.04, 0.14, 0.35, 2.95, "n")
-    face = line + outsign * EXT_T / 2
-    # The floor below (with its own windows onto the garden), and the floors above
-    wbox("ext", axis, line, t0, t1, EXT_T, GARDEN_Y, 0.0, "n")
-    facade(axis, face + outsign * 0.15, outsign, t0, t1, GARDEN_Y, 1, k)
-    facade(axis, face + outsign * 0.15, outsign, t0, t1, H + 0.4, FLOORS_ABOVE, k + 1)
+gx0, gx1, gz0, gz1 = wrect(L.GARDEN)
+CDOOR_W, CDOOR_H, CGH = 2.0, 2.6, 3.0
 
-# Garden: gravel, dark paving paths, benches, clipped hedges along the walls
-g = wrect(L.GARDEN)
-rbox("gravel", g, GARDEN_Y - 0.3, GARDEN_Y, "n")
+
+def court_wall(axis, line, t0, t1, doors):
+    """Tall black-framed panes, each breakable, with doors and a dark band over them"""
+    cuts = sorted((d - CDOOR_W / 2, d + CDOOR_W / 2) for d in doors)
+    pieces, cur = [], t0
+    for c0, c1 in cuts:
+        pieces.append((cur, c0))
+        cur = c1
+    pieces.append((cur, t1))
+    for p0, p1 in pieces:
+        if p1 - p0 < 0.3:
+            continue
+        wbox("frame", axis, line, p0, p1, 0.14, 0.0, 0.1)
+        n = max(1, int(math.ceil((p1 - p0) / 1.6)))
+        posts = []
+        for i in range(n + 1):
+            t = p0 + (p1 - p0) * i / n
+            t = min(max(t, p0 + 0.04), p1 - 0.04)
+            posts.append(t)
+            wbox("frame", axis, line, t - 0.04, t + 0.04, 0.16, 0.0, CGH)
+        for a, b in zip(posts, posts[1:]):
+            pane(axis, line, a + 0.04, b - 0.04, 0.1, CGH, False)
+    for c0, c1 in cuts:
+        pane(axis, line, c0, c1, CDOOR_H, CGH, False)
+        wbox("frame", axis, line, c0, c1, 0.16, CDOOR_H - 0.08, CDOOR_H)
+        if axis == "x":
+            box("rug_black", c0, c1, 0.012, 0.022, line - 1.0, line + 1.0, "ns")
+        else:
+            box("rug_black", line - 1.0, line + 1.0, 0.012, 0.022, c0, c1, "ns")
+    wbox("facade_dark", axis, line, t0, t1, 0.3, CGH, H + 0.4)
+
+
+def door_t(side, p):
+    return wx(p) if side in ("n", "s") else wz(p)
+
+
+ci = 0.12  # the glass stands this far into the courtyard
+for side, axis, line, t0, t1, outsign, seed in (
+        ("n", "x", gz1 - ci, gx0, gx1, -1, 0), ("s", "x", gz0 + ci, gx0, gx1, 1, 1),
+        ("w", "z", gx0 + ci, gz0, gz1, 1, 2), ("e", "z", gx1 - ci, gz0, gz1, -1, 3)):
+    court_wall(axis, line, t0, t1, [door_t(s, p) for s, p in L.GARDEN_DOORS if s == side])
+    # The floors above
+    edge = line - outsign * ci
+    lo, hi = (t0 - 0.3, t1 + 0.3) if axis == "x" else (t0, t1)
+    facade(axis, edge + outsign * 0.3, outsign, lo, hi, H + 0.4, FLOORS_ABOVE, seed)
+    wbox("terracotta", axis, edge + outsign * 0.15, lo, hi, 0.3, H, H + 0.4, "n")
+
+# Ground: gravel, with dark paving paths
+box("gravel", gx0, gx1, -0.02, 0.01, gz0, gz1, "s")
 for r in L.GARDEN_PATHS:
-    rbox("paver", wrect(r), GARDEN_Y, GARDEN_Y + 0.03, "n")
+    x0, x1, z0, z1 = wrect(r)
+    box("paver", max(x0, gx0 + 0.2), min(x1, gx1 - 0.2), 0.01, 0.03, max(z0, gz0 + 0.2), min(z1, gz1 - 0.2), "ns")
+
+
+def shrub(x, z, size, height, mat):
+    """A rounded evergreen bush: a solid core (cover) with softer lumps round it"""
+    cbox(mat, x, 0.12 + height * 0.42, z, size * 0.8, height * 0.84, size * 0.7)
+    cbox(mat, x, 0.12 + height * 0.35, z, size, height * 0.55, size * 0.5, "n")
+    cbox(mat, x, 0.12 + height * 0.35, z, size * 0.55, height * 0.55, size * 0.9, "n")
+    cbox(mat, x + size * 0.1, 0.12 + height * 0.82, z - size * 0.08, size * 0.5, height * 0.36, size * 0.45, "n")
+
+
+def conifer(x, z, height):
+    """A clipped yew: stacked layers narrowing to the top"""
+    cbox("twig", x, 0.3, z, 0.18, 0.6, 0.18, "n")
+    layers = 6
+    for i in range(layers):
+        w = 1.4 * (1 - i / (layers + 0.5)) + 0.25
+        y0 = 0.35 + i * (height - 0.35) / layers
+        cbox("conifer", x, y0 + (height - 0.35) / layers / 2 + 0.05, z, w, (height - 0.35) / layers + 0.1, w,
+             "-" if i < 3 else "n")
+
+
+def bare_tree(x, z, height):
+    """A young tree in winter: a thin trunk and bare branches (no collider above the trunk)"""
+    cbox("twig", x, height * 0.35, z, 0.14, height * 0.7, 0.14)
+    for dx, dz, h, l in ((0.5, 0.0, 0.55, 0.3), (-0.45, 0.2, 0.6, 0.35), (0.1, -0.5, 0.65, 0.3),
+                         (-0.2, 0.45, 0.75, 0.25), (0.6, 0.5, 0.8, 0.2), (-0.6, -0.4, 0.8, 0.25)):
+        y = height * h
+        if abs(dx) > abs(dz):
+            cbox("twig", x + dx / 2, y, z + dz * 0.2, abs(dx), 0.05, 0.05, "ns")
+        else:
+            cbox("twig", x + dx * 0.2, y, z + dz / 2, 0.05, 0.05, abs(dz), "ns")
+        cbox("twig", x + dx, y + height * l / 2, z + dz, 0.05, height * l, 0.05, "ns")
+        cbox("twig", x + dx * 1.3, y + height * l * 0.8, z + dz * 1.3, 0.035, height * l * 0.5, 0.035, "ns")
+
+
+def bed(r, planted):
+    x0, x1, z0, z1 = wrect(r)
+    e = 0.06
+    box("soil", x0, x1, 0.0, 0.12, z0, z1, "n")
+    for a0, a1, b0, b1 in ((x0, x1, z0, z0 + e), (x0, x1, z1 - e, z1), (x0, x0 + e, z0, z1), (x1 - e, x1, z0, z1)):
+        box("corten", a0, a1, 0.0, 0.25, b0, b1, "n")
+    cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
+    w, d = x1 - x0, z1 - z0
+    if "conifer" in planted:
+        conifer(x0 + 1.2, z1 - 1.2, 3.0)
+    if "tree" in planted:
+        bare_tree(cx + 0.4, cz - 0.3, 4.8)
+    if "shrubs" in planted:
+        shrub(x1 - 1.0, z0 + 1.0, 1.6, 1.2, "shrub")
+        if w > 5.5 or d > 5.5:
+            shrub(x0 + 1.1, z0 + 1.1, 1.5, 1.0, "shrub2")
+        if "conifer" not in planted:
+            shrub(x0 + 1.2, z1 - 1.2, 1.8, 1.3, "shrub2")
+    if "grass" in planted:
+        for dx, dz in ((0, 0), (0.35, 0.2), (-0.3, 0.25), (0.1, -0.35)):
+            cbox("rug", cx + dx, 0.32, cz + dz, 0.3, 0.45, 0.3, "n")
+
+
+for r, planted in L.GARDEN_BEDS:
+    bed(r, planted)
+
+
+def garden_house(r):
+    """The wooden garden house with a glass roof. Its long sides run north-south and its ends are
+    open, so it's a way through the middle of the garden. The west side is half glass (breakable),
+    the east side boards; the roof is glass in strips stepping up to the ridge."""
+    x0, x1, z0, z1 = wrect(r)
+    eave, ridge, t = 2.9, 4.3, 0.14
+    zm = (z0 + z1) / 2
+    # West side: boards on the north half, glass panes on the south half
+    box("weathered", x0, x0 + t, 0.0, eave, zm, z1)
+    span = zm - z0
+    n = 3
+    for i in range(n):
+        a, b = z0 + span * i / n, z0 + span * (i + 1) / n
+        wbox("frame", "z", x0 + t / 2, a, a + 0.08, t, 0.0, eave)
+        pane("z", x0 + t / 2, a + 0.08, b, 0.1, eave - 0.1, False)
+    wbox("frame", "z", x0 + t / 2, z0, zm, t, 0.0, 0.1)
+    wbox("frame", "z", x0 + t / 2, z0, zm, t, eave - 0.1, eave)
+    # East side: boards
+    box("weathered", x1 - t, x1, 0.0, eave, z0, z1)
+    # Ends: corner posts and a gable of boards over the opening
+    for ez in (z0, z1 - t):
+        for ex in (x0, x1 - 0.5):
+            box("weathered", ex, ex + 0.5, 0.0, eave, ez, ez + t)
+        box("weathered", x0, x1, 2.5, eave, ez, ez + t)
+        steps = 10
+        for i in range(steps):
+            y = eave + (ridge - eave) * i / steps
+            inset = (x1 - x0) / 2 * i / steps
+            box("weathered", x0 + inset, x1 - inset, y, y + (ridge - eave) / steps + 0.002, ez, ez + t, "n")
+    # The glass roof in strips stepping up to the ridge from both eaves, on rafters
+    steps = 10
+    half = (x1 - x0) / 2 + 0.15
+    xm = (x0 + x1) / 2
+    for i in range(steps):
+        y = eave + (ridge - eave) * i / steps
+        for sgn in (-1, 1):
+            a = xm + sgn * half * (1 - i / steps)
+            b = xm + sgn * half * (1 - (i + 1) / steps)
+            box("window", a, b + sgn * 0.01, y, y + 0.03, z0 - 0.1, z1 + 0.1, "s")
+            box("-", a, b, y, y + (ridge - eave) / steps, z0 - 0.1, z1 + 0.1, "o")
+    # Tie beams across, under the glass
+    for rz in frange(z0 + 1.0, z1 - 0.5, 2.0):
+        box("weathered", x0 + 0.1, x1 - 0.1, eave - 0.12, eave, rz - 0.05, rz + 0.05, "ns")
+    box("weathered", xm - 0.07, xm + 0.07, ridge - 0.05, ridge + 0.08, z0 - 0.1, z1 + 0.1, "n")
+    # Inside: a long table and a bench (low cover)
+    box("walnut", xm - 0.2, xm + 0.85, 0.72, 0.78, z0 + 1.4, z1 - 1.4)
+    box("metal", xm + 0.3, xm + 0.36, 0.0, 0.72, z0 + 1.6, z1 - 1.6, "n")
+    box("walnut", xm - 0.9, xm - 0.55, 0.42, 0.47, z0 + 1.6, z1 - 1.6, "n")
+    box("-", xm - 0.9, xm - 0.55, 0.0, 0.47, z0 + 1.6, z1 - 1.6, "o")
 
 
 def frange(a, b, step):
@@ -545,34 +689,23 @@ def frange(a, b, step):
         v += step
 
 
-for i, (px, py) in enumerate(L.GARDEN_TREES):
-    x, z = wx(px), wz(py)
-    big = 1.0 + 0.25 * ((i * 7) % 3)
-    # Solid, so they hide players behind them from bots (and stop shots) the way they hide them
-    # from people: the same blocks as always (trunk and two layers of crown, reaching up past the
-    # office floor), drawn as a tall clipped yew in a corten planter
-    cbox("-", x, GARDEN_Y + 1.6 * big, z, 0.35, 3.2 * big, 0.35, "o")
-    cbox("-", x, GARDEN_Y + 3.4 * big, z, 3.0 * big, 1.8 * big, 3.0 * big, "o")
-    cbox("-", x + 0.2, GARDEN_Y + 4.7 * big, z - 0.2, 2.0 * big, 1.4 * big, 2.0 * big, "o")
-    cbox("corten", x, GARDEN_Y + 0.2, z, 3.2 * big, 0.4, 3.2 * big, "n")
-    cbox("soil", x, GARDEN_Y + 0.41, z, 3.0 * big, 0.02, 3.0 * big, "n")
-    cbox("twig", x, GARDEN_Y + 1.0 * big, z, 0.3, 2.0 * big, 0.3, "n")
-    mat = "conifer" if i % 2 == 0 else "shrub"
-    top = GARDEN_Y + 5.4 * big
-    base = GARDEN_Y + 1.2 * big
-    layers = 7
-    for k in range(layers):
-        w = (3.0 * big) * (1 - k / (layers + 1.5)) + 0.3
-        y0 = base + (top - base) * k / layers
-        cbox(mat, x + 0.1 * (k % 2), y0 + (top - base) / layers / 2 + 0.05, z - 0.1 * (k % 2), w, (top - base) / layers + 0.1, w, "n")
+garden_house(L.GARDEN_HOUSE)
+x0, x1, z0, z1 = wrect(L.GARDEN_VENT)
+for i in range(7):
+    inset = 0.03 * (i % 2)
+    box("ext", x0 + inset, x1 - inset, i * 0.13, i * 0.13 + 0.1, z0 + inset, z1 - inset, "-" if i == 0 else "n")
+box("-", x0, x1, 0.0, 0.94, z0, z1, "o")
+box("ext", x0 - 0.02, x1 + 0.02, 0.92, 0.96, z0 - 0.02, z1 + 0.02, "n")
 for r in L.GARDEN_BENCHES:
     x0, x1, z0, z1 = wrect(r)
-    box("walnut", x0, x1, GARDEN_Y + 0.4, GARDEN_Y + 0.48, z0, z1, "n")
-    box("corten", x0 + 0.1, x1 - 0.1, GARDEN_Y, GARDEN_Y + 0.4, z0 + 0.1, z1 - 0.1, "n")
-x0, x1, z0, z1 = g
-for hx0, hx1, hz0, hz1 in ((x0, x1, z0, z0 + 0.8), (x0, x1, z1 - 0.8, z1), (x0, x0 + 0.8, z0, z1), (x1 - 0.8, x1, z0, z1)):
-    box("shrub", hx0, hx1, GARDEN_Y, GARDEN_Y + 0.9, hz0, hz1, "n")
-    box("shrub2", hx0 + 0.1, hx1 - 0.1, GARDEN_Y + 0.9, GARDEN_Y + 1.05, hz0 + 0.1, hz1 - 0.1, "n")
+    box("walnut", x0, x1, 0.4, 0.46, z0, z1)
+    box("corten", x0 + 0.2, x0 + 0.3, 0.0, 0.4, z0 + 0.03, z1 - 0.03, "n")
+    box("corten", x1 - 0.3, x1 - 0.2, 0.0, 0.4, z0 + 0.03, z1 - 0.03, "n")
+    box("-", x0, x1, 0.0, 0.4, z0, z1, "o")
+for px, py in L.GARDEN_LIGHTS:
+    x, z = wx(px), wz(py)
+    cbox("chrome", x, 0.45, z, 0.14, 0.9, 0.14, "n")
+    cbox("light", x, 0.84, z, 0.15, 0.08, 0.15, "ns")
 
 # The street two floors down, with hedges and bare trees
 box("ground", -300, 300, GROUND_Y - 0.5, GROUND_Y, -300, 300, "n")
@@ -1147,13 +1280,14 @@ def check():
                 break
     surf, clear = walk_grid()
     seen, dist = reach(surf, clear, [(x, z) for x, y, z, _, t in spawns])
-    for room in rooms:
-        for r in room.rects:
+    places = [(room.label, r) for room in rooms for r in room.rects] + [("the courtyard", L.GARDEN), ("the garden house", L.GARDEN_HOUSE)]
+    for name, r in places:
+        if True:
             x0, x1, z0, z1 = wrect(r)
             i0, j0 = cell_of(x0 + 0.2, z0 + 0.2)
             i1, j1 = cell_of(x1 - 0.2, z1 - 0.2)
             if not any(seen[i][j] for i in range(i0, i1 + 1) for j in range(j0, j1 + 1)):
-                print("note: nobody can walk into room " + room.label)
+                print("note: nobody can walk into " + name)
     print("walkable floor: %.0f m2" % (sum(sum(c) for c in seen) * CELL * CELL))
     return problems
 

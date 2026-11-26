@@ -22,7 +22,7 @@ SLABS = [
 # The building's outside walls, clockwise (in plan coordinates, i.e. y down)
 OUTLINE = [(622, 55), (1347, 55), (1347, 1090), (96, 1090), (96, 836), (838, 836), (838, 705), (622, 705)]
 
-# The courtyard garden, one floor down
+# The courtyard garden (on the same level as the floor, open to the sky)
 GARDEN = (870, 342, 1098, 836)
 
 # Rooms: (kind, label, rect, name). Rooms with the same label are one room (no wall between them).
@@ -191,13 +191,31 @@ HALL_FURNITURE = [
     ("plant", (860, 850), {}),
 ]
 
-# Trees and paths in the courtyard garden
-GARDEN_TREES = [(912, 400), (1052, 430), (958, 540), (1046, 640), (908, 700), (990, 790), (1060, 790), (915, 560)]
+# The courtyard garden, at the same level as the floor and walled in glass that breaks. A gravel
+# garden in the style of the real one: planted beds with corten edges, dark paving paths, a wooden
+# garden house with a glass roof in the middle (open at both ends: a way through), a vent stack and
+# benches. Rects are plan rects as above.
+GARDEN_DOORS = [("n", 984), ("s", 984), ("w", 450), ("w", 730), ("e", 450), ("e", 730)]  # (side, position along it)
 GARDEN_PATHS = [
-    (976, 342, 994, 836),  # north-south
-    (870, 600, 1098, 616),  # east-west
+    (972, 342, 996, 836),   # north-south, through the garden house
+    (870, 438, 1098, 462),  # east-west, between the north doors
+    (870, 718, 1098, 742),  # east-west, between the south doors
 ]
-GARDEN_BENCHES = [(950, 600, 970, 607), (1000, 470, 1007, 490), (1000, 700, 1007, 720)]
+# (rect, what's planted): conifer, shrubs, tree (a bare young tree), grass
+GARDEN_BEDS = [
+    ((882, 356, 958, 430), "conifer tree shrubs"),
+    ((1010, 356, 1086, 430), "shrubs grass"),
+    ((882, 470, 944, 530), "shrubs"),
+    ((1024, 470, 1086, 530), "conifer shrubs"),
+    ((882, 648, 944, 708), "conifer shrubs"),
+    ((1024, 648, 1086, 708), "shrubs"),
+    ((882, 750, 958, 824), "shrubs grass"),
+    ((1010, 750, 1086, 824), "conifer tree shrubs"),
+]
+GARDEN_HOUSE = (959, 539, 1009, 639)  # open at the north and south ends
+GARDEN_BENCHES = [(905, 580, 935, 586), (1033, 592, 1063, 598)]
+GARDEN_VENT = (1040, 560, 1062, 574)
+GARDEN_LIGHTS = [(876, 445), (1092, 735), (964, 352), (1004, 826), (950, 600), (1018, 580)]
 
 # Where players appear: (x, y, facing) with facing in degrees on the plan, 0 = up (north),
 # 90 = right (east). They're all in corridors and lounges, spread around the floor.
@@ -220,6 +238,6 @@ SPAWNS = [
     (1140, 920, 0),
 ]
 
-# The camera shown while you're dead: in the courtyard, looking north-east over the garden.
-# (x, y, height in metres above the office floor, pitch, facing)
-MAP_CAMERA = (884, 822, 1.0, 8, 25)
+# The camera shown while you're dead: in the courtyard's south-west corner, looking north over
+# the garden. (x, y, height in metres above the floor, pitch, facing)
+MAP_CAMERA = (882, 826, 6.0, 18, 15)
