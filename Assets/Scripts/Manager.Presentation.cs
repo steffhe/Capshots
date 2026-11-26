@@ -9,8 +9,9 @@ using UnityEngine.UI;
 // - Intro: the loading screen fades away and the map's name and rules slide in.
 // - Ending: everyone freezes where they stand, the world drains of colour and a big VICTORY /
 //   DEFEAT banner shows. Then the screen fades to the match awards, one by one with each winner's
-//   drone (AwardStage), then to the results (title, scoreboard, the XP earned filling the level bar,
-//   the vote or a countdown) and finally on to the next map or back out to the menu.
+//   drone (AwardStage) to triumphant music, then to the results (title, scoreboard, the XP earned
+//   filling the level bar, the vote or a countdown) to the menu's music (MatchMusic), and finally on
+//   to the next map or back out to the menu.
 public partial class Manager
 {
     // How long everyone stays frozen on the result banner before the cut to the results
@@ -125,6 +126,8 @@ public partial class Manager
         leaderboard.gameObject.SetActive(false);
         GameObject intro = GameObject.Find("Canvas/Map Intro");
         if (intro != null) Destroy(intro);
+        // The end music is made while everyone is frozen on the banner, ready for the awards
+        MatchMusic.Prepare();
 
         string kicker, title, subtitle;
         Color titleColor;
@@ -180,6 +183,7 @@ public partial class Manager
             {
                 AwardStage stage = AwardStage.Create(AwardEntries(), mapcam.GetComponentInChildren<Camera>(), GameObject.Find("Canvas").transform);
                 black.transform.SetAsLastSibling();
+                MatchMusic.PlayVictory();
                 yield return FadeImage(black, 1f, 0f, fadeIn);
                 yield return stage.Play(slotEnd - CutFadeTime);
                 yield return FadeImage(black, 0f, 1f, CutFadeTime);
@@ -192,6 +196,8 @@ public partial class Manager
         bool voting = VotingAvailable;
         float resultsTime = voting ? VoteTime : ResultsTime + (HasStateAuthority ? 1f : 0f);
         Text countdown = ShowResults(title, titleColor, kicker, subtitle);
+        // The menu's music, crossfading from the awards' (or fading in when there were none)
+        MatchMusic.PlayMenu();
         black.transform.SetAsLastSibling();
         yield return FadeImage(black, 1f, 0f, 0.5f);
         black.raycastTarget = false;
