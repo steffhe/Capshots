@@ -392,10 +392,10 @@ public class DroneBody : MonoBehaviour
         var cheeks = new List<Renderer>();
 
         // The shapes, in head radii from their spot: w across, h up, turned by roll degrees
-        List<Vector2> Oval(float x, float y, float w, float h, float roll = 0f) => Turned(EllipseOutline(w, h), x, y, roll);
+        List<Vector2> Oval(float x, float y, float w, float h, float roll = 0f) => SurfacePrint.Turned(SurfacePrint.Ellipse(w, h), x, y, roll);
         // A bar with round ends, w thick and length long, lying up and down before it's turned
-        List<Vector2> Bar(float x, float y, float w, float length, float roll = 0f) => Turned(BarOutline(w, length), x, y, roll);
-        List<Vector2> Box(float x, float y, float w, float h, float roll = 0f) => Turned(BoxOutline(w, h), x, y, roll);
+        List<Vector2> Bar(float x, float y, float w, float length, float roll = 0f) => SurfacePrint.Turned(SurfacePrint.Bar(w, length), x, y, roll);
+        List<Vector2> Box(float x, float y, float w, float h, float roll = 0f) => SurfacePrint.Turned(SurfacePrint.Box(w, h), x, y, roll);
 
         void Glow(Spot spot, List<Vector2> outline, int layer = 0) => glow.Add(Shape(spot, outline, layer, GlowMaterial));
         void Dark(Spot spot, List<Vector2> outline, int layer = 1) => dark.Add(Shape(spot, outline, layer, VisorMaterial));
@@ -531,7 +531,7 @@ public class DroneBody : MonoBehaviour
             for (int i = 0; i < 2; i++)
             {
                 float side = i == 0 ? -1f : 1f;
-                cheeks.Add(Shape(new Spot(side * 0.44f, -0.3f, false), Turned(EllipseOutline(0.14f, 0.07f), 0f, 0f, 0f), 0, GlowMaterial));
+                cheeks.Add(Shape(new Spot(side * 0.44f, -0.3f, false), SurfacePrint.Ellipse(0.14f, 0.07f), 0, GlowMaterial));
             }
         }
 
@@ -549,48 +549,12 @@ public class DroneBody : MonoBehaviour
     private Renderer Shape(Spot spot, List<Vector2> outline, int layer, Material material)
     {
         float r = faceSize;
-        // The outline with no edge longer than FaceMeshStep, so its edges follow the curve too
-        var edge = new List<Vector2>();
-        for (int k = 0; k < outline.Count; k++)
-        {
-            Vector2 a = outline[k], b = outline[(k + 1) % outline.Count];
-            int pieces = Mathf.Max(1, Mathf.CeilToInt(Vector2.Distance(a, b) / FaceMeshStep));
-            for (int p = 0; p < pieces; p++) edge.Add(Vector2.Lerp(a, b, (float)p / pieces));
-        }
-        // Its middle, and rings from there out to the edge, as many as it takes to follow the curve
-        Vector2 middle = Vector2.zero;
-        foreach (Vector2 p in outline) middle += p;
-        middle /= outline.Count;
-        float reach = 0f;
-        foreach (Vector2 p in edge) reach = Mathf.Max(reach, Vector2.Distance(p, middle));
-        int rings = Mathf.Clamp(Mathf.CeilToInt(reach / FaceMeshStep), 1, 12);
-
-        int n = edge.Count;
-        var points = new Vector2[1 + rings * n];
+        // Points across the shape (head radii), and its triangles, which face out of the screen
+        // (seen from the front, x runs right to left, so anticlockwise across is clockwise there)
+        SurfacePrint.Fill(outline, FaceMeshStep, out Vector2[] across, out int[] triangles);
+        var points = new Vector2[across.Length];
         Vector2 offset = new Vector2(spot.x, spot.y);
-        points[0] = (middle + offset) * r;
-        for (int ring = 1; ring <= rings; ring++)
-        {
-            float t = (float)ring / rings;
-            for (int k = 0; k < n; k++) points[1 + (ring - 1) * n + k] = (Vector2.Lerp(middle, edge[k], t) + offset) * r;
-        }
-        // Outlines go anticlockwise across the screen, which faces them out of it (seen from the
-        // front, x runs right to left)
-        var triangles = new List<int>(rings * n * 6);
-        for (int k = 0; k < n; k++)
-        {
-            triangles.Add(0); triangles.Add(1 + k); triangles.Add(1 + (k + 1) % n);
-        }
-        for (int ring = 1; ring < rings; ring++)
-        {
-            int inside = 1 + (ring - 1) * n, outside = inside + n;
-            for (int k = 0; k < n; k++)
-            {
-                int next = (k + 1) % n;
-                triangles.Add(outside + k); triangles.Add(outside + next); triangles.Add(inside + next);
-                triangles.Add(outside + k); triangles.Add(inside + next); triangles.Add(inside + k);
-            }
-        }
+        for (int i = 0; i < across.Length; i++) points[i] = (across[i] + offset) * r;
 
         var shape = new FaceShape
         {
@@ -603,7 +567,7 @@ public class DroneBody : MonoBehaviour
         };
         shape.mesh.MarkDynamic();
         PlaceShape(shape, 1f);
-        shape.mesh.SetTriangles(triangles, 0);
+        shape.mesh.triangles = triangles;
         shape.mesh.RecalculateBounds();
         faceMeshes.Add(shape.mesh);
         if (spot.blinks) blinkingShapes.Add(shape);
@@ -659,57 +623,6 @@ public class DroneBody : MonoBehaviour
     }
 
     private void OnDestroy() => DestroyFaceMeshes();
-
-    // Shape outlines, anticlockwise round their middle
-    private static List<Vector2> EllipseOutline(float w, float h)
-    {
-        const int points = 40;
-        var outline = new List<Vector2>(points);
-        for (int k = 0; k < points; k++)
-        {
-            float a = 2f * Mathf.PI * k / points;
-            outline.Add(new Vector2(Mathf.Cos(a) * w * 0.5f, Mathf.Sin(a) * h * 0.5f));
-        }
-        return outline;
-    }
-
-    // Up and down, with round ends; one no longer than it's thick is a circle
-    private static List<Vector2> BarOutline(float w, float length)
-    {
-        const int pointsPerEnd = 14;
-        float radius = w * 0.5f, half = Mathf.Max(0f, length * 0.5f - radius);
-        var outline = new List<Vector2>(pointsPerEnd * 2 + 2);
-        // The top end, right to left, then the bottom end, left to right
-        for (int k = 0; k <= pointsPerEnd; k++)
-        {
-            float a = Mathf.PI * k / pointsPerEnd;
-            outline.Add(new Vector2(Mathf.Cos(a) * radius, half + Mathf.Sin(a) * radius));
-        }
-        for (int k = 0; k <= pointsPerEnd; k++)
-        {
-            float a = Mathf.PI + Mathf.PI * k / pointsPerEnd;
-            outline.Add(new Vector2(Mathf.Cos(a) * radius, -half + Mathf.Sin(a) * radius));
-        }
-        return outline;
-    }
-
-    private static List<Vector2> BoxOutline(float w, float h)
-    {
-        float x = w * 0.5f, y = h * 0.5f;
-        return new List<Vector2> { new Vector2(-x, -y), new Vector2(x, -y), new Vector2(x, y), new Vector2(-x, y) };
-    }
-
-    // Turned by roll degrees (x towards y) and moved to x, y
-    private static List<Vector2> Turned(List<Vector2> outline, float x, float y, float roll)
-    {
-        float a = roll * Mathf.Deg2Rad, cos = Mathf.Cos(a), sin = Mathf.Sin(a);
-        for (int k = 0; k < outline.Count; k++)
-        {
-            Vector2 p = outline[k];
-            outline[k] = new Vector2(x + p.x * cos - p.y * sin, y + p.x * sin + p.y * cos);
-        }
-        return outline;
-    }
 
     #endregion
 

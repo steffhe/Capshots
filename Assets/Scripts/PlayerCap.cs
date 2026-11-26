@@ -46,6 +46,10 @@ public class PlayerCap : MonoBehaviour
     // How much brighter than usual glowing parts being built glow (the halo glows the most)
     private float glowBoost = 1f;
     private bool solid;
+    // The head's radius (metres), while building
+    private float headRadius;
+    // The meshes of this hat's prints, made for it alone (destroyed with it)
+    private readonly System.Collections.Generic.List<Mesh> printMeshes = new System.Collections.Generic.List<Mesh>();
 
     // Puts a hat on a head made from Unity's sphere mesh, sized to it and drawn on the head's layer.
     // solid gives the hat colliders, for a ragdoll: on the head it tips over onto its brim instead of
@@ -138,6 +142,7 @@ public class PlayerCap : MonoBehaviour
     // The hat's parts, around the centre of a head of radius r (metres). +z is the way the head faces.
     private void Build(int hat, float r)
     {
+        headRadius = r;
         switch (hat)
         {
             case Hats.BackwardsCap: BuildCap(r, -1f); break;
@@ -186,9 +191,10 @@ public class PlayerCap : MonoBehaviour
         Primitive("Brim", PrimitiveType.Cylinder, Shade.Dark, new Vector3(0f, 0.25f * r, 1.05f * r * facing), new Vector3(1.4f * r, 0.035f * r, 1.4f * r), new Vector3(8f * facing, 0f, 0f), true);
         Generated("Stitching", Torus(0.025f), Shade.Light, new Vector3(0f, 0.25f * r, 1.05f * r * facing) + Quaternion.Euler(8f * facing, 0f, 0f) * new Vector3(0f, 0.04f * r, 0f), new Vector3(0.58f * r, 0.58f * r, 0.58f * r), new Vector3(8f * facing, 0f, 0f), false);
         Primitive("Button", PrimitiveType.Sphere, Shade.Dark, new Vector3(0f, 1.08f * r, 0f), new Vector3(0.2f * r, 0.12f * r, 0.2f * r), Vector3.zero, false);
-        // A round badge on the front panel
-        OnDome(r, 1.07f, "Badge", PrimitiveType.Cylinder, Shade.Light, 0f, 48f * facing, new Vector3(0.36f * r, 0.012f * r, 0.36f * r));
-        OnDome(r, 1.07f, "Badge Middle", PrimitiveType.Cylinder, Shade.Dark, 0f, 48f * facing, new Vector3(0.18f * r, 0.02f * r, 0.18f * r));
+        // A round badge printed on the front panel, with a darker middle
+        SurfacePrint.Map panel = OnEllipsoid(Vector3.zero, Vector3.one * (1.07f * r), Quaternion.Euler(48f * facing, 0f, 0f) * Vector3.up);
+        Print("Badge", Shade.Light, panel, SurfacePrint.Ellipse(0.36f, 0.36f));
+        Print("Badge Middle", Shade.Dark, panel, SurfacePrint.Ellipse(0.18f, 0.18f), 1);
         // At the back: the arched gap over the strap, and the strap across it
         Vector3 back = new Vector3(0f, 0f, -facing);
         Primitive("Gap", PrimitiveType.Sphere, Shade.Dark, new Vector3(0f, 0.23f * r, 0f) + back * (1.02f * r), new Vector3(0.44f * r, 0.3f * r, 0.08f * r), Vector3.zero, false);
@@ -623,21 +629,21 @@ public class PlayerCap : MonoBehaviour
             Primitive("Gill", PrimitiveType.Cube, Shade.Dark, at + around * Vector3.forward * (1.15f * r) - new Vector3(0f, 0.03f * r, 0f), new Vector3(0.025f * r, 0.04f * r, 0.7f * r), around.eulerAngles, false, cap);
         }
 
-        // The spots: (degrees round from the front, degrees down from the top, size), scattered rather
-        // than in neat rings
+        // The spots, printed on the dome: (degrees round from the front, degrees down from the top,
+        // size), scattered rather than in neat rings, and all clear of the dome's edge
         Vector3[] spots =
         {
             new Vector3(0f, 0f, 0.6f), new Vector3(35f, 40f, 0.48f), new Vector3(150f, 45f, 0.52f),
-            new Vector3(262f, 36f, 0.45f), new Vector3(95f, 64f, 0.38f), new Vector3(205f, 68f, 0.4f),
-            new Vector3(318f, 62f, 0.38f), new Vector3(10f, 76f, 0.28f), new Vector3(122f, 80f, 0.26f),
+            new Vector3(262f, 36f, 0.45f), new Vector3(95f, 64f, 0.38f), new Vector3(205f, 62f, 0.4f),
+            new Vector3(318f, 62f, 0.38f), new Vector3(10f, 66f, 0.28f), new Vector3(122f, 68f, 0.26f),
         };
+        Vector3 domeRadii = new Vector3(width * r, height * r, width * r);
         foreach (Vector3 spot in spots)
         {
             float around = spot.x * Mathf.Deg2Rad, down = spot.y * Mathf.Deg2Rad;
-            // A point on the squashed dome, and the way out of its surface there
-            Vector3 onDome = new Vector3(Mathf.Sin(down) * Mathf.Sin(around) * width, Mathf.Cos(down) * height, Mathf.Sin(down) * Mathf.Cos(around) * width);
-            Vector3 normal = new Vector3(onDome.x / (width * width), onDome.y / (height * height), onDome.z / (width * width)).normalized;
-            Primitive("Spot", PrimitiveType.Sphere, Shade.Light, at + onDome * r, new Vector3(spot.z * r, 0.09f * r, spot.z * r), Quaternion.FromToRotation(Vector3.up, normal).eulerAngles, false, cap);
+            // The way from the dome's centre to the spot's middle
+            Vector3 way = Vector3.Scale(new Vector3(Mathf.Sin(down) * Mathf.Sin(around), Mathf.Cos(down), Mathf.Sin(down) * Mathf.Cos(around)), domeRadii);
+            Print("Spot", Shade.Light, OnEllipsoid(at, domeRadii, way), SurfacePrint.Ellipse(spot.z, spot.z), 0, cap);
         }
     }
 
@@ -798,26 +804,46 @@ public class PlayerCap : MonoBehaviour
         }
 
         {
-            // The skull and crossbones, on the outside of the front flap: local z out of the flap,
-            // local y up along it
-            const float skullT = 0.56f;
-            Vector3 up = BrimOutward(brim, 0f, skullT);
-            Vector3 outside = -BrimNormal(brim, 0f, skullT);
-            Quaternion turn = Quaternion.LookRotation(outside, up);
-            surface = Surface.Plastic;
-            Vector3 face = brimAt + BrimPoint(brim, 0f, skullT) * r + outside * ((0.5f * brim.thickness + 0.02f) * r);
+            // The skull and crossbones, printed on the outside of the front flap: x across it (round
+            // the brim towards +x), y up it (towards its edge). The flap's outside is a half thickness
+            // out from the brim's middle surface.
+            const float skullT = 0.56f, e = 0.002f;
+            float perAround = (BrimPoint(brim, e, skullT) - BrimPoint(brim, -e, skullT)).magnitude / (2f * e) * r;
+            float perOut = (BrimPoint(brim, 0f, skullT + e) - BrimPoint(brim, 0f, skullT - e)).magnitude / (2f * e) * r;
+            SurfacePrint.Map flap = (Vector2 uv, out Vector3 normal) =>
+            {
+                float a = uv.x / perAround, t = skullT + uv.y / perOut;
+                normal = -BrimNormal(brim, a, t);
+                return brimAt + BrimPoint(brim, a, t) * r + normal * (0.5f * brim.thickness * r);
+            };
+            surface = Surface.Satin;
+            // Two crossed bones, each with a double knob at both ends
             for (int side = -1; side <= 1; side += 2)
             {
-                Primitive("Bone", PrimitiveType.Cube, Shade.Light, face + turn * new Vector3(0f, -0.04f * r, -0.01f * r), new Vector3(0.62f * r, 0.08f * r, 0.03f * r), (turn * Quaternion.Euler(0f, 0f, 32f * side)).eulerAngles, false);
-                Primitive("Bone End", PrimitiveType.Sphere, Shade.Light, face + turn * new Vector3(0.27f * r * side, -0.04f * r + 0.17f * r, 0f), Vector3.one * (0.09f * r), Vector3.zero, false);
-                Primitive("Bone End", PrimitiveType.Sphere, Shade.Light, face + turn * new Vector3(0.27f * r * side, -0.04f * r - 0.17f * r, 0f), Vector3.one * (0.09f * r), Vector3.zero, false);
+                float angle = 32f * side;
+                Vector2 along = new Vector2(Mathf.Cos(angle * Mathf.Deg2Rad), Mathf.Sin(angle * Mathf.Deg2Rad));
+                Vector2 across = new Vector2(-along.y, along.x);
+                Vector2 middle = new Vector2(0f, -0.04f);
+                Print("Bone", Shade.Light, flap, At(SurfacePrint.Bar(0.07f, 0.56f), middle.x, middle.y, angle + 90f));
+                for (int end = -1; end <= 1; end += 2)
+                {
+                    for (int knob = -1; knob <= 1; knob += 2)
+                    {
+                        Vector2 k = middle + along * (0.28f * end) + across * (0.035f * knob);
+                        Print("Bone End", Shade.Light, flap, At(SurfacePrint.Ellipse(0.085f, 0.085f), k.x, k.y));
+                    }
+                }
             }
-            Primitive("Skull", PrimitiveType.Sphere, Shade.Light, face + turn * new Vector3(0f, 0.05f * r, 0.02f * r), new Vector3(0.3f * r, 0.28f * r, 0.1f * r), turn.eulerAngles, false);
-            Primitive("Jaw", PrimitiveType.Cube, Shade.Light, face + turn * new Vector3(0f, -0.1f * r, 0.02f * r), new Vector3(0.16f * r, 0.09f * r, 0.07f * r), turn.eulerAngles, false);
+            // The skull over them: a round head and a jaw, with dark eye holes, a nose and gaps between
+            // the teeth
+            Print("Skull", Shade.Light, flap, At(SurfacePrint.Ellipse(0.3f, 0.28f), 0f, 0.05f), 1);
+            Print("Jaw", Shade.Light, flap, At(SurfacePrint.Box(0.16f, 0.1f), 0f, -0.1f), 1);
             for (int side = -1; side <= 1; side += 2)
             {
-                Primitive("Eye", PrimitiveType.Sphere, Shade.Dark, face + turn * new Vector3(0.065f * r * side, 0.06f * r, 0.065f * r), new Vector3(0.08f * r, 0.08f * r, 0.03f * r), turn.eulerAngles, false);
+                Print("Eye", Shade.Dark, flap, At(SurfacePrint.Ellipse(0.085f, 0.09f), 0.065f * side, 0.06f), 2);
+                Print("Tooth Gap", Shade.Dark, flap, At(SurfacePrint.Box(0.012f, 0.06f), 0.03f * side, -0.115f), 2);
             }
+            Print("Nose", Shade.Dark, flap, At(SurfacePrint.Box(0.035f, 0.035f), 0f, -0.015f, 45f), 2);
         }
 
         // A big feather sticking up and back out of the left side, swaying as the player moves
@@ -906,14 +932,22 @@ public class PlayerCap : MonoBehaviour
 
         // The cone's surface leans in this far from upright
         float lean = Mathf.Atan2(radius * (1f - narrow), lower) * Mathf.Rad2Deg;
-        // A crescent moon on the front: a glowing disc with a felt one over most of it
-        float moonH = 0.5f;
-        float moonAt = radius * (1f - (1f - narrow) * moonH);
-        Quaternion front = Quaternion.Euler(-lean, 0f, 0f);
-        Vector3 moon = new Vector3(0f, (sit + moonH * lower) * r, moonAt * r);
-        Primitive("Moon", PrimitiveType.Sphere, Shade.Light, moon + front * new Vector3(0f, 0f, 0.01f * r), new Vector3(0.26f * r, 0.26f * r, 0.02f * r), front.eulerAngles, false);
+        // Prints on the cone: around is degrees round from the front, up how far up the cone (of its
+        // height); x goes round it towards +x, y up its slope
+        SurfacePrint.Map OnCone(float around, float up) => (Vector2 uv, out Vector3 normal) =>
+        {
+            float rise = up * lower * r + uv.y * Mathf.Cos(lean * Mathf.Deg2Rad);
+            float ring = radius * (1f - (1f - narrow) * rise / (lower * r)) * r;
+            float a = around * Mathf.Deg2Rad + uv.x / ring;
+            normal = new Vector3(Mathf.Sin(a), radius * (1f - narrow) / lower, Mathf.Cos(a)).normalized;
+            return new Vector3(Mathf.Sin(a) * ring, sit * r + rise, Mathf.Cos(a) * ring);
+        };
+
+        // A crescent moon on the front: a glowing disc with a felt one printed over most of it
+        SurfacePrint.Map moon = OnCone(0f, 0.5f);
+        Print("Moon", Shade.Light, moon, SurfacePrint.Ellipse(0.26f, 0.26f));
         surface = Surface.Felt;
-        Primitive("Moon Shadow", PrimitiveType.Sphere, Shade.Main, moon + front * new Vector3(0.07f * r, 0.04f * r, 0.022f * r), new Vector3(0.22f * r, 0.22f * r, 0.02f * r), front.eulerAngles, false);
+        Print("Moon Shadow", Shade.Main, moon, At(SurfacePrint.Ellipse(0.22f, 0.22f), 0.07f, 0.04f), 1);
 
         // Four-pointed stars round the cone, each twinkling in its own time
         surface = Surface.Glow;
@@ -922,16 +956,8 @@ public class PlayerCap : MonoBehaviour
         float[] sizes = { 0.16f, 0.12f, 0.14f, 0.1f, 0.13f };
         for (int i = 0; i < heights.Length; i++)
         {
-            float h = heights[i] * lower;
-            float at = radius * (1f - (1f - narrow) * heights[i]) + 0.012f;
-            Quaternion facing = Quaternion.Euler(0f, angles[i], 0f) * Quaternion.Euler(-lean, 0f, 0f);
-            Vector3 where = Quaternion.Euler(0f, angles[i], 0f) * new Vector3(0f, 0f, at * r) + Vector3.up * ((sit + h) * r);
-            Transform star = Pivot("Star", where, facing.eulerAngles);
-            for (int arm = 0; arm < 2; arm++)
-            {
-                Renderer point = Primitive("Star", PrimitiveType.Sphere, Shade.Light, Vector3.zero, new Vector3(sizes[i] * 0.3f * r, sizes[i] * r, 0.02f * r), new Vector3(0f, 0f, 90f * arm), false, star);
-                HatMotion.Add(point.gameObject, HatMotion.Kind.Twinkle, Vector3.up, 0.8f + 0.15f * i, 0.7f);
-            }
+            Renderer star = Print("Star", Shade.Light, OnCone(angles[i], heights[i]), SurfacePrint.Star(4, sizes[i] * 0.5f, sizes[i] * 0.13f));
+            HatMotion.Add(star.gameObject, HatMotion.Kind.Twinkle, Vector3.up, 0.8f + 0.15f * i, 0.7f);
         }
     }
 
@@ -993,21 +1019,18 @@ public class PlayerCap : MonoBehaviour
             Primitive("Ribbon", PrimitiveType.Cube, Shade.Dark, new Vector3(0.06f * r * side, 0.08f * r, -1.02f * r), new Vector3(0.07f * r, 0.4f * r, 0.012f * r), new Vector3(-8f, 0f, 9f * side), false);
         }
 
-        // The badge: a shield (square top, pointed bottom) with a darker shield on it, and a star in
-        // the middle that catches the light now and then. Placed on the felt over the left eye, lying
-        // flat against it: local x across, local z down the face.
+        // The badge, printed on the felt over the left eye: a shield (square top, pointed bottom) with
+        // a darker shield on it, and a star in the middle that catches the light now and then
         Quaternion on = Quaternion.Euler(0f, -24f, 0f) * Quaternion.Euler(56f, 0f, 0f);
-        Vector3 badge = on * Vector3.up * (1.1f * r);
-        Vector3 Across(float x, float down, float out_) => badge + on * new Vector3(x * r, out_ * r, down * r);
-        Vector3 diamond = (on * Quaternion.Euler(0f, 45f, 0f)).eulerAngles;
+        SurfacePrint.Map felt = OnEllipsoid(Vector3.zero, new Vector3(1.05f * r, 1.08f * r, 1.05f * r), on * Vector3.up, on * Vector3.right, on * Vector3.back);
         surface = Surface.Satin;
-        Primitive("Shield", PrimitiveType.Cube, Shade.Light, Across(0f, -0.05f, 0f), new Vector3(0.36f * r, 0.03f * r, 0.26f * r), on.eulerAngles, false);
-        Primitive("Shield Point", PrimitiveType.Cube, Shade.Light, Across(0f, 0.08f, 0f), new Vector3(0.255f * r, 0.03f * r, 0.255f * r), diamond, false);
+        Print("Shield", Shade.Light, felt, At(SurfacePrint.Box(0.36f, 0.26f), 0f, 0.05f));
+        Print("Shield Point", Shade.Light, felt, At(SurfacePrint.Box(0.255f, 0.255f), 0f, -0.08f, 45f));
         surface = Surface.Metal;
-        Primitive("Inner Shield", PrimitiveType.Cube, Shade.Dark, Across(0f, -0.05f, 0.012f), new Vector3(0.28f * r, 0.03f * r, 0.2f * r), on.eulerAngles, false);
-        Primitive("Inner Point", PrimitiveType.Cube, Shade.Dark, Across(0f, 0.06f, 0.012f), new Vector3(0.198f * r, 0.03f * r, 0.198f * r), diamond, false);
+        Print("Inner Shield", Shade.Dark, felt, At(SurfacePrint.Box(0.28f, 0.2f), 0f, 0.05f), 1);
+        Print("Inner Point", Shade.Dark, felt, At(SurfacePrint.Box(0.198f, 0.198f), 0f, -0.06f, 45f), 1);
         surface = Surface.Glow;
-        Renderer star = Primitive("Star", PrimitiveType.Sphere, Shade.Light, Across(0f, 0f, 0.03f), new Vector3(0.1f * r, 0.02f * r, 0.1f * r), on.eulerAngles, false);
+        Renderer star = Print("Star", Shade.Light, felt, SurfacePrint.Star(5, 0.065f, 0.027f), 2);
         HatMotion.Add(star.gameObject, HatMotion.Kind.Twinkle, Vector3.up, 0.5f, 0.5f);
     }
 
@@ -1170,12 +1193,19 @@ public class PlayerCap : MonoBehaviour
         }
         surface = Surface.Felt;
         Line(Generated("Band", Frustum(1f, false), Shade.Dark, new Vector3(0f, 0.12f * r, 0f), new Vector3(1.1f * r, 0.18f * r, 1.1f * r), Vector3.zero, true), Frustum(1f, false, true));
-        // Diamonds round the band, in turns of the light and main shades
+        // Diamonds printed round the band, in turns of the light and main shades
         const int diamonds = 12;
+        float bandRadius = 1.1f * r, bandMiddle = 0.21f * r;
         for (int i = 0; i < diamonds; i++)
         {
-            Quaternion around = Quaternion.Euler(0f, 360f * i / diamonds, 0f);
-            Primitive("Diamond", PrimitiveType.Cube, i % 2 == 0 ? Shade.Light : Shade.Main, around * Vector3.forward * (1.1f * r) + Vector3.up * (0.21f * r), new Vector3(0.1f * r, 0.1f * r, 0.02f * r), (around * Quaternion.Euler(0f, 0f, 45f)).eulerAngles, false);
+            float around = 2f * Mathf.PI * i / diamonds;
+            SurfacePrint.Map band = (Vector2 uv, out Vector3 normal) =>
+            {
+                float a = around + uv.x / bandRadius;
+                normal = new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a));
+                return normal * bandRadius + Vector3.up * (bandMiddle + uv.y);
+            };
+            Print("Diamond", i % 2 == 0 ? Shade.Light : Shade.Main, band, SurfacePrint.Turned(SurfacePrint.Box(0.1f, 0.1f), 0f, 0f, 45f));
         }
     }
 
@@ -1383,15 +1413,6 @@ public class PlayerCap : MonoBehaviour
         }
     }
 
-    // A primitive lying on a dome of radius radius (of the head's) round the head's centre, its up
-    // pointing out of the dome: around is degrees round from the front towards the right, down is
-    // degrees down from the top (negative: down the back instead)
-    private Renderer OnDome(float r, float radius, string name, PrimitiveType type, Shade shade, float around, float down, Vector3 scale)
-    {
-        Quaternion turn = Quaternion.Euler(0f, around, 0f) * Quaternion.Euler(down, 0f, 0f);
-        return Primitive(name, type, shade, turn * Vector3.up * (radius * r), scale, turn.eulerAngles, false);
-    }
-
     // Upright ribs round a frustum part (bottom at y, bottom radius radius, top radius taper of that,
     // height height): count thin bars of width width standing on its side
     // rounded: soft round folds (cylinders) instead of square-edged bars
@@ -1446,6 +1467,56 @@ public class PlayerCap : MonoBehaviour
         float r0 = radius * (1f - (1f - taper) * from / height) * 1.02f;
         float r1 = radius * (1f - (1f - taper) * to / height) * 1.02f;
         Generated(name, Frustum(r1 / r0, false), shade, new Vector3(0f, y + from, 0f), new Vector3(r0, to - from, r0 * depth), Vector3.zero, false, parent);
+    }
+
+    // Prints: flat shapes on a hat's surface, like paint, print or embroidery (see SurfacePrint),
+    // following its curve a hair out from it instead of standing off it. A shape printed over another
+    // goes a layer further out. In head radii: the first layer's lift, each next one's, and the
+    // longest edge in a print's mesh.
+    private const float PrintLift = 0.006f, PrintLayerStep = 0.005f, PrintStep = 0.03f;
+
+    // Prints an outline (head radii across the surface, see SurfacePrint) where map puts it. The part
+    // sits at the print's middle, so it scales round it (a twinkling star).
+    private Renderer Print(string name, Shade shade, SurfacePrint.Map map, System.Collections.Generic.List<Vector2> outline, int layer = 0, Transform parent = null)
+    {
+        float r = headRadius;
+        for (int k = 0; k < outline.Count; k++) outline[k] *= r;
+        Mesh mesh = SurfacePrint.Build("Hat " + name, outline, map, (PrintLift + layer * PrintLayerStep) * r, PrintStep * r, 0.3f / r, out Vector3 at);
+        printMeshes.Add(mesh);
+        return Generated(name, mesh, shade, at, Vector3.one, Vector3.zero, false, parent);
+    }
+
+    // A shape for Print: an outline (head radii) moved to x, y across the surface and turned by roll
+    private static System.Collections.Generic.List<Vector2> At(System.Collections.Generic.List<Vector2> outline, float x, float y, float roll = 0f) => SurfacePrint.Turned(outline, x, y, roll);
+
+    // The surface of a dome (an ellipsoid round centre with these radii, metres) for Print, with the
+    // print's middle where the way out from the centre is way. across and up: which ways the print's
+    // x and y go there (along the surface, as near as they can), or by default up as near world up
+    // as it can be.
+    private static SurfacePrint.Map OnEllipsoid(Vector3 centre, Vector3 radii, Vector3 way, Vector3 across = default, Vector3 up = default)
+    {
+        Vector3 dir = way.normalized;
+        Vector3 local = dir / new Vector3(dir.x / radii.x, dir.y / radii.y, dir.z / radii.z).magnitude;
+        Vector3 normal = new Vector3(local.x / (radii.x * radii.x), local.y / (radii.y * radii.y), local.z / (radii.z * radii.z)).normalized;
+        if (across == Vector3.zero) SurfacePrint.Frame(normal, out across, out up);
+        else
+        {
+            Vector3 wanted = up;
+            across = Vector3.ProjectOnPlane(across, normal).normalized;
+            up = Vector3.Cross(normal, across).normalized;
+            // Keep up the way it was asked for (the cross could point it the other way)
+            if (Vector3.Dot(up, wanted) < 0f) up = -up;
+        }
+        return SurfacePrint.Ellipsoid(centre, radii, centre + local, across, up);
+    }
+
+    private void OnDestroy()
+    {
+        foreach (Mesh mesh in printMeshes)
+        {
+            if (mesh != null) Destroy(mesh);
+        }
+        printMeshes.Clear();
     }
 
     // A part made from one of Unity's primitives. collide: gets a box collider on a ragdoll's hat.
