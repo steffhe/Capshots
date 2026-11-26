@@ -51,6 +51,10 @@ public class GunModel : MonoBehaviour
     private static Material ghostMaterial;
     private bool ghosted, detailShown = true;
     private float heat, seenShot = -1f, ringSpin, phase;
+    // The lock sound at the end of a change of form, through the player's sounds (none on display guns)
+    private PlayerSounds sounds;
+    private bool lockPlayed;
+    private const float LockAt = 0.8f;
 
     public GunSatelliteLayout.Form Form => form;
 
@@ -87,6 +91,7 @@ public class GunModel : MonoBehaviour
     {
         block = new MaterialPropertyBlock();
         phase = Random.value * 10f;
+        sounds = GetComponentInParent<PlayerSounds>();
 
         // The old blocks stop being drawn, but keep their shapes for measuring. Removed right away,
         // so a change of form started this frame (GunMorph) doesn't pick them up as parts.
@@ -159,6 +164,14 @@ public class GunModel : MonoBehaviour
         GunMorph morph = GetComponent<GunMorph>();
         float morphT = morph != null ? morph.Progress : 1f;
         bool morphing = morph != null && morphT < 1f;
+        // 4. Mechanical lock: the parts seat with a clack
+        if (!morphing) lockPlayed = false;
+        else if (!lockPlayed && morphT >= LockAt)
+        {
+            lockPlayed = true;
+            if (sounds == null) sounds = GetComponentInParent<PlayerSounds>();
+            if (sounds != null) sounds.PlayLock();
+        }
 
         float shotAge = s.lastShotTime >= 0f ? now - s.lastShotTime : 100f;
         if (s.lastShotTime > seenShot)

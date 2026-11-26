@@ -31,7 +31,7 @@ public class PlayerSounds : MonoBehaviour
     private const float MinLandingSpeed = 3f;
 
     private Player player;
-    private AudioSource movementSource, hoverSource, reloadSource;
+    private AudioSource movementSource, hoverSource, reloadSource, morphSource;
 
     private Vector3 lastPosition;
     private float verticalSpeed;
@@ -40,7 +40,7 @@ public class PlayerSounds : MonoBehaviour
     private Coroutine reloadRoutine;
 
     private static AudioClip hoverClip;
-    private static AudioClip landingClip, magOutClip, magInClip, boltClip;
+    private static AudioClip landingClip, magOutClip, magInClip, boltClip, lockClip;
     private static AudioClip[] pistolShots, machineGunShots, sniperShots, shotgunShots;
     private AudioSource shotSource;
 
@@ -59,6 +59,8 @@ public class PlayerSounds : MonoBehaviour
         hoverSource.timeSamples = Random.Range(0, hoverClip.samples);
         hoverSource.Play();
         reloadSource = MakeSource();
+        // Its own source, so stopping a reload's sounds (on a change of form) never cuts it short
+        morphSource = MakeSource();
         shotSource = MakeSource();
         // Shots keep a plain linear fade, but carry much further than the hover sound
         shotSource.rolloffMode = AudioRolloffMode.Linear;
@@ -209,6 +211,13 @@ public class PlayerSounds : MonoBehaviour
         source.PlayOneShot(clip, volume);
     }
 
+    // The gun's parts locking into place at the end of a change of form (GunModel), on every client
+    public void PlayLock()
+    {
+        if (morphSource == null || lockClip == null) return;
+        Play(morphSource, lockClip, reloadVolume * 1.1f, 0.95f, 1.05f);
+    }
+
     // Called on every client for each shot this player fires
     public void PlayShot(Gun gun)
     {
@@ -270,6 +279,33 @@ public class PlayerSounds : MonoBehaviour
             float second = t >= 0.08f ? Tone(t, 1980f) * Decay(t - 0.08f, 30f) : 0f;
             return (first + second) * 0.8f;
         });
+
+        // The gun's parts locking at the end of a change of form: two quick metal clicks (the parts
+        // seating, then the clamps closing) over a low thunk, and a short rising chirp as the energy settles
+        {
+            System.Random rng = new System.Random(11);
+            lockClip = MakeClip("Lock", 0.24f, t =>
+            {
+                float v = 0f;
+                for (int i = 0; i < 2; i++)
+                {
+                    float at = i * 0.032f, level = i == 0 ? 1f : 0.6f;
+                    if (t < at) continue;
+                    float c = t - at;
+                    float noise = (float)rng.NextDouble() * 2f - 1f;
+                    v += level * (noise * Decay(c, 260f) * 0.7f
+                        + Tone(c, 2900f + 300f * i) * Decay(c, 48f) * 0.3f
+                        + Tone(c, 4400f) * Decay(c, 70f) * 0.15f
+                        + Tone(c, 150f - 30f * i) * Mathf.Min(1f, c / 0.002f) * Decay(c, 30f) * 0.6f);
+                }
+                if (t > 0.07f)
+                {
+                    float c = t - 0.07f;
+                    v += Tone(c, 700f + 900f * Mathf.Min(1f, c / 0.08f)) * Mathf.Min(1f, c / 0.01f) * Decay(c, 22f) * 0.18f;
+                }
+                return v * 0.8f;
+            });
+        }
 
         // Gunshots: energy weapons. A few variations each, so rapid fire doesn't sound like one sample on repeat.
         pistolShots = new AudioClip[3];

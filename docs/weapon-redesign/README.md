@@ -173,6 +173,6 @@ The rings round the core spin up while it happens. The sights and floating piece
 
 ## 10. Outstanding
 
-- The HUD's gun icons (`Gun.image`) still show the old guns.
-- There are no new sounds; a lock clack at stage 4 would fit.
+- ~~The HUD's gun icons still show the old guns.~~ Done: `Assets/Textures/{gun,machinegun,shotgun,sniper}.png` are redrawn from the new layout by [`Tools/WeaponDesign/icons.py`](../../Tools/WeaponDesign/icons.py). They're white silhouettes like before, with the core window and the floating parts standing apart.
+- ~~No lock sound.~~ Done: two metal clicks over a low thunk and a short rising chirp, played as the parts lock (at 80% of the change of form) through `PlayerSounds.PlayLock`. It's 3D, so everyone nearby hears it, at reload-sound level.
 - Per-form recoil curves weren't added. The guns keep their existing kick, and the new parts add their own per-shot motion on top.

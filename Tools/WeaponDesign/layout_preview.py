@@ -169,4 +169,5 @@ def main():
     img.save(out)
     print("wrote", os.path.abspath(out))
 
-main()
+if __name__ == "__main__":
+    main()
