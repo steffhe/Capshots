@@ -993,17 +993,19 @@ public class Weapon : NetworkBehaviour
         {
             holder = new GameObject("Grenade", typeof(RectTransform)).GetComponent<RectTransform>();
             holder.SetParent(ammo.transform, false);
-            UITheme.Place(holder, new Vector2(1f, 0f), new Vector2(0f, 64f), new Vector2(220f, 26f));
 
-            Image dot = UITheme.NewImage("Dot", holder, Color.white, 10f);
-            UITheme.Place(dot.rectTransform, new Vector2(1f, 0.5f), Vector2.zero, new Vector2(20f, 20f));
+            Image dot = UITheme.NewImage("Dot", holder, Color.white, 9f);
+            UITheme.Place(dot.rectTransform, new Vector2(1f, 0.5f), Vector2.zero, new Vector2(18f, 18f));
             UITheme.AddShadow(dot);
 
             Text label = UITheme.NewText("Label", holder, 16, UITheme.MutedText, TextAnchor.MiddleRight);
-            label.rectTransform.offsetMax = new Vector2(-28f, 0f);
+            label.rectTransform.offsetMax = new Vector2(-26f, 0f);
             label.text = "PLASMA";
             UITheme.AddShadow(label);
         }
+        // Its own row above the gun form's name (UITheme.Hud puts that at 62 to 86 above the ammo
+        // count) and below the gun form icons (110 above the ammo count), so the two never overlap
+        UITheme.Place(holder, new Vector2(1f, 0f), new Vector2(0f, 88f), new Vector2(220f, 22f));
         grenadeDot = holder.Find("Dot")?.GetComponent<Image>();
         grenadeLabel = holder.Find("Label")?.GetComponent<Text>();
         RefreshGrenadeIndicator();
