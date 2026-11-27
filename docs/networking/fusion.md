@@ -40,6 +40,7 @@ Read this before changing anything in `Player`, `Weapon`, `Manager*`, `NetworkSe
 2. `NetworkSession.OnInput` → `InputCollector.Take()` builds one `PlayerInputData` per tick: `Buttons` (`InputButton` enum), `Move`, `Yaw`, `Pitch`, `WeaponSlot`.
 3. `Player.ReadInput` returns that input (or `BotBrain.InputForTick` for bots on the host) and runs `Core/InputRules.Sanitize` on it, since a modified client could send NaN or out-of-range values.
 4. `Player.FixedUpdateNetwork` / `Weapon.FixedUpdateNetwork` simulate from it. Button edges use a `[Networked] PreviousButtons` and `NetworkButtons.GetPressed`.
+   - **Missing input (host):** when a real player's input for a tick hasn't arrived, `Player.ReadMovementInput` repeats their last input for up to `MissingInputTicks` (4 ticks, 100 ms): movement, yaw, pitch, Sprint and Aim only, no presses, and `PreviousButtons` is left alone. `Weapon` reads `Player.ReadInput`, which doesn't bridge, so a missing tick never fires or changes form. After that the body brakes. The last input is a plain host-side field (bots don't need it; host migration respawns everyone).
 5. `Look` applies yaw/pitch locally every frame, so turning never waits for a tick.
 
 Adding a control means: a `GameInput` action → latch in `InputCollector` → field/bit in `PlayerInputData`/`InputButton` → read in `FixedUpdateNetwork`. Bots must then produce it too (`BotBrain`).
@@ -48,6 +49,7 @@ Adding a control means: a `GameInput` action → latch in `InputCollector` → f
 
 - The owner's client predicts its own `Player` and `Weapon`; the host's state corrects it and Fusion resimulates.
 - Anything that must happen **once** (raycasts for hits, damage, sounds, effects, stat counting) is gated with `Runner.IsForward`. Example: `Weapon` updates cooldown/energy/`ShotCount` on every run of a tick but skips the raycasts on resimulation. The host never resimulates.
+- Player movement (`Player.Move`, `Core/MovementRules`) only reads `Velocity`, `Grounded`, the input and the scenery, so a resimulated tick gives the same result. Before the first tick of each batch `Player` calls `Physics.SyncTransforms()`, because `NetworkTransform` restores bodies but the `CharacterController` doesn't see transform changes with `Physics.autoSyncTransforms` off (Fusion's `NetworkCharacterController` handles the same thing). Players don't collide with each other (`Player.LetPlayersPassThrough`): a client sees other bodies slightly in the past, so body blocking would mispredict.
 - State that resimulation restores must be `[Networked]` (timers are `TickTimer`). `Player` re-applies the capsule shape when `Runner.IsResimulation` because `Crouched` is rolled back.
 
 ## Lag compensation and hits
@@ -72,7 +74,8 @@ Adding a control means: a `GameInput` action → latch in `InputCollector` → f
 
 - RPCs are named `RPC_*`. Most are `RpcSources.StateAuthority → RpcTargets.All` (events) or `→ InputAuthority` (personal feedback like `RPC_Damaged`, `RPC_HitConfirm`). Client requests use `RpcSources.All → RpcTargets.StateAuthority` (register, hat/face, ready, vote, XP). `RPC_Chat` is `All → All`.
 - `Weapon.RPC_Shot` is **unreliable** and cosmetic: other clients re-trace the shot locally from a seed. Never put gameplay decisions in it.
-- Ragdolls (`DeadPlayer`), plasma grenades (`PlasmaGrenade`), cap pickups and shot effects are **not** network objects: each client spawns its own copy from an RPC; the host corrects grenades via RPCs.
+- Ragdolls (`DeadPlayer`), plasma grenades (`PlasmaGrenade`), cap pickups and shot effects are **not** network objects: each client spawns its own copy from an RPC; the host corrects grenades via RPCs. Ragdolls collide, so they sit on the `Ragdoll` layer (`Layers.Ragdoll` = 12), which players don't collide with and every simulation query leaves out (`Player.WorldMask`, `Weapon.canBeShot`, `PlasmaGrenade` masks, cap drops, spawn sight); otherwise the host's own copy could block a shot or a body that the other machines never saw.
+- **Remote bodies are drawn consistently:** `NetworkTransform` interpolates their position; `Crouched` and `Pitch` are read from the same two snapshots (`TryGetSnapshotsBuffers` + `GetPropertyReader`, `Player.RenderedCrouch`/`RenderedPitch`) instead of the newest value, which is about the interpolation delay ahead. The crouched model therefore appears when the body (and the lag-compensated hitboxes a shooter is checked against) gets there.
 - Office glass state is packed into networked words (`Manager.Glass`, 2 bits per pane).
 
 ## Host migration (`Manager.HostMigration`, `NetworkSession.OnHostMigration`)
@@ -88,5 +91,6 @@ Fusion's host-migration snapshot is **not** used, because players get new `Playe
 - Changing a `Gun.fireRate` to a value that isn't a whole number of 40 Hz ticks (test fails).
 - Reordering enums or index lists that are sent over the network or saved (`MatchMode`, `InputButton`, `Hats`, `Faces`, room properties). Append only.
 - Forgetting bots: anything keyed by `PlayerRef` must handle bot ids and bodies with no input authority.
+- A new local-only physics object that collides (like ragdolls) must not be on a layer that players or simulation queries use; put it on `Ragdoll` or a layer of its own.
 - Forgetting host migration: new host-only state that should survive must be added to `MigrationCarry`.
 - Changing networked layout (fields, RPC signatures) breaks compatibility with other releases; the app version already separates releases.

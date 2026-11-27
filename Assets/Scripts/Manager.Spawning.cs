@@ -115,7 +115,7 @@ public partial class Manager
         }
 
         // Players' own bodies and glass walls shouldn't block line of sight
-        int sightMask = ~((1 << Layers.RemotePlayer) | (1 << Layers.LocalPlayer) | (1 << Layers.Hitbox) | (1 << Layers.Glass));
+        int sightMask = ~((1 << Layers.RemotePlayer) | (1 << Layers.LocalPlayer) | (1 << Layers.Hitbox) | (1 << Layers.Glass) | (1 << Layers.Ragdoll));
 
         Transform best = usable[0];
         float bestScore = float.MinValue;

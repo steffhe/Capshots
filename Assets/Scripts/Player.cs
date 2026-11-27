@@ -40,6 +40,35 @@ public class Player : NetworkBehaviour
     public float standingHeight = 2f;
     public float crouchingHeight = 1.5f;
 
+    [Header("Movement feel")]
+    // How fast speed changes, in m/s per second (see Core/MovementRules). Thrust up to walking speed:
+    // about 3 ticks from standing to a walk.
+    public float groundAcceleration = 140f;
+    // Slowing to a stop with no input: about 2.5 ticks from a walk. Pushing the opposite way brakes
+    // with this and groundAcceleration together, so a counter-strafe stops a tick sooner.
+    public float groundBraking = 160f;
+    // Slowing to a lower speed while still moving (letting go of sprint, crouching, aiming, a slide ending)
+    public float slowDownRate = 40f;
+    // Thrust from walking up to sprinting speed: about a quarter of a second
+    public float sprintAcceleration = 20f;
+    // Steering in the air. Momentum is kept; this can turn it but never make it faster.
+    public float airAcceleration = 25f;
+    // In the air, speed above sprinting speed (a slide jump) bleeds off this fast
+    public float airDrag = 8f;
+    // Running down stairs and ramps keeps the body on the ground if the ground is at most this far below
+    public float groundSnapDistance = 0.5f;
+    // Seconds after running off an edge that jump still works, and before landing that a jump press is kept
+    public float coyoteTime = 0.1f;
+    public float jumpBufferTime = 0.1f;
+
+    [Header("Slide")]
+    // A slide starts at slideModifier x walking speed (with the gun's multiplier), or faster if already
+    // going faster, slows by this much (m/s per second) down to crouching speed, and turns towards the
+    // input at up to slideSteering degrees a second. Then slideCooldown seconds before the next one.
+    public float slideFriction = 17f;
+    public float slideSteering = 90f;
+    public float slideCooldown = 0.6f;
+
     public ProfileData playerProfile;
     public TextMeshPro playerUsername;
 
@@ -57,9 +86,15 @@ public class Player : NetworkBehaviour
     private Hitbox[] standingHitboxes = new Hitbox[0];
     private Hitbox[] crouchingHitboxes = new Hitbox[0];
     private float baseFOV;
-    private float sprintFOVModifier = 1.25f;
-    // Field of view while aiming a gun without a scope, as a share of the normal one
-    private const float AimFovMultiplier = 0.6f;
+    // Degrees added to the field of view at full sprinting speed, and while sliding (CAMERA EFFECTS
+    // setting). Added rather than multiplied, so a wide field of view setting doesn't balloon.
+    private const float SprintFovBoost = 5f;
+    private const float SlideFovBoost = 8f;
+    // The widest the view ever gets: the widest setting plus a little for speed
+    private const float MaxCameraFov = GameSettings.MaxFov + 10f;
+    // Field of view while aiming a gun without a scope, as a share of the normal one (Look slows
+    // turning to match)
+    public const float AimFovMultiplier = 0.6f;
 
     private Vector3 weaponParentCurrentPosition;
     private Vector3 weaponParentorigin;
@@ -142,6 +177,10 @@ public class Player : NetworkBehaviour
     [Networked] private Vector3 SlideDirection { get; set; }
     [Networked] private Vector3 Velocity { get; set; }
     [Networked] private NetworkBool Grounded { get; set; }
+    // The last tick the body stood on something, and the last tick jump was pressed (0 = none, or used
+    // up by a jump): coyote time and the jump buffer
+    [Networked] private int LastGroundedTick { get; set; }
+    [Networked] private int JumpPressTick { get; set; }
     // Where this player looks up or down, in degrees (positive = up). Other players see the gun tilt with it.
     [Networked] public float Pitch { get; set; }
     [Networked] private TickTimer ProtectionTimer { get; set; }
@@ -215,6 +254,10 @@ public class Player : NetworkBehaviour
         }
     }
 
+    // Normal walking and sprinting speed in m/s, before the gun's own multiplier
+    public float WalkSpeed => speed * LegacyStep;
+    public float SprintSpeed => speed * sprintModifier * LegacyStep;
+
     // How fast the body is moving (a thrown grenade carries some of it)
     public Vector3 CurrentVelocity => Object != null && Object.IsValid ? Velocity : Vector3.zero;
 
@@ -248,6 +291,7 @@ public class Player : NetworkBehaviour
         origin = normalCam.transform.localPosition;
         weaponParentorigin = weaponParent.localPosition;
         weaponParentCurrentPosition = weaponParentorigin;
+        LetPlayersPassThrough();
 
         standingHitboxes = HitboxesUnder(standingCollider, standingColliderHead);
         crouchingHitboxes = HitboxesUnder(crouchingCollider, crouchingColliderHead);
@@ -287,6 +331,7 @@ public class Player : NetworkBehaviour
         if (HasInputAuthority && manager != null && manager.Hud != null) manager.Hud.SetActive(true);
 
         SetControllerShape(false);
+        SetUpRenderReaders();
 
         cameraParent.SetActive(IsLocal);
 
@@ -378,6 +423,38 @@ public class Player : NetworkBehaviour
         // A player's input is checked before anything simulates it (InputRules): the host's copy of the
         // body and every shot use these numbers
         InputRules.Sanitize(ref input.Move, ref input.Yaw, ref input.Pitch, look != null ? look.maxAngle : 90f);
+        if (HasStateAuthority)
+        {
+            lastInput = input;
+            lastInputTick = Runner.Tick.Raw;
+        }
+        return true;
+    }
+
+    // Host only: a player's last input and the tick it was for, to bridge a tick whose input is missing
+    private PlayerInputData lastInput;
+    private int lastInputTick = -1;
+    // How many ticks in a row a missing input is bridged (100 ms), before the body brakes to a stop
+    private const int MissingInputTicks = 4;
+
+    // The input to move with this tick. Like ReadInput, but when the host has no input from a player
+    // for this tick (a late or lost packet), it carries on with their last one for a few ticks: their
+    // own game kept moving them, so stopping here would snap them back when the correction arrives.
+    // Only continuous things carry on (movement, where they look, sprint, aim), never presses (jump,
+    // crouch, slide) or firing; Weapon reads the plain ReadInput, so a missing tick never fires.
+    private bool ReadMovementInput(out PlayerInputData input, out bool bridged)
+    {
+        bridged = false;
+        if (ReadInput(out input)) return true;
+        if (!HasStateAuthority || BotId.IsRealPlayer || lastInputTick < 0) return false;
+        if (Runner.Tick.Raw - lastInputTick > MissingInputTicks) return false;
+
+        input = lastInput;
+        NetworkButtons held = default;
+        held.Set(InputButton.Sprint, lastInput.Buttons.IsSet(InputButton.Sprint));
+        held.Set(InputButton.Aim, lastInput.Buttons.IsSet(InputButton.Aim));
+        input.Buttons = held;
+        bridged = true;
         return true;
     }
 
@@ -390,7 +467,7 @@ public class Player : NetworkBehaviour
             return;
         }
 
-        bool hasInput = ReadInput(out PlayerInputData input);
+        bool hasInput = ReadMovementInput(out PlayerInputData input, out bool bridged);
         if (!hasInput)
         {
             // No input arrived for this tick: keep facing the same way and stand still
@@ -400,7 +477,8 @@ public class Player : NetworkBehaviour
         }
 
         NetworkButtons pressed = hasInput ? input.Buttons.GetPressed(PreviousButtons) : default;
-        if (hasInput) PreviousButtons = input.Buttons;
+        // A bridged tick has no presses, and leaves the buttons to compare the next real input with alone
+        if (hasInput && !bridged) PreviousButtons = input.Buttons;
 
         // The match is over: stand still (gravity still applies), but keep looking around
         if (manager != null && manager.Ending)
@@ -417,6 +495,7 @@ public class Player : NetworkBehaviour
         // too; the capsule has to match it
         if (Runner.IsResimulation) SetControllerShape(Crouched);
 
+        SyncPhysicsBeforeFirstTick();
         Move(input, pressed);
 
         if (HasStateAuthority)
@@ -434,93 +513,239 @@ public class Player : NetworkBehaviour
     private void Move(PlayerInputData input, NetworkButtons pressed)
     {
         float dt = Runner.DeltaTime;
+        int tick = Runner.Tick.Raw;
 
         float hmove = input.Move.x;
         float vmove = input.Move.y;
 
         bool sprint = input.Buttons.IsSet(InputButton.Sprint);
-        bool jump = pressed.IsSet(InputButton.Jump);
         bool crouch = pressed.IsSet(InputButton.Crouch);
         bool slide = pressed.IsSet(InputButton.Slide);
 
         //States
-        bool isgrounded = controller.isGrounded || Physics.Raycast(groundDetector.position, Vector3.down, 0.15f, ground, QueryTriggerInteraction.Ignore);
-        Grounded = isgrounded;
-        bool isJumping = jump && isgrounded;
+        bool isgrounded = OnGround();
+        if (isgrounded) LastGroundedTick = tick;
+        // A jump pressed a moment before landing still happens (the buffer), and one pressed a moment
+        // after running off an edge too (coyote time)
+        if (pressed.IsSet(InputButton.Jump)) JumpPressTick = tick;
+        bool jumpWanted = MovementRules.WithinTicks(tick, JumpPressTick, SecondsToTicks(jumpBufferTime));
+        bool canJump = isgrounded || MovementRules.WithinTicks(tick, LastGroundedTick, SecondsToTicks(coyoteTime));
+        bool isJumping = jumpWanted && canJump;
         bool isSprinting = sprint && vmove > 0 && !isJumping && isgrounded;
-        bool isCrouching = crouch && !isJumping && !isSprinting && isgrounded;
-        bool isSliding = isSprinting && slide && !Sliding;
+        bool isCrouching = crouch && !isJumping && !isSprinting && isgrounded && !Sliding;
 
         Vector3 velocity = Velocity;
+        // Heavier guns, and aiming, slow you down
+        float gunMultiplier = weapon.MoveSpeedMultiplier();
 
-        //Crouching
-        if (isCrouching) SetCrouch(!Crouched);
+        //Crouching (standing up only where there's room)
+        if (isCrouching)
+        {
+            if (Crouched) TryStand();
+            else SetCrouch(true);
+        }
 
         //Jumping
         if (isJumping)
         {
-            if (Crouched) SetCrouch(false);
+            TryStand();
             velocity.y = jumpForce * LegacyStep;
+            // Used up: no second jump from the same press or the same ground
+            JumpPressTick = 0;
+            LastGroundedTick = 0;
         }
 
-        Vector3 direction;
-        float adjustedSpeed = speed;
+        // Where the input points, flat, and how hard it pushes (0 to 1: a stick pushed halfway moves at half speed)
+        Vector3 direction = new Vector3(hmove, 0, vmove);
+        float push = Mathf.Clamp01(direction.magnitude);
+        direction.Normalize();
+        direction = transform.TransformDirection(direction);
 
-        //Movement
-        if (!Sliding)
+        //Sliding: ends when its time is up, on leaving the ground or jumping, or when it has slowed to a
+        //crouch (a wall stops it). Then SlideTimer runs the cooldown before the next one.
+        float crouchSpeed = speed * crouchModifier * LegacyStep * gunMultiplier;
+        if (Sliding)
         {
-            direction = new Vector3(hmove, 0, vmove);
-            direction.Normalize();
-            direction = transform.TransformDirection(direction);
-
-            if (isSprinting)
+            float slideSpeedNow = new Vector2(velocity.x, velocity.z).magnitude;
+            if (SlideTimer.Expired(Runner) || !isgrounded || isJumping || slideSpeedNow <= crouchSpeed + 0.01f)
             {
-                if (Crouched) SetCrouch(false);
-                adjustedSpeed *= sprintModifier;
-            }
-            else if (Crouched)
-            {
-                adjustedSpeed *= crouchModifier;
-            }
-
-            // Heavier guns, and aiming, slow you down
-            adjustedSpeed *= weapon.MoveSpeedMultiplier();
-        }
-        else
-        {
-            direction = SlideDirection;
-            adjustedSpeed *= slideModifier;
-            if (SlideTimer.ExpiredOrNotRunning(Runner))
-            {
-                if (Crouched) SetCrouch(false);
                 Sliding = false;
-                SlideTimer = TickTimer.None;
+                SlideTimer = slideCooldown > 0f ? TickTimer.CreateFromSeconds(Runner, slideCooldown) : TickTimer.None;
+                TryStand();
             }
         }
 
-        //Sliding
+        bool isSliding = isSprinting && slide && !Sliding && SlideTimer.ExpiredOrNotRunning(Runner);
+        float adjustedSpeed = speed;
+        if (!Sliding && !isSliding)
+        {
+            if (isSprinting && Crouched) TryStand();
+            // Sprinting needs room to stand up; under a desk it stays a crouch
+            if (isSprinting && !Crouched) adjustedSpeed *= sprintModifier;
+            else if (Crouched) adjustedSpeed *= crouchModifier;
+            adjustedSpeed *= gunMultiplier;
+        }
+
+        Vector2 horizontal = new Vector2(velocity.x, velocity.z);
+        Vector2 wish = new Vector2(direction.x, direction.z);
         if (isSliding)
         {
             Sliding = true;
             SlideDirection = direction;
             SlideTimer = TickTimer.CreateFromSeconds(Runner, lengthOfSlide);
             if (!Crouched) SetCrouch(true);
+            // A burst: at least the slide's own speed (with this gun), or faster if already going faster
+            float slideStart = speed * slideModifier * LegacyStep * gunMultiplier;
+            horizontal = wish * Mathf.Max(horizontal.magnitude, slideStart);
         }
 
-        Vector3 horizontal = direction * adjustedSpeed * LegacyStep;
+        if (Sliding)
+        {
+            // Slows down, and turns a little towards where the input points
+            Vector2 slideDirection = new Vector2(SlideDirection.x, SlideDirection.z);
+            horizontal = MovementRules.SlideStep(slideDirection, horizontal.magnitude, wish, slideSteering, slideFriction, crouchSpeed, dt);
+            if (horizontal.sqrMagnitude > 0.0001f) SlideDirection = new Vector3(horizontal.x, 0f, horizontal.y).normalized;
+        }
+        else
+        {
+            float wishSpeed = adjustedSpeed * LegacyStep * push;
+            MovementRules.Tuning tuning = MoveTuning(gunMultiplier);
+            if (isgrounded)
+            {
+                // Above walking speed (sprinting) the thrust is gentler
+                float normalSpeed = speed * LegacyStep * gunMultiplier * push;
+                horizontal = MovementRules.GroundStep(horizontal, wish, wishSpeed, normalSpeed, tuning, dt);
+            }
+            else
+            {
+                horizontal = MovementRules.AirStep(horizontal, wish, wishSpeed, tuning, dt);
+            }
+        }
         velocity.x = horizontal.x;
-        velocity.z = horizontal.z;
+        velocity.z = horizontal.y;
 
         // Gravity, with a small push down while standing so the controller stays on slopes and steps
         if (isgrounded && velocity.y < 0f) velocity.y = -2f;
         else velocity.y += Physics.gravity.y * dt;
 
+        Vector3 before = transform.position;
         controller.Move(velocity * dt);
+        CollisionFlags flags = controller.collisionFlags;
+        Vector3 moved = transform.position - before;
+
+        // Was on the ground and still heading down (stairs, a ramp, a small step): stay on it instead
+        // of flying off for a tick or two, which dropped sprint and doubled the gun's spread
+        if (isgrounded && !isJumping && velocity.y <= 0f && !controller.isGrounded) SnapToGround();
+
         if (controller.isGrounded && velocity.y < 0f) velocity.y = -2f;
+        // Where the body ended up this tick, so the gun's spread and the HUD follow this tick's landing
+        // or take-off rather than the last one
+        Grounded = OnGround();
         // Hitting a ceiling stops the jump
-        if ((controller.collisionFlags & CollisionFlags.Above) != 0 && velocity.y > 0f) velocity.y = 0f;
+        if ((flags & CollisionFlags.Above) != 0 && velocity.y > 0f) velocity.y = 0f;
+        // Pushing into a wall doesn't store speed: only what the body actually managed counts
+        if ((flags & CollisionFlags.Sides) != 0)
+        {
+            horizontal = MovementRules.LimitToActual(horizontal, new Vector2(moved.x, moved.z), dt);
+            velocity.x = horizontal.x;
+            velocity.z = horizontal.y;
+        }
 
         Velocity = velocity;
+    }
+
+    // Standing on something: the controller touched ground on its last move, or there's ground just
+    // below the feet (any scenery, not only the Ground layer, so every floor counts the same)
+    private bool OnGround()
+    {
+        return controller.isGrounded || Physics.Raycast(groundDetector.position, Vector3.down, 0.15f, ground | WorldMask, QueryTriggerInteraction.Ignore);
+    }
+
+    // The tick batch the physics scene was last brought up to date in
+    private static int syncedFrame = -1, syncedTick = -1;
+
+    // Fusion's NetworkTransform puts the body back where the simulation had it before each batch of
+    // ticks (after drawing it at an in-between position, or to re-run ticks from a correction), but
+    // with Physics.autoSyncTransforms off the CharacterController doesn't see that and would move from
+    // its stale position. Fusion's own NetworkCharacterController handles this the same way, by
+    // telling physics before the first tick. Once per batch for all bodies; nearly free after the first.
+    private void SyncPhysicsBeforeFirstTick()
+    {
+        if (!Runner.IsFirstTick) return;
+        if (syncedFrame == Time.frameCount && syncedTick == Runner.Tick.Raw) return;
+        syncedFrame = Time.frameCount;
+        syncedTick = Runner.Tick.Raw;
+        Physics.SyncTransforms();
+    }
+
+    // This body's movement tuning, from the Inspector fields
+    private MovementRules.Tuning MoveTuning(float gunMultiplier)
+    {
+        return new MovementRules.Tuning
+        {
+            accel = groundAcceleration,
+            brake = groundBraking,
+            overspeedBrake = slowDownRate,
+            sprintAccel = sprintAcceleration,
+            airAccel = airAcceleration,
+            airDrag = airDrag,
+            // Sprinting speed with this gun: a sprint jump keeps its speed, a slide jump bleeds the extra off
+            airSoftCap = speed * sprintModifier * LegacyStep * gunMultiplier,
+        };
+    }
+
+    // What the body can stand on: everything but players, guns and hitboxes. Also used by HoverVisuals
+    // and PlayerSounds, so the look and sound of landing match the simulation.
+    public static readonly int WorldMask = Physics.DefaultRaycastLayers & ~((1 << Layers.LocalPlayer) | (1 << Layers.RemotePlayer) | (1 << Layers.Gun) | (1 << Layers.LocalGun) | (1 << Layers.Hitbox) | (1 << Layers.Ragdoll));
+
+    // Moves the body down onto the ground if there is ground within groundSnapDistance below it.
+    // Same scenery and maths on every machine, so the predicted and the host's body agree.
+    private void SnapToGround()
+    {
+        if (groundSnapDistance <= 0f) return;
+        // The bottom sphere of the capsule, a little narrower so it doesn't start inside a wall
+        float radius = controller.radius * 0.9f;
+        Vector3 center = transform.TransformPoint(controller.center);
+        Vector3 bottom = center + Vector3.down * Mathf.Max(0f, controller.height * 0.5f - controller.radius);
+        float reach = groundSnapDistance + controller.skinWidth;
+        if (!Physics.SphereCast(bottom, radius, Vector3.down, out RaycastHit hit, reach, WorldMask, QueryTriggerInteraction.Ignore)) return;
+        // The controller stops when it touches the ground, so moving the full distance is safe
+        controller.Move(Vector3.down * (hit.distance + controller.skinWidth));
+    }
+
+    // Players fly through each other instead of blocking: no blocking doorways, and no disagreement
+    // between a client (which sees the others slightly in the past) and the host about who bumped whom.
+    // Shots still hit, as they use hitboxes. Only player bodies are on these layers.
+    private static void LetPlayersPassThrough()
+    {
+        Physics.IgnoreLayerCollision(Layers.LocalPlayer, Layers.LocalPlayer, true);
+        Physics.IgnoreLayerCollision(Layers.LocalPlayer, Layers.RemotePlayer, true);
+        Physics.IgnoreLayerCollision(Layers.RemotePlayer, Layers.RemotePlayer, true);
+        // Dead bodies are local to each machine (DeadPlayer), so they don't block anyone either
+        Physics.IgnoreLayerCollision(Layers.Ragdoll, Layers.LocalPlayer, true);
+        Physics.IgnoreLayerCollision(Layers.Ragdoll, Layers.RemotePlayer, true);
+    }
+
+    // Seconds as a whole number of ticks
+    private int SecondsToTicks(float seconds) => Mathf.Max(0, Mathf.RoundToInt(seconds * Runner.TickRate));
+
+    // Stands up if there's room above the crouched body; returns whether it's standing. The check is
+    // against scenery only (the same on every machine), so predicting it is safe.
+    private bool TryStand()
+    {
+        if (!Crouched) return true;
+        if (!HasHeadroom()) return false;
+        SetCrouch(false);
+        return true;
+    }
+
+    // Room for the standing capsule's top part (the part the crouched one doesn't have)
+    private bool HasHeadroom()
+    {
+        float radius = controller.radius;
+        Vector3 low = transform.position + Vector3.up * (bodyBottom + crouchingHeight - radius);
+        Vector3 high = transform.position + Vector3.up * (bodyBottom + standingHeight - radius);
+        return !Physics.CheckCapsule(low, high, radius * 0.95f, WorldMask, QueryTriggerInteraction.Ignore);
     }
 
     void SetCrouch(bool state)
@@ -593,7 +818,7 @@ public class Player : NetworkBehaviour
         float vmove = moveInput.y;
 
         //Controls
-        bool sprint = GameInput.Held(GameInput.Sprint);
+        bool sprint = GameInput.SprintWanted;
         bool pause = GameInput.PausePressed;
 
         //States
@@ -631,7 +856,7 @@ public class Player : NetworkBehaviour
     // The field of view being eased towards its target, before a shot's punch is added
     private float smoothedFov;
 
-    // Field of view and camera height: wider while sprinting and sliding, lower while crouching
+    // Field of view and camera height: wider at sprinting speed and while sliding, lower while crouching
     private void UpdateCamera(bool isSprinting)
     {
         // Picks up changes made in the settings menu
@@ -651,17 +876,26 @@ public class Player : NetworkBehaviour
             fovSpeed = 15f;
         }
         else if (weapon.isAiming) targetFov = baseFOV * AimFovMultiplier;
-        else if (Sliding) targetFov = baseFOV * sprintFOVModifier * 1.25f;
-        else if (isSprinting) targetFov = baseFOV * sprintFOVModifier;
-        // Eased on its own, so a shot's brief widening (Look.FovKick, on top) doesn't feed back into it
+        else if (GameSettings.ScreenShake)
+        {
+            // A sense of speed, from how fast the body really moves (so it grows as sprinting spools up
+            // and never flickers on a stair), and a little more while sliding. Off with CAMERA EFFECTS.
+            if (Sliding) targetFov = baseFOV + SlideFovBoost;
+            else targetFov = baseFOV + SprintFovBoost * Mathf.InverseLerp(WalkSpeed, SprintSpeed, HorizontalSpeed);
+        }
+        targetFov = Mathf.Min(targetFov, MaxCameraFov);
+        // Eased on its own, so a shot's brief widening (Look.FovKick, on top) doesn't feed back into it.
+        // The same at any frame rate (as it felt at 60 frames a second).
         if (smoothedFov <= 0f) smoothedFov = normalCam.fieldOfView;
-        smoothedFov = Mathf.Lerp(smoothedFov, targetFov, t * fovSpeed);
+        smoothedFov = Mathf.Lerp(smoothedFov, targetFov, LookRules.Ease(fovSpeed, t));
         normalCam.fieldOfView = smoothedFov + (look != null ? look.FovKick : 0f);
 
+        // Shots start from the crouched height straight away (EyePosition), so the view follows quickly
+        // rather than drifting down for half a second with the crosshair above where shots come from
         Vector3 camTarget = origin;
         if (Sliding) camTarget += Vector3.down * slideAmount;
         else if (Crouched) camTarget += Vector3.down * crouchAmount;
-        normalCam.transform.localPosition = Vector3.Lerp(normalCam.transform.localPosition, camTarget, t * 6f);
+        normalCam.transform.localPosition = Vector3.Lerp(normalCam.transform.localPosition, camTarget, 1f - Mathf.Exp(-t / 0.05f));
 
         // Scoped guns also zoom the gun model, so the scope comes up to the eye while aiming
         if (viewmodelCam != null)
@@ -669,21 +903,52 @@ public class Player : NetworkBehaviour
             Gun currentGun = weapon.CurrentGun;
             bool scoped = weapon.isAiming && currentGun != null && currentGun.scopeViewmodelFov > 0f;
             float targetViewmodelFov = scoped ? currentGun.scopeViewmodelFov : viewmodelFov;
-            viewmodelCam.fieldOfView = Mathf.Lerp(viewmodelCam.fieldOfView, targetViewmodelFov, t * 15f);
+            viewmodelCam.fieldOfView = Mathf.Lerp(viewmodelCam.fieldOfView, targetViewmodelFov, LookRules.Ease(15f, t));
         }
     }
 
     // Other players' guns tilt up and down with where they look
     private void RefreshMultiplayerState()
     {
-        Quaternion targetRotation = Quaternion.AngleAxis(-Pitch, Vector3.right);
-        weaponParent.localRotation = Quaternion.Slerp(weaponParent.localRotation, targetRotation, Time.deltaTime * 8f);
+        // Already smooth (interpolated like the body), so no extra easing that would trail behind it
+        weaponParent.localRotation = Quaternion.AngleAxis(-RenderedPitch(), Vector3.right);
     }
 
-    // Shows the standing or crouching body to match the networked crouch
+    // Reads Crouched and Pitch from the two snapshots the body is being drawn between (Fusion moves the
+    // body itself through them with NetworkTransform). The newest values are ahead of the drawn body:
+    // for another player by the interpolation delay, about 100 ms, so they'd crouch visibly before
+    // getting there, and before the hitboxes the shooter's shots are checked against do.
+    private PropertyReader<NetworkBool> crouchedReader;
+    private PropertyReader<float> pitchReader;
+    private bool readersReady;
+
+    private void SetUpRenderReaders()
+    {
+        crouchedReader = GetPropertyReader<NetworkBool>(nameof(Crouched));
+        pitchReader = GetPropertyReader<float>(nameof(Pitch));
+        readersReady = true;
+    }
+
+    // Crouched as drawn: your own body's newest (predicted) value, another body's at the drawn moment
+    private bool RenderedCrouch()
+    {
+        if (IsLocal || !readersReady || !TryGetSnapshotsBuffers(out NetworkBehaviourBuffer from, out NetworkBehaviourBuffer to, out float alpha)) return Crouched;
+        (NetworkBool before, NetworkBool after) = crouchedReader.Read(from, to);
+        return alpha < 0.5f ? before : after;
+    }
+
+    // Where another body's gun points up or down at the drawn moment
+    private float RenderedPitch()
+    {
+        if (IsLocal || !readersReady || !TryGetSnapshotsBuffers(out NetworkBehaviourBuffer from, out NetworkBehaviourBuffer to, out float alpha)) return Pitch;
+        (float before, float after) = pitchReader.Read(from, to);
+        return Mathf.Lerp(before, after, alpha);
+    }
+
+    // Shows the standing or crouching body to match the networked crouch, at the moment the body is drawn
     private void ApplyCrouchVisuals(bool force)
     {
-        bool crouched = Crouched;
+        bool crouched = RenderedCrouch();
         if (!force && crouched == appliedCrouch) return;
         appliedCrouch = crouched;
 
@@ -722,7 +987,10 @@ public class Player : NetworkBehaviour
         // Moving forward pulls the gun back and slightly down; strafing slides it the other way
         Vector3 trail = new Vector3(-weaponTrail.x, -Mathf.Abs(weaponTrail.y) * 0.4f, -weaponTrail.y);
 
-        Vector3 target = weaponParentCurrentPosition + (drift + trail) * aimAdjust;
+        // The gun rides the drone's hover cushion: it dips on landing and settles (the camera doesn't
+        // move, so aiming is unaffected)
+        float cushion = hoverVisuals != null ? hoverVisuals.Suspension * 0.6f : 0f;
+        Vector3 target = weaponParentCurrentPosition + (drift + trail) * aimAdjust + Vector3.up * cushion;
         weaponParent.localPosition = Vector3.Lerp(weaponParent.localPosition, target, dt * 8f);
         weaponParent.localRotation = Quaternion.Slerp(weaponParent.localRotation, Quaternion.Euler(0f, 0f, -hmove * 3f * aimAdjust), dt * 6f);
     }

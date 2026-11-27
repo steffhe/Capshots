@@ -27,7 +27,7 @@ Pick a username, then **Quick play**, create a room, join one from the list, typ
 - **Maps:** Proving Ground, Downtown, Prototype, Office (breakable glass walls around a courtyard garden) and Test Site 07 (a 1950s desert test town). Vote for the next map after each match.
 - **Progression:** XP and levels saved to your profile, kill streaks and multi-kills, match awards and a results screen. 30 hats and 12 drone faces unlock as you level up (**Customize**).
 - **Feedback and presentation:** hit markers, cap shot bursts, kill feed, damage direction, death cam and killer spectating, a directed map camera, ragdolls, and sounds and music generated in code.
-- **Settings:** field of view, sensitivity, volumes, graphics quality, key rebinding, invert Y, screen shake, FPS counter and a colour-blind palette.
+- **Settings:** field of view, mouse and stick sensitivity, volumes, graphics quality, key rebinding, invert Y, hold or toggle sprint, camera effects (screen shake and speed FOV), FPS counter and a colour-blind palette.
 - **Input:** keyboard and mouse, gamepads (with light aim assist), and touch controls on phones and tablets. Text chat.
 
 ## Controls
@@ -43,7 +43,7 @@ Keyboard and mouse bindings can be changed in **Settings** (main menu or pause m
 | Swap energy cell | `R` | X / Square |
 | Plasma grenade (hold to cook, release to throw) | `G` | Y / Triangle |
 | Change gun form | `1` shotgun, `2` machine gun, `3` pistol, `4` sniper / mouse wheel | Bumpers |
-| Sprint | `Shift` | Left stick press |
+| Sprint | `Shift` (hold, or toggle in settings) | Left stick press (toggles) |
 | Jump | `Space` | A / Cross |
 | Crouch | `Left Ctrl` (`Z` in the browser) | B / Circle |
 | Slide | `C` (while sprinting) | Right stick press |

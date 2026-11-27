@@ -24,6 +24,10 @@ public static class GameSettings
     private const string MusicVolumeKey = "settings.musicVolume";
     private const string EffectsVolumeKey = "settings.effectsVolume";
     private const string InvertYKey = "settings.invertY";
+    private const string ToggleSprintKey = "settings.toggleSprint";
+    private const string StickSensitivityKey = "settings.stickSensitivity";
+    public const float MinStickSensitivity = 0.3f;
+    public const float MaxStickSensitivity = 2.5f;
     private const string ScreenShakeKey = "settings.screenShake";
     private const string QualityKey = "settings.quality";
     private const string AdsSensitivityKey = "settings.adsSensitivity";
@@ -197,14 +201,31 @@ public static class GameSettings
     public static event System.Action ShowFpsChanged;
 
     // Pushing the stick or mouse up looks down, and the other way round
+    // Gamepad look speed, as a multiple of Look.StickYawSpeed/StickPitchSpeed at a full push. Separate
+    // from the mouse sensitivity, which means mouse distance per turn.
+    public static float StickSensitivity
+    {
+        get => Mathf.Clamp(PlayerPrefs.GetFloat(StickSensitivityKey, 1f), MinStickSensitivity, MaxStickSensitivity);
+        set { PlayerPrefs.SetFloat(StickSensitivityKey, Mathf.Clamp(value, MinStickSensitivity, MaxStickSensitivity)); PlayerPrefs.Save(); }
+    }
+
+    // Sprint by pressing once instead of holding (GameInput.SprintWanted); off by default
+    public static bool ToggleSprint
+    {
+        get => PlayerPrefs.GetInt(ToggleSprintKey, 0) == 1;
+        set { PlayerPrefs.SetInt(ToggleSprintKey, value ? 1 : 0); PlayerPrefs.Save(); }
+    }
+
     public static bool InvertY
     {
         get => PlayerPrefs.GetInt(InvertYKey, 0) == 1;
         set { PlayerPrefs.SetInt(InvertYKey, value ? 1 : 0); PlayerPrefs.Save(); }
     }
 
-    // The view's shake on a kill and from a nearby grenade (Look.Punch). Off for players who get
-    // motion sick; recoil still moves the aim, since that's part of how the guns handle.
+    // Camera effects, shown as CAMERA EFFECTS in the settings: the view's shake when firing, on a kill
+    // and from a nearby grenade (Look), and the field of view widening with speed (Player.UpdateCamera).
+    // Off for players who get motion sick or want a still view; recoil still moves the aim, since
+    // that's part of how the guns handle. (Saved under its old name, screen shake.)
     public static bool ScreenShake
     {
         get => PlayerPrefs.GetInt(ScreenShakeKey, 1) == 1;

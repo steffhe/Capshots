@@ -30,7 +30,7 @@ SPAWN_LIFT = 1.2
 
 HALF = 40.0          # the playable square: -40..40 on x (west-east) and z (south-north)
 WALL_HEIGHT = 6.0    # the outer walls
-LANE_WALL = 4.5      # tall enough that nobody jumps over (a jump reaches about 3 m)
+LANE_WALL = 4.5      # tall enough that nobody jumps over (a jump rises about 2.6 m, plus a 0.3 m step)
 LOW_WALL = 1.2       # cover to crouch behind and shoot over
 DECK = 2.5           # the base decks and the side-lane perches
 TOWER = 3.4          # the tower's top

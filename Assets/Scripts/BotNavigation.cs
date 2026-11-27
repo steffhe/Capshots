@@ -16,7 +16,9 @@ public static class BotNavigation
     // capsule's last few centimetres just slide along them.
     private const float AgentRadius = 0.39f;
     private const float AgentHeight = 2f;
-    private const float AgentClimb = 0.45f;
+    // The player capsule's step (CharacterController.stepOffset, 0.3 m): anything higher is a ledge a
+    // bot can't walk up, so the mesh mustn't join it
+    private const float AgentClimb = 0.3f;
     private const float AgentSlope = 45f;
     private const float VoxelSize = 0.2f;
     // How far beyond the spawn points the map is searched for walkable ground

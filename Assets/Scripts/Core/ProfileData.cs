@@ -17,8 +17,10 @@ public class ProfileData
         this.username = "DEFAULT USERNAME";
         this.level = 0;
         this.xp = 0;
-        this.xsens = 150f;
-        this.ysens = 150f;
+        // About 11 cm of mouse travel for a full turn at 800 DPI (Look.DegreesPerCount): fine enough to
+        // aim precisely, quick enough to turn round. Existing profiles keep their saved values.
+        this.xsens = 60f;
+        this.ysens = 60f;
     }
 
     // XP needed to go from this level to the next one

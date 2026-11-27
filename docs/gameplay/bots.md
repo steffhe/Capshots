@@ -8,7 +8,7 @@ Computer players that fill a room to the host's chosen count. They exist **on th
 | --- | --- |
 | `Manager.Bots.cs` | How many bots (setting, humans, room size), adding/removing them, spawning their bodies with `PlayerRef.None` and a fake id (`BotRawBase` 101+) in `Player.BotId` |
 | `BotBrain.cs` | Per-tick decision making on the host; outputs a `PlayerInputData` via `InputForTick` |
-| `BotNavigation.cs` | Builds a NavMesh at runtime from the map's colliders (AI Navigation package) when a match with bots starts; no baked NavMesh in scenes. Until ready, bots head straight for their goal |
+| `BotNavigation.cs` | Builds a NavMesh at runtime from the map's colliders (AI Navigation package) when a match with bots starts; no baked NavMesh in scenes. Until ready, bots head straight for their goal. The agent climbs at most 0.3 m, the player capsule's step, so paths never use a ledge a body can't walk up |
 | `Core/BotLogic.cs` | Pure, tested rules: desired bot count, form choice by distance, aim/steer maths, skills and personalities |
 
 ## Behaviour

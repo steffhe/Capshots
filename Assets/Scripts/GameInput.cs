@@ -122,6 +122,31 @@ public static class GameInput
     public static bool Pressed(InputAction action) => !Blocked && (action.WasPressedThisFrame() || TouchControls.WasPressed(action));
     public static bool Released(InputAction action) => action.WasReleasedThisFrame() || TouchControls.WasReleased(action);
 
+    // Whether the player wants to sprint: the sprint button held, or switched on by a press when sprint
+    // is set to toggle (GameSettings.ToggleSprint). A controller's stick click always toggles, as
+    // holding a stick in while steering with it is awkward. A toggled sprint switches off when the
+    // player stops moving forwards, or with another press. Read every frame (InputCollector.Update),
+    // so no press is missed.
+    public static bool SprintWanted
+    {
+        get
+        {
+            UpdateSprintToggle();
+            return sprintToggled || Held(Sprint);
+        }
+    }
+
+    private static bool sprintToggled;
+    private static int sprintToggleFrame = -1;
+
+    private static void UpdateSprintToggle()
+    {
+        if (sprintToggleFrame == Time.frameCount) return;
+        sprintToggleFrame = Time.frameCount;
+        if (Pressed(Sprint) && (GameSettings.ToggleSprint || FromGamepad(Sprint))) sprintToggled = !sprintToggled;
+        if (MoveValue.y <= 0.1f) sprintToggled = false;
+    }
+
     // Pause works while paused (to unpause), but not while typing in chat: there Escape closes the chat
     public static bool PausePressed
     {

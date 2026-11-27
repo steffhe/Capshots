@@ -19,6 +19,7 @@
 13. **Runtime NavMesh** for bots instead of baked NavMeshes per scene.
 14. **App version = release tag** so incompatible network code never matches.
 15. **Append-only indices** for anything sent or saved (`MatchMode`, hats, faces, input buttons).
+16. **Movement with acceleration, and players passing through each other** (2026-11). Horizontal speed eases towards the input (`Core/MovementRules`) instead of being set each tick, so stops, reversals and jumps carry momentum and accuracy rewards stopping well; sprint lowered to 1.5x walk and the jump to about 2.6 m. Players stopped colliding with each other because clients see other bodies slightly in the past, so body blocking mispredicted. Details: [player.md](../gameplay/player.md).
 
 ## Recommendations
 

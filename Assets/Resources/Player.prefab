@@ -459,9 +459,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   speed: 500
-  sprintModifier: 2
+  sprintModifier: 1.5
   crouchModifier: 0.5
-  jumpForce: 650
+  jumpForce: 520
   maxHealth: 1000
   normalCam: {fileID: 2799757468592270336}
   cameraParent: {fileID: 2799757468203411518}
@@ -471,7 +471,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 8
   lengthOfSlide: 0.75
-  slideModifier: 2.5
+  slideModifier: 1.8
   crouchAmount: 0.5
   slideAmount: 0.5
   standingCollider: {fileID: 2594016786546293284}
@@ -514,7 +514,7 @@ MonoBehaviour:
   weapon: {fileID: 2799757467745635848}
   xSensitivity: 150
   ySensitivity: 175
-  maxAngle: 60
+  maxAngle: 85
   recoilSnappiness: 25
   recoilRecovery: 7
 --- !u!114 &2799757468120159457

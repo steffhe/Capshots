@@ -427,8 +427,10 @@ public class TouchControls : MonoBehaviour
         stickKnob.anchoredPosition = clamped;
 
         Vector2 move = clamped / StickRadius;
-        // A small dead zone, so resting the thumb doesn't creep
-        MoveValue = move.magnitude < 0.12f ? Vector2.zero : move;
+        // A small dead zone, so resting the thumb doesn't creep. Speed follows how far the stick is
+        // pushed (Player moves slower for a smaller push), reaching full speed at 70% of the way out.
+        float push = Mathf.InverseLerp(0.12f, 0.7f, move.magnitude);
+        MoveValue = push <= 0f ? Vector2.zero : move.normalized * push;
 
         // Pushing well past the rim, mostly forward, sprints
         sprinting = offset.y > StickRadius * SprintDistance && Mathf.Abs(offset.x) < offset.y;

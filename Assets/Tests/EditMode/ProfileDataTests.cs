@@ -46,7 +46,7 @@ public class ProfileDataTests
     {
         ProfileData profile = new ProfileData();
 
-        Assert.AreEqual(150f, profile.xsens);
-        Assert.AreEqual(150f, profile.ysens);
+        Assert.AreEqual(60f, profile.xsens);
+        Assert.AreEqual(60f, profile.ysens);
     }
 }

@@ -40,7 +40,7 @@ public class PlasmaGrenade : MonoBehaviour
 
     // Scenery a grenade bounces off: what shots hit, minus players and their hitboxes, plus glass.
     // Weapon sets it from its canBeShot when it wakes.
-    private static int worldMask = Physics.DefaultRaycastLayers & ~((1 << Layers.LocalPlayer) | (1 << Layers.RemotePlayer) | (1 << Layers.Gun) | (1 << Layers.LocalGun) | (1 << Layers.Hitbox));
+    private static int worldMask = Physics.DefaultRaycastLayers & ~((1 << Layers.LocalPlayer) | (1 << Layers.RemotePlayer) | (1 << Layers.Gun) | (1 << Layers.LocalGun) | (1 << Layers.Hitbox) | (1 << Layers.Ragdoll));
     public static int WorldMask => worldMask;
     public static void SetWorldMask(int canBeShot)
     {

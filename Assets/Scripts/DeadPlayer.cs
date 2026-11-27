@@ -69,27 +69,17 @@ public class DeadPlayer : MonoBehaviour
         float bodyShare = headshot ? 0.5f : 1f;
         body.AddForceAtPosition(push * knockback * bodyShare * body.mass, hitPoint, ForceMode.Impulse);
 
-        IgnoreNearbyPlayers();
+        PutOnRagdollLayer();
     }
 
-    // On other clients the dying player's own object is still there for a moment (its removal arrives
-    // just after this ragdoll). Overlapping it would shove the ragdoll away, so ignore any player standing
-    // right here. Players that spawn later still collide with the body normally.
-    private void IgnoreNearbyPlayers()
+    // Every machine has its own copy of this body, in its own place, so it must never affect anything
+    // that is simulated or decided by the host: on the Ragdoll layer it doesn't block players
+    // (Player.LetPlayersPassThrough), and shots, ground checks and grenades leave the layer out. It
+    // still tumbles against the world and other bodies. (This also stops the dying player's own
+    // object, still there for a moment on other clients, from shoving it away.)
+    private void PutOnRagdollLayer()
     {
-        Collider[] ragdollColliders = AllColliders();
-
-        foreach (Player player in Player.All)
-        {
-            if ((player.transform.position - transform.position).sqrMagnitude > 4f) continue;
-            foreach (Collider playerCollider in player.GetComponentsInChildren<Collider>(true))
-            {
-                foreach (Collider ragdollCollider in ragdollColliders)
-                {
-                    Physics.IgnoreCollision(playerCollider, ragdollCollider, true);
-                }
-            }
-        }
+        foreach (Collider part in AllColliders()) part.gameObject.layer = Layers.Ragdoll;
     }
 
     // Every collider of the ragdoll: body, head and (when knocked off) cap

@@ -4,9 +4,9 @@ using UnityEngine.Events;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
-// Settings panel inside the pause menu: look sensitivity, ADS sensitivity, field of view, master,
+// Settings panel inside the pause menu: look sensitivity, stick sensitivity, ADS sensitivity, field of view, master,
 // effects and music volume, graphics quality, colours, the FPS counter, key bindings, invert Y and
-// screen shake. Built at runtime from copies of the pause menu's own button,
+// camera effects (screen shake and speed FOV) and the sprint mode. Built at runtime from copies of the pause menu's own button,
 // slider and label (styled by UITheme.StylePause), so the Pause prefab doesn't need editing.
 // It also adds the pause menu's Customize button and panel (CustomizeMenu), under Settings.
 // The main menu has the same panel (CreateForMainMenu), built from copies of its own button,
@@ -18,12 +18,13 @@ public class SettingsMenu : MenuPanel
     private GameObject sensitivity;
     private GameObject panel;
 
-    private Text xSensValue, ySensValue, fovValue, adsValue, volumeValue, effectsValue, musicValue;
-    private Slider xSensSlider, ySensSlider, fovSlider, adsSlider, volumeSlider, effectsSlider, musicSlider;
+    private Text xSensValue, ySensValue, stickValue, fovValue, adsValue, volumeValue, effectsValue, musicValue;
+    private Slider xSensSlider, ySensSlider, stickSlider, fovSlider, adsSlider, volumeSlider, effectsSlider, musicSlider;
     private Text qualityText;
     private Text coloursText;
     private Text fpsText;
     private Text invertText;
+    private Text sprintText;
     private Text shakeText;
 
     private class BindingRow
@@ -37,11 +38,12 @@ public class SettingsMenu : MenuPanel
 
     // Panel layout, in canvas units from the panel's centre
     private const float PanelWidth = 1040f;
-    private const float PanelHeight = 810f;
+    // 860 tall: on screens wider than 16:9 an in-match canvas can be shorter, so FitToScreen shrinks it
+    private const float PanelHeight = 860f;
     private const float LeftColumn = -250f;
     private const float RightColumn = 250f;
     private const float ColumnWidth = 400f;
-    private const float HeaderY = 295f;
+    private const float HeaderY = 320f;
 
     // In the main menu rather than the pause menu
     private bool inMainMenu;
@@ -142,6 +144,7 @@ public class SettingsMenu : MenuPanel
 
     private void Update()
     {
+        if (panel != null && panel.activeSelf) FitToScreen();
         // Unpausing hides the whole pause menu: go back to the main pause buttons for next time
         if (panel != null && panel.activeSelf && !anchor.gameObject.activeSelf) CloseSettings();
         // The controller's B closes the panel, in the main menu and the pause menu
@@ -155,6 +158,21 @@ public class SettingsMenu : MenuPanel
     }
 
     #region Panel
+
+    // Shrinks the panel when the screen is too short for it (an in-match canvas scales with the
+    // screen's width, so on a screen wider than 16:9 it's shorter than 1080), never enlarges it
+    private void FitToScreen()
+    {
+        Canvas canvas = panel.GetComponentInParent<Canvas>();
+        if (canvas == null || canvas.rootCanvas.renderMode != RenderMode.ScreenSpaceOverlay) return;
+        Transform parent = panel.transform.parent;
+        float parentScale = parent != null ? parent.lossyScale.y : 1f;
+        if (parentScale <= 0f) return;
+        // The panel's full height on screen, in pixels, at its normal size
+        float height = PanelHeight * parentScale;
+        float fit = Mathf.Min(1f, Screen.height * 0.98f / height);
+        panel.transform.localScale = new Vector3(fit, fit, 1f);
+    }
 
     private void BuildPanel()
     {
@@ -185,6 +203,13 @@ public class SettingsMenu : MenuPanel
         ySensSlider = SliderRow(rect, "LOOK SENSITIVITY Y", ref ySensValue, y, GameSettings.MinSensitivity, GameSettings.MaxSensitivity, true, GameSettings.YSensitivity, v =>
         {
             GameSettings.YSensitivity = v;
+            RefreshLabels();
+        });
+        y -= rowStep;
+        // Gamepad look, separate from the mouse: shown as degrees a second at a full push
+        stickSlider = SliderRow(rect, "STICK SENSITIVITY", ref stickValue, y, GameSettings.MinStickSensitivity, GameSettings.MaxStickSensitivity, false, GameSettings.StickSensitivity, v =>
+        {
+            GameSettings.StickSensitivity = Mathf.Round(v * 20f) / 20f;
             RefreshLabels();
         });
         y -= rowStep;
@@ -262,7 +287,7 @@ public class SettingsMenu : MenuPanel
             GameInput.ResetBindings();
             RefreshBindings();
         });
-        // An 8 gap between the buttons, so seven sliders fit above them
+        // An 8 gap between the buttons, so eight sliders fit above them
         Place(reset, new Vector2(LeftColumn, y - 234f), new Vector2(ColumnWidth, 48f));
 
         GameObject done = NewButton(rect, "DONE", CloseSettings);
@@ -284,7 +309,8 @@ public class SettingsMenu : MenuPanel
             AddBindingRow(rect, entry.Key, entry.Value, GameInput.KeyboardBindingIndex(entry.Value));
         }
 
-        // Under the bindings, level with DONE: screen shake, and invert Y above it
+        // Under the bindings, level with DONE: camera effects (screen shake and speed FOV), invert Y above it
+        // and the sprint mode above that
         float toggleY = -PanelHeight / 2f + 58f;
         GameObject shake = NewButton(rect, "", () =>
         {
@@ -304,9 +330,18 @@ public class SettingsMenu : MenuPanel
         Place(invert, new Vector2(RightColumn, toggleY + 56f), new Vector2(ColumnWidth, 48f));
         invertText = invert.GetComponentInChildren<Text>();
 
+        GameObject sprintMode = NewButton(rect, "", () =>
+        {
+            GameSettings.ToggleSprint = !GameSettings.ToggleSprint;
+            RefreshLabels();
+        });
+        UITheme.StyleSelector(sprintMode.GetComponent<Button>());
+        Place(sprintMode, new Vector2(RightColumn, toggleY + 112f), new Vector2(ColumnWidth, 48f));
+        sprintText = sprintMode.GetComponentInChildren<Text>();
+
         // Rows share the column's height above those between them, so a longer list still fits
         float top = HeaderY - 30f;
-        float bottom = toggleY + 56f + 24f + 8f;
+        float bottom = toggleY + 112f + 24f + 8f;
         float step = bindingRows.Count > 0 ? Mathf.Min(36f, (top - bottom) / bindingRows.Count) : 0f;
         y = top - step / 2f;
         foreach (BindingRow row in bindingRows)
@@ -369,8 +404,11 @@ public class SettingsMenu : MenuPanel
 
     private void RefreshLabels()
     {
-        xSensValue.text = Mathf.RoundToInt(GameSettings.XSensitivity).ToString();
+        // With the mouse travel for a full turn at a common 800 DPI, so the number means something
+        float cmPerTurn = LookRules.CentimetresPer360(Look.DegreesPerCount(GameSettings.XSensitivity), 800f);
+        xSensValue.text = Mathf.RoundToInt(GameSettings.XSensitivity) + $"  <size=13><color={UITheme.Hex(UITheme.MutedText)}>{cmPerTurn:0.#} cm/360 @800 DPI</color></size>";
         ySensValue.text = Mathf.RoundToInt(GameSettings.YSensitivity).ToString();
+        stickValue.text = Mathf.RoundToInt(Look.StickYawSpeed * GameSettings.StickSensitivity) + " DEG/S";
         fovValue.text = Mathf.RoundToInt(GameSettings.Fov).ToString();
         adsValue.text = GameSettings.AdsSensitivity.ToString("0.00") + "x";
         volumeValue.text = Mathf.RoundToInt(GameSettings.Volume * 100f) + "%";
@@ -378,8 +416,9 @@ public class SettingsMenu : MenuPanel
         musicValue.text = Mathf.RoundToInt(GameSettings.MusicVolume * 100f) + "%";
         qualityText.text = UITheme.Option("GRAPHICS", GameSettings.QualityName.ToUpperInvariant());
         if (fpsText != null) fpsText.text = UITheme.Option("FPS COUNTER", GameSettings.ShowFps ? "ON" : "OFF");
+        if (sprintText != null) sprintText.text = UITheme.Option("SPRINT", GameSettings.ToggleSprint ? "TOGGLE" : "HOLD");
         if (invertText != null) invertText.text = UITheme.Option("INVERT Y", GameSettings.InvertY ? "ON" : "OFF");
-        if (shakeText != null) shakeText.text = UITheme.Option("SCREEN SHAKE", GameSettings.ScreenShake ? "ON" : "OFF");
+        if (shakeText != null) shakeText.text = UITheme.Option("CAMERA EFFECTS", GameSettings.ScreenShake ? "ON" : "OFF");
         if (coloursText != null) coloursText.text = UITheme.Option("COLOURS", GameSettings.Colourblind ? "COLOUR BLIND" : "STANDARD");
     }
 
@@ -391,6 +430,7 @@ public class SettingsMenu : MenuPanel
 
         xSensSlider.SetValueWithoutNotify(GameSettings.XSensitivity);
         ySensSlider.SetValueWithoutNotify(GameSettings.YSensitivity);
+        stickSlider.SetValueWithoutNotify(GameSettings.StickSensitivity);
         fovSlider.SetValueWithoutNotify(GameSettings.Fov);
         adsSlider.SetValueWithoutNotify(GameSettings.AdsSensitivity);
         volumeSlider.SetValueWithoutNotify(GameSettings.Volume);
