@@ -53,7 +53,7 @@ public partial class Manager
         const float distance = 1.6f;
         Vector3 from = ground + Vector3.up * 1f;
         // The world only: not players, their guns or hitboxes (the victim's body is still here)
-        int world = Physics.DefaultRaycastLayers & ~((1 << Layers.LocalPlayer) | (1 << Layers.RemotePlayer) | (1 << Layers.Gun) | (1 << Layers.LocalGun) | (1 << Layers.Hitbox));
+        int world = Physics.DefaultRaycastLayers & ~((1 << Layers.LocalPlayer) | (1 << Layers.RemotePlayer) | (1 << Layers.Gun) | (1 << Layers.LocalGun) | (1 << Layers.Hitbox) | (1 << Layers.Ragdoll));
         // Something in the way (a wall, a desk, glass): it drops where they fell
         if (Physics.SphereCast(from, 0.2f, flat, out _, distance, world, QueryTriggerInteraction.Ignore)) return ground;
         Vector3 above = from + flat * distance;

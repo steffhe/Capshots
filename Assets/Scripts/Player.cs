@@ -316,6 +316,7 @@ public class Player : NetworkBehaviour
         if (HasInputAuthority && manager != null && manager.Hud != null) manager.Hud.SetActive(true);
 
         SetControllerShape(false);
+        SetUpRenderReaders();
 
         cameraParent.SetActive(IsLocal);
 
@@ -407,6 +408,38 @@ public class Player : NetworkBehaviour
         // A player's input is checked before anything simulates it (InputRules): the host's copy of the
         // body and every shot use these numbers
         InputRules.Sanitize(ref input.Move, ref input.Yaw, ref input.Pitch, look != null ? look.maxAngle : 90f);
+        if (HasStateAuthority)
+        {
+            lastInput = input;
+            lastInputTick = Runner.Tick.Raw;
+        }
+        return true;
+    }
+
+    // Host only: a player's last input and the tick it was for, to bridge a tick whose input is missing
+    private PlayerInputData lastInput;
+    private int lastInputTick = -1;
+    // How many ticks in a row a missing input is bridged (100 ms), before the body brakes to a stop
+    private const int MissingInputTicks = 4;
+
+    // The input to move with this tick. Like ReadInput, but when the host has no input from a player
+    // for this tick (a late or lost packet), it carries on with their last one for a few ticks: their
+    // own game kept moving them, so stopping here would snap them back when the correction arrives.
+    // Only continuous things carry on (movement, where they look, sprint, aim), never presses (jump,
+    // crouch, slide) or firing; Weapon reads the plain ReadInput, so a missing tick never fires.
+    private bool ReadMovementInput(out PlayerInputData input, out bool bridged)
+    {
+        bridged = false;
+        if (ReadInput(out input)) return true;
+        if (!HasStateAuthority || BotId.IsRealPlayer || lastInputTick < 0) return false;
+        if (Runner.Tick.Raw - lastInputTick > MissingInputTicks) return false;
+
+        input = lastInput;
+        NetworkButtons held = default;
+        held.Set(InputButton.Sprint, lastInput.Buttons.IsSet(InputButton.Sprint));
+        held.Set(InputButton.Aim, lastInput.Buttons.IsSet(InputButton.Aim));
+        input.Buttons = held;
+        bridged = true;
         return true;
     }
 
@@ -419,7 +452,7 @@ public class Player : NetworkBehaviour
             return;
         }
 
-        bool hasInput = ReadInput(out PlayerInputData input);
+        bool hasInput = ReadMovementInput(out PlayerInputData input, out bool bridged);
         if (!hasInput)
         {
             // No input arrived for this tick: keep facing the same way and stand still
@@ -429,7 +462,8 @@ public class Player : NetworkBehaviour
         }
 
         NetworkButtons pressed = hasInput ? input.Buttons.GetPressed(PreviousButtons) : default;
-        if (hasInput) PreviousButtons = input.Buttons;
+        // A bridged tick has no presses, and leaves the buttons to compare the next real input with alone
+        if (hasInput && !bridged) PreviousButtons = input.Buttons;
 
         // The match is over: stand still (gravity still applies), but keep looking around
         if (manager != null && manager.Ending)
@@ -639,7 +673,7 @@ public class Player : NetworkBehaviour
 
     // What the body can stand on: everything but players, guns and hitboxes. Also used by HoverVisuals
     // and PlayerSounds, so the look and sound of landing match the simulation.
-    public static readonly int WorldMask = Physics.DefaultRaycastLayers & ~((1 << Layers.LocalPlayer) | (1 << Layers.RemotePlayer) | (1 << Layers.Gun) | (1 << Layers.LocalGun) | (1 << Layers.Hitbox));
+    public static readonly int WorldMask = Physics.DefaultRaycastLayers & ~((1 << Layers.LocalPlayer) | (1 << Layers.RemotePlayer) | (1 << Layers.Gun) | (1 << Layers.LocalGun) | (1 << Layers.Hitbox) | (1 << Layers.Ragdoll));
 
     // Moves the body down onto the ground if there is ground within groundSnapDistance below it.
     // Same scenery and maths on every machine, so the predicted and the host's body agree.
@@ -664,6 +698,9 @@ public class Player : NetworkBehaviour
         Physics.IgnoreLayerCollision(Layers.LocalPlayer, Layers.LocalPlayer, true);
         Physics.IgnoreLayerCollision(Layers.LocalPlayer, Layers.RemotePlayer, true);
         Physics.IgnoreLayerCollision(Layers.RemotePlayer, Layers.RemotePlayer, true);
+        // Dead bodies are local to each machine (DeadPlayer), so they don't block anyone either
+        Physics.IgnoreLayerCollision(Layers.Ragdoll, Layers.LocalPlayer, true);
+        Physics.IgnoreLayerCollision(Layers.Ragdoll, Layers.RemotePlayer, true);
     }
 
     void SetCrouch(bool state)
@@ -828,14 +865,45 @@ public class Player : NetworkBehaviour
     // Other players' guns tilt up and down with where they look
     private void RefreshMultiplayerState()
     {
-        Quaternion targetRotation = Quaternion.AngleAxis(-Pitch, Vector3.right);
-        weaponParent.localRotation = Quaternion.Slerp(weaponParent.localRotation, targetRotation, Time.deltaTime * 8f);
+        // Already smooth (interpolated like the body), so no extra easing that would trail behind it
+        weaponParent.localRotation = Quaternion.AngleAxis(-RenderedPitch(), Vector3.right);
     }
 
-    // Shows the standing or crouching body to match the networked crouch
+    // Reads Crouched and Pitch from the two snapshots the body is being drawn between (Fusion moves the
+    // body itself through them with NetworkTransform). The newest values are ahead of the drawn body:
+    // for another player by the interpolation delay, about 100 ms, so they'd crouch visibly before
+    // getting there, and before the hitboxes the shooter's shots are checked against do.
+    private PropertyReader<NetworkBool> crouchedReader;
+    private PropertyReader<float> pitchReader;
+    private bool readersReady;
+
+    private void SetUpRenderReaders()
+    {
+        crouchedReader = GetPropertyReader<NetworkBool>(nameof(Crouched));
+        pitchReader = GetPropertyReader<float>(nameof(Pitch));
+        readersReady = true;
+    }
+
+    // Crouched as drawn: your own body's newest (predicted) value, another body's at the drawn moment
+    private bool RenderedCrouch()
+    {
+        if (IsLocal || !readersReady || !TryGetSnapshotsBuffers(out NetworkBehaviourBuffer from, out NetworkBehaviourBuffer to, out float alpha)) return Crouched;
+        (NetworkBool before, NetworkBool after) = crouchedReader.Read(from, to);
+        return alpha < 0.5f ? before : after;
+    }
+
+    // Where another body's gun points up or down at the drawn moment
+    private float RenderedPitch()
+    {
+        if (IsLocal || !readersReady || !TryGetSnapshotsBuffers(out NetworkBehaviourBuffer from, out NetworkBehaviourBuffer to, out float alpha)) return Pitch;
+        (float before, float after) = pitchReader.Read(from, to);
+        return Mathf.Lerp(before, after, alpha);
+    }
+
+    // Shows the standing or crouching body to match the networked crouch, at the moment the body is drawn
     private void ApplyCrouchVisuals(bool force)
     {
-        bool crouched = Crouched;
+        bool crouched = RenderedCrouch();
         if (!force && crouched == appliedCrouch) return;
         appliedCrouch = crouched;
 

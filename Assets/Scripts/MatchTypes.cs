@@ -85,4 +85,7 @@ public static class Layers
     // Glass walls (the Office map): they block players but shots go through (Weapon.canBeShot
     // leaves this layer out), and they don't hide a spawn point from enemies.
     public const int Glass = 11;
+    // Dead players' bodies (DeadPlayer): local physics, different on every machine, so players walk
+    // through them and shots, ground checks and grenades ignore them
+    public const int Ragdoll = 12;
 }
