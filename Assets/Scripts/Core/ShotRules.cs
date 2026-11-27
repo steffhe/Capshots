@@ -3,6 +3,10 @@ using UnityEngine;
 // Rules for a single shot of the gun (see Weapon), kept apart so they can be tested
 public static class ShotRules
 {
+    // How early a semi-automatic click may come before the gun is ready and still fire, as soon as
+    // it is: 4 ticks at 40 a second. Short enough that a click for a later shot isn't taken early.
+    public const float FireBufferSeconds = 0.1f;
+
     // How far aiming down the sights has steadied the gun, 0 (just raised) to 1 (fully steady),
     // after aiming for 'seconds'. Aiming only tightens the spread over the gun's adsTime, so pressing
     // aim and fire together (a "quickscope" or a key bound to both) doesn't give scoped accuracy.

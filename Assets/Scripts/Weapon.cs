@@ -112,6 +112,9 @@ public class Weapon : NetworkBehaviour
     // Running while the gun changes form
     [Networked] private TickTimer MorphTimer { get; set; }
     [Networked] private TickTimer FireCooldown { get; set; }
+    // A semi-automatic click that came a moment before the gun was ready: it fires as soon as it is
+    // (see ShotRules.FireBufferSeconds), instead of being lost
+    [Networked] private TickTimer FireQueue { get; set; }
     [Networked] private TickTimer ReloadTimer { get; set; }
     [Networked] private TickTimer BurstTimer { get; set; }
     [Networked] private int BurstLeft { get; set; }
@@ -271,6 +274,7 @@ public class Weapon : NetworkBehaviour
             Equipped = slot;
             ReloadTimer = TickTimer.None;
             BurstLeft = 0;
+            FireQueue = TickTimer.None;
             MorphTimer = startingForm ? TickTimer.None : TickTimer.CreateFromSeconds(Runner, morphTime);
         }
         if (MorphTimer.Expired(Runner)) MorphTimer = TickTimer.None;
@@ -338,10 +342,20 @@ public class Weapon : NetworkBehaviour
                 return;
             }
 
-            bool fireInput = gun.burst == 1 ? input.Buttons.IsSet(InputButton.Fire) : pressed.IsSet(InputButton.Fire);
+            bool fireInput;
+            if (gun.burst == 1) fireInput = input.Buttons.IsSet(InputButton.Fire);
+            else
+            {
+                // A click while the gun is still cooling down is remembered for a moment, so clicking
+                // a touch early (as everyone does at speed) still fires on the first tick it can
+                bool click = pressed.IsSet(InputButton.Fire);
+                if (click && !FireCooldown.ExpiredOrNotRunning(Runner)) FireQueue = TickTimer.CreateFromSeconds(Runner, ShotRules.FireBufferSeconds);
+                fireInput = click || (FireQueue.IsRunning && !FireQueue.Expired(Runner));
+            }
 
             if (fireInput && FireCooldown.ExpiredOrNotRunning(Runner))
             {
+                FireQueue = TickTimer.None;
                 if (!GunEnergy.CanFire(Energy, gun.energyPerShot))
                 {
                     StartReload();
@@ -933,12 +947,10 @@ public class Weapon : NetworkBehaviour
         GameObject oldWeapon = currentWeapon;
         if (oldWeapon != null)
         {
-            // Also stops the cell swap sound everyone else hears
+            // Also stops the cell swap sound everyone else hears. A hit marker still showing stays:
+            // changing form right after a (cap shot) kill shouldn't hide it.
             PlayerSounds sounds = GetComponent<PlayerSounds>();
             if (sounds != null) sounds.StopReload();
-            StopAllCoroutines();
-            hitmarkRoutine = null;
-            if (HasInputAuthority) HideHitmark();
         }
         shownIndex = ind;
         GameObject newWeapon = Instantiate(loadout[ind].prefab, weaponParent.position, weaponParent.rotation, weaponParent) as GameObject;
