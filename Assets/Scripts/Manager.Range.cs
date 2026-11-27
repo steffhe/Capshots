@@ -15,6 +15,8 @@ public partial class Manager
     private int targetDistance = 8;
     private bool movingTarget, freeRange, changingScene, offerMatch;
     private float hintUntil, offerAfter;
+    private PlayerRef targetAwaitingPickup;
+    public bool NeedsTutorialPickup => InRange && !freeRange && rangeCaps == 1;
     public bool InRange => lane != null;
     public bool FreeRange => freeRange;
     public bool MovingTarget => movingTarget;
@@ -43,7 +45,9 @@ public partial class Manager
         }
         LaneBlock("Firing line", new Vector3(0, 0.012f, 0), new Vector3(9.45f, 0.012f, 0.14f), amber);
 
-        // Open gantries frame each distance. Keep the centre clear for the moving target.
+        BuildStationCeiling(steel);
+
+        // Gantries frame each distance. Keep the centre clear for the moving target.
         for (int z = 8; z <= 18; z += 5)
         {
             LaneBlock("Crossbeam", new Vector3(0, 5.9f, z), new Vector3(12, 0.28f, 0.45f), steel);
@@ -70,7 +74,39 @@ public partial class Manager
         targetSpawn = new GameObject("Target mark").transform;
         targetSpawn.SetParent(lane, false);
         targetSpawn.localRotation = Quaternion.Euler(0, 180, 0);
-        freeRange = Launcher.myProfile.completedRangeDrill;
+        freeRange = Launcher.myProfile.completedRangeDrill && !NetworkSession.MatchProperties(Runner).ContainsKey("replaydrill");
+    }
+
+    private void BuildStationCeiling(Color hull)
+    {
+        LaneBlock("Pressure hull", new Vector3(0, 6.18f, 9), new Vector3(12.5f, 0.36f, 27), hull, solid: true);
+        Color cyan = new Color(0.12f, 0.91f, 1f);
+        Color violet = new Color(0.64f, 0.46f, 1f);
+        foreach (int side in new[] { -1, 1 })
+        {
+            Color neon = side < 0 ? cyan : violet;
+            // Recessed strips along the ceiling shoulders, visible between the gantries.
+            LaneBlock("Fixture housing", new Vector3(side * 4.2f, 5.90f, 9), new Vector3(0.6f, 0.18f, 26), hull);
+            for (int bay = 0; bay < 5; bay++)
+            {
+                float z = -0.8f + bay * 5f;
+                LaneBlock("Neon tube", new Vector3(side * 4.2f, 5.77f, z), new Vector3(0.21f, 0.08f, 4.5f), neon, lit: true);
+            }
+        }
+        // Emissive strips stay visible at low quality. Two shadowless fixtures light the
+        // shooter and drone without placing a realtime light on every tube.
+        for (int bay = 0; bay < 2; bay++)
+        {
+            var fixture = new GameObject("Overhead fill");
+            fixture.transform.SetParent(lane, false);
+            fixture.transform.localPosition = new Vector3(0, 5.35f, 2 + bay * 13);
+            Light light = fixture.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = Color.Lerp(Color.white, bay == 0 ? cyan : violet, 0.28f);
+            light.intensity = 3.5f;
+            light.range = 12f;
+            light.shadows = LightShadows.None;
+        }
     }
 
     private Text LaneSign(string label, Vector3 position, Vector2 size, float scale, int fontSize)
@@ -135,8 +171,14 @@ public partial class Manager
         hintUntil = 0f;
         if (freeRange) return;
         movingTarget = true;
-        if (rangeCaps < 2) return;
+    }
+
+    private void FinishRangeTutorial()
+    {
         freeRange = true;
+        displayedCaps = -1;
+        ScheduleSpawn(targetAwaitingPickup);
+        targetAwaitingPickup = PlayerRef.None;
         Launcher.myProfile.completedRangeDrill = true;
         Data.SaveProfile(Launcher.myProfile);
         offerMatch = true;
@@ -167,11 +209,16 @@ public partial class Manager
             string score = rangeCaps == 1 ? "1 CAPSHOT" : $"{rangeCaps} CAPSHOTS";
             backstopSign.text = score;
             if (!freeRange && rangeCaps == 0)
-                rangeTitle.text = "FIRST CAP   ·   1 / 2\n<size=19>Line up the crosshair with the crown, then fire to knock it off.</size>";
+                rangeTitle.text = "FIRST CAP   ·   1 / 3\n<size=19>Line up the crosshair with the crown, then fire to knock it off.</size>";
+            else if (!freeRange && rangeCaps == 2)
+            {
+                backstopSign.text = "COLLECT THE CAP";
+                rangeTitle.text = "COLLECT   ·   3 / 3\n<size=19>Walk into the glowing ring under the fallen cap to score a point.</size>";
+            }
             else if (!freeRange)
-                rangeTitle.text = "MOVING TARGET   ·   2 / 2\n<size=19>Track the moving drone and shoot the cone off its head.</size>";
+                rangeTitle.text = "MOVING TARGET   ·   2 / 3\n<size=19>Track the moving drone and shoot the cone off its head.</size>";
             else if (offerMatch)
-                rangeTitle.text = "DRILL COMPLETE\n<size=19>In Cap Grab, walk over a fallen enemy cap to score. First to 10 wins.</size>";
+                rangeTitle.text = "DRILL COMPLETE\n<size=19>You scored a point by collecting the cap. In bot practice, first to 10 wins.</size>";
             else
             {
                 string motion = movingTarget ? "MOVING" : "STATIONARY";
@@ -188,18 +235,30 @@ public partial class Manager
         }
     }
 
-    public void StartRangeMatch()
+    public void StartRangeMatch() => ReloadRangeMap(false);
+    public void ReplayRangeTutorial() => ReloadRangeMap(true);
+
+    private void ReloadRangeMap(bool replay)
     {
         if (!InRange || changingScene) return;
         changingScene = true;
         var settings = new Dictionary<string, SessionProperty>();
         foreach (var item in NetworkSession.MatchProperties(Runner)) settings[item.Key] = item.Value;
-        settings.Remove("range");
-        settings["bots"] = settings["practicebots"];
-        settings.Remove("practicebots");
-        settings["mode"] = (int)MatchMode.CapGrab;
+        if (replay)
+        {
+            settings["replaydrill"] = 1;
+            LoadingScreen.Show("SHOOTING RANGE", "FIRST CAP TUTORIAL", "");
+        }
+        else
+        {
+            settings.Remove("range");
+            settings.Remove("replaydrill");
+            settings["bots"] = settings["practicebots"];
+            settings.Remove("practicebots");
+            settings["mode"] = (int)MatchMode.CapGrab;
+            LoadingScreen.Show("PRACTICE VS BOTS", "COLLECT 10 CAPS TO WIN", "EASY");
+        }
         NetworkSession.UpdateMatchProperties(Runner, settings);
-        LoadingScreen.Show("PRACTICE VS BOTS", "COLLECT 10 CAPS TO WIN", "EASY");
         StartCoroutine(LoadMapAfter(Launcher.Maps[(int)settings["map"]].scene, 0.6f));
     }
 }

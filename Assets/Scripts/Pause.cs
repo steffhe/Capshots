@@ -207,7 +207,7 @@ public class Pause : MonoBehaviour
     }
 
     private int shownDistance;
-    private UnityEngine.UI.Button rangeMatch, rangeMotion, rangeDistance;
+    private UnityEngine.UI.Button rangeMatch, rangeMotion, rangeDistance, rangeReplay;
     private UnityEngine.UI.Text motionLabel, distanceLabel;
 
     private void RefreshRangeButtons()
@@ -226,9 +226,13 @@ public class Pause : MonoBehaviour
             rangeMatch.onClick.AddListener(range.StartRangeMatch);
             rangeDistance = CopyMenuButton(buttons, "Distance", index++, out distanceLabel);
             rangeDistance.onClick.AddListener(range.CycleRangeDistance);
-            rangeMotion = CopyMenuButton(buttons, "Motion", index, out motionLabel);
+            rangeMotion = CopyMenuButton(buttons, "Motion", index++, out motionLabel);
             rangeMotion.onClick.AddListener(range.ToggleRangeMotion);
+            rangeReplay = CopyMenuButton(buttons, "Replay tutorial", index, out var replayLabel);
+            replayLabel.text = "REPLAY TUTORIAL";
+            rangeReplay.onClick.AddListener(range.ReplayRangeTutorial);
         }
+        rangeReplay.gameObject.SetActive(range.FreeRange);
         rangeDistance.gameObject.SetActive(range.FreeRange);
         rangeMotion.gameObject.SetActive(range.FreeRange);
         if (shownDistance != range.TargetDistance)

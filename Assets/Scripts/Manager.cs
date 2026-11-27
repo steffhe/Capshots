@@ -645,7 +645,16 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
         if (InRange)
         {
-            if (IsBot(victim) && headshot && killer == Runner.LocalPlayer) CountRangeCap();
+            if (IsBot(victim) && headshot && killer == Runner.LocalPlayer)
+            {
+                bool waitForPickup = NeedsTutorialPickup;
+                CountRangeCap();
+                if (waitForPickup)
+                {
+                    targetAwaitingPickup = victim;
+                    return;
+                }
+            }
             ScheduleSpawn(victim);
             return;
         }
