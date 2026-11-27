@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using UnityEngine;
 //using UnityEngine.SceneManagement;
 
+// The main menu scene's button targets wired in Menu.unity (play, quit), passing them on to the
+// Launcher; frees the cursor on arriving in the menu, and hides Quit in a browser, which can't quit.
 public class MainMenu : MonoBehaviour
 {
 

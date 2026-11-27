@@ -1,11 +1,14 @@
 using System.Collections;
 using Fusion;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 // A full-screen overlay for the moments between scenes: finding or joining a match, loading the
 // map, and going back to the menu. It lives across scene loads, fades in and out, and shows the
-// wordmark, the match being joined, a spinner and a status line.
+// wordmark, the match being joined, a spinner and a status line. When joining or starting fails it
+// stays up with the reason in red and "PRESS ANY KEY TO CONTINUE", until a key, click, tap or
+// controller button (or 8 seconds), so the reason can't be missed.
 public class LoadingScreen : MonoBehaviour
 {
     private const float FadeInTime = 0.25f;
@@ -37,6 +40,11 @@ public class LoadingScreen : MonoBehaviour
     private RectTransform spinner;
     private RectTransform sweep;
     private string statusText = "";
+    // Showing a failure (Fail) until it's dismissed, and when it goes on its own
+    private bool failed;
+    private float failShownAt;
+    private Text failHint;
+    private const float FailTime = 8f;
     private Coroutine fade;
     private float shownAt;
     private float fadingTo;
@@ -50,6 +58,7 @@ public class LoadingScreen : MonoBehaviour
         LoadingScreen screen = Instance;
         screen.SetMatchText(map, mode);
         screen.statusText = status ?? "";
+        screen.SetFailed(false);
         screen.tip.text = "TIP   " + Tips[Random.Range(0, Tips.Length)];
         screen.shownAt = Time.unscaledTime;
         screen.FadeTo(1f, FadeInTime);
@@ -84,12 +93,37 @@ public class LoadingScreen : MonoBehaviour
         instance.FadeTo(0f, FadeOutTime, delay);
     }
 
-    // Shows a message for a moment, then fades out (e.g. a match that couldn't be joined)
+    // Shows why something failed (a match that couldn't be joined) until it's dismissed: any key,
+    // click, tap or controller button, or FailTime seconds. Then fades out to the menu.
     public static void Fail(string message)
     {
         if (instance == null) return;
         instance.statusText = message;
-        instance.FadeTo(0f, FadeOutTime, 2f);
+        instance.failShownAt = Time.unscaledTime;
+        instance.SetFailed(true);
+        // Stay up (and keep blocking the menu) until dismissed
+        instance.FadeTo(1f, FadeInTime);
+    }
+
+    private void SetFailed(bool value)
+    {
+        failed = value;
+        if (status != null) status.color = value ? UITheme.DangerText : UITheme.TextColor;
+        if (spinner != null) spinner.gameObject.SetActive(!value);
+        if (sweep != null) sweep.gameObject.SetActive(!value);
+        if (failHint != null) failHint.gameObject.SetActive(value);
+    }
+
+    private static bool AnyPress()
+    {
+        Keyboard keyboard = Keyboard.current;
+        if (keyboard != null && keyboard.anyKey.wasPressedThisFrame) return true;
+        Mouse mouse = Mouse.current;
+        if (mouse != null && (mouse.leftButton.wasPressedThisFrame || mouse.rightButton.wasPressedThisFrame)) return true;
+        Gamepad pad = Gamepad.current;
+        if (pad != null && (pad.buttonSouth.wasPressedThisFrame || pad.buttonEast.wasPressedThisFrame || pad.startButton.wasPressedThisFrame)) return true;
+        Touchscreen touch = Touchscreen.current;
+        return touch != null && touch.primaryTouch.press.wasPressedThisFrame;
     }
 
     private static readonly string[] ModeNames = { "FREE FOR ALL", "TEAM DEATHMATCH", "CAP GRAB", "GUN GAME", "TEAM CAP GRAB" };
@@ -148,6 +182,19 @@ public class LoadingScreen : MonoBehaviour
         float x = Mathf.Repeat(time * 0.55f, 1.4f) - 0.2f;
         sweep.anchorMin = new Vector2(x, 0f);
         sweep.anchorMax = new Vector2(x + 0.2f, 1f);
+
+        if (failed)
+        {
+            // The reason, still (no dots: nothing is happening any more), until dismissed
+            status.text = statusText;
+            bool dismissed = time - failShownAt > 0.4f && AnyPress();
+            if (dismissed || time - failShownAt > FailTime)
+            {
+                failed = false;
+                Hide();
+            }
+            return;
+        }
 
         int dots = (int)(time * 3f) % 4;
         status.text = statusText.Length > 0 ? statusText + new string('.', dots) + new string(' ', 3 - dots) : "";
@@ -225,6 +272,11 @@ public class LoadingScreen : MonoBehaviour
 
         screen.status = UITheme.NewText("Status", t, 20, UITheme.TextColor, TextAnchor.MiddleCenter);
         UITheme.Place(screen.status.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -190f), new Vector2(1200f, 30f));
+        // Under a failure's reason: how to go on
+        screen.failHint = UITheme.NewText("Continue", t, UITheme.MenuCaptionSize, UITheme.MutedText, TextAnchor.MiddleCenter);
+        UITheme.Place(screen.failHint.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -226f), new Vector2(1200f, 24f));
+        screen.failHint.text = "PRESS ANY KEY TO CONTINUE";
+        screen.failHint.gameObject.SetActive(false);
 
         screen.tip = UITheme.NewText("Tip", t, 16, UITheme.MutedText, TextAnchor.MiddleCenter);
         UITheme.Place(screen.tip.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 60f), new Vector2(1400f, 24f));

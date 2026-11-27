@@ -427,8 +427,15 @@ public class FeedbackUI : MonoBehaviour
 
         bool show = secondsLeft > 0f;
         if (text.gameObject.activeSelf != show) text.gameObject.SetActive(show);
-        if (show) text.text = "SPAWN PROTECTION  " + secondsLeft.ToString("0.0");
+        // Rebuilt only when the tenth of a second shown changes (it's called every frame)
+        int tenths = Mathf.CeilToInt(secondsLeft * 10f);
+        if (show && tenths != Instance.protectionTenths)
+        {
+            Instance.protectionTenths = tenths;
+            text.text = "SPAWN PROTECTION  " + (tenths / 10f).ToString("0.0");
+        }
     }
+    private int protectionTenths = -1;
 
     // The cap logo (the game's icon), shown with a cap shot in the kill feed, on the death screen
     // and in the XP popup. Null if it's missing, and then they show without it.

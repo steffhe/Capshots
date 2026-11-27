@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 
-// A small frame rate readout in the top right corner, turned on in Settings (GameSettings.ShowFps).
+// A small frame rate readout at the bottom of the screen, in the middle, turned on in Settings (GameSettings.ShowFps).
 // Shows the frames per second and the average and slowest frame time over the last half second,
 // so you can tell a steady low frame rate from one that stutters. In the browser it also shows the
 // resolution the world is drawn at, while BrowserGraphics has lowered it. Lives for the whole session,
@@ -41,14 +41,15 @@ public class FpsCounter : MonoBehaviour
         text.font = UITheme.Font != null ? UITheme.Font : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         text.fontSize = 16;
         text.color = Color.white;
-        text.alignment = TextAnchor.UpperRight;
+        text.alignment = TextAnchor.LowerCenter;
         text.raycastTarget = false;
         text.horizontalOverflow = HorizontalWrapMode.Overflow;
         text.verticalOverflow = VerticalWrapMode.Overflow;
         label.GetComponent<Shadow>().effectColor = new Color(0f, 0f, 0f, 0.8f);
         RectTransform rect = text.rectTransform;
-        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(1f, 1f);
-        rect.anchoredPosition = new Vector2(-8f, -2f);
+        // Bottom centre: the one edge nothing else uses, in a match (the kill feed is top right) or the menu
+        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0f);
+        rect.anchoredPosition = new Vector2(0f, 4f);
         rect.sizeDelta = new Vector2(400f, 20f);
 
         canvas.enabled = GameSettings.ShowFps;

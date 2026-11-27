@@ -13,6 +13,11 @@ using UnityEngine.UI;
         public bool enabled = true;
     }
 
+// The main menu (Menu.unity, build index 0): the player's profile, quick play, practice, the room
+// list and join by code, and the create tab's match settings, which become the session's properties
+// (see docs/gameplay/match-and-modes.md). Starting or joining goes through NetworkSession; failures
+// show on the loading screen. The look and layout are applied in code (Launcher.Style.cs, the front
+// page in Launcher.Home.cs). Runs only in the menu; nothing here is networked.
 public partial class Launcher : MonoBehaviour
 {
     public InputField usernameField;
@@ -133,11 +138,25 @@ public partial class Launcher : MonoBehaviour
     private void OnEnable()
     {
         NetworkSession.SessionListUpdated += OnRoomListUpdate;
+        NetworkSession.LobbyFailed += OnLobbyFailed;
     }
 
     private void OnDisable()
     {
         NetworkSession.SessionListUpdated -= OnRoomListUpdate;
+        NetworkSession.LobbyFailed -= OnLobbyFailed;
+    }
+
+    // The room list couldn't connect: say so in the list (quick play and practice still work, practice
+    // even offline) and try again in a few seconds
+    private const float LobbyRetrySeconds = 5f;
+
+    private void OnLobbyFailed()
+    {
+        if (this == null) return;
+        ShowRoomsEmptyState(true, $"<color={UITheme.Hex(UITheme.DangerText)}>COULDN'T REACH THE MATCH SERVER</color>\n<size={UITheme.MenuCaptionSize}><color={UITheme.Hex(UITheme.MutedText)}>RETRYING  ·  PRACTICE WORKS OFFLINE</color></size>");
+        CancelInvoke(nameof(Connect));
+        Invoke(nameof(Connect), LobbyRetrySeconds);
     }
 
     private void OnDestroy()
@@ -226,7 +245,8 @@ public partial class Launcher : MonoBehaviour
         LoadingScreen.Show("CREATING MATCH", maps[currentmap].name, LoadingScreen.ModeName(currentmode));
         Dictionary<string, SessionProperty> properties = RoomProperties();
         // The room list shows the name typed in the create tab (the room code is the session's name)
-        if (!string.IsNullOrWhiteSpace(roomnameField.text)) properties["title"] = roomnameField.text.Trim();
+        string typedTitle = TextRules.CleanName(roomnameField.text, TextRules.MaxTitleLength);
+        if (typedTitle.Length > 0) properties["title"] = typedTitle;
         // A created room waits in a lobby until everyone is ready or the host starts it (Manager.Lobby.cs).
         // Quick play and practice start by themselves.
         properties["lobby"] = 1;
@@ -252,7 +272,8 @@ public partial class Launcher : MonoBehaviour
         properties.Add("bots", currentbots);
         properties.Add("botskill", currentBotSkill);
         // What the room list calls it, unless a name was typed in the create tab
-        properties.Add("title", ((myProfile != null && !string.IsNullOrWhiteSpace(myProfile.username) ? myProfile.username : "PLAYER") + "'S MATCH").ToUpperInvariant());
+        string owner = myProfile != null ? TextRules.CleanName(myProfile.username) : "";
+        properties.Add("title", ((owner.Length > 0 ? owner : "PLAYER") + "'S MATCH").ToUpperInvariant());
         return properties;
     }
 
@@ -592,15 +613,9 @@ public partial class Launcher : MonoBehaviour
     private void VerifyUsername()
     {
 
-        if (string.IsNullOrWhiteSpace(usernameField.text))
-        {
-            myProfile.username = "USER_" + Random.Range(100, 1000);
-        }
-        else
-        {
-            myProfile.username = usernameField.text;
-
-        }
+        // No tag brackets, tidy spaces, at most TextRules.MaxNameLength (the host cleans it again)
+        string name = TextRules.CleanName(usernameField.text);
+        myProfile.username = name.Length == 0 ? "USER_" + Random.Range(100, 1000) : name;
     }
     private void OnRoomListUpdate(List<SessionInfo> list)
     {
@@ -627,6 +642,8 @@ public partial class Launcher : MonoBehaviour
             // Its title (or its name, for a match from an older build), and its room code
             string title = a.Name;
             if (a.Properties != null && a.Properties.TryGetValue("title", out SessionProperty t) && !string.IsNullOrWhiteSpace((string)t)) title = (string)t;
+            // Typed on another machine: shown exactly as written, never as rich text
+            title = TextRules.Escape(title);
             if (RoomCodes.IsValid(a.Name) && title != a.Name) title += $"  <color={UITheme.Hex(UITheme.MutedText)}>{a.Name}</color>";
             string sessionName = a.Name;
             GameObject newRoomButton = CreateRoomRow(title, a.PlayerCount + " / " + a.MaxPlayers, roomMap);

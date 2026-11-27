@@ -4,7 +4,9 @@ using UnityEngine;
 using UnityEngine.UI;
 using Fusion;
 
-// XP and the message popup used for XP, level ups and match messages.
+// XP and the message popup used for XP, level ups and match messages. Messages take turns in the
+// popup by importance (PopupQueue): urgent ones at once, match information before XP, the newest XP
+// replacing older XP, so one message never silently wipes out another that matters more.
 public partial class Manager
 {
     [Header("XP")]
@@ -19,6 +21,7 @@ public partial class Manager
     private const float XpPopupIconSize = 56f;
     private Coroutine xpPopupRoutine;
     private CanvasGroup xpPopupGroup;
+    private readonly PopupQueue popups = new PopupQueue();
 
     public static string UsernameWithLevel(ProfileData profile)
     {
@@ -73,7 +76,7 @@ public partial class Manager
 
         if (uiUsername != null) uiUsername.text = UsernameWithLevel(profile);
         // At the end of the match the results screen shows the XP instead
-        if (!matchEnded) ShowMessage(message, capshot);
+        if (!matchEnded) ShowMessage(message, capshot, PopupQueue.Kind.Xp);
     }
 
     // "NEW CAP UNLOCKED: BEANIE" for the hats unlocked between these levels, or null if none were
@@ -138,16 +141,24 @@ public partial class Manager
         popupObject.SetActive(false);
     }
 
-    private void ShowMessage(string message, bool capshotIcon = false)
+    // A message in the popup: shown now, or after the one showing (see PopupQueue for the order)
+    private void ShowMessage(string message, bool capshotIcon = false, PopupQueue.Kind kind = PopupQueue.Kind.Info)
     {
         if (xpPopup == null) return;
+        if (!popups.Push(new PopupQueue.Popup { text = message, icon = capshotIcon, kind = kind })) return;
+        PlayPopup(popups.Current);
+    }
+
+    private void PlayPopup(PopupQueue.Popup popup)
+    {
         if (xpPopupRoutine != null) StopCoroutine(xpPopupRoutine);
-        xpPopupRoutine = StartCoroutine(XpPopup(message, capshotIcon));
+        xpPopupRoutine = StartCoroutine(XpPopup(popup.text, popup.icon));
     }
 
     private IEnumerator XpPopup(string message, bool capshotIcon)
     {
-        const float holdTime = 1.5f;
+        // Shorter while others are waiting, so a queue doesn't drag on
+        float holdTime = popups.Waiting > 0 ? 1f : 1.5f;
         const float fadeTime = 0.5f;
 
         xpPopup.text = message;
@@ -177,5 +188,7 @@ public partial class Manager
 
         xpPopup.gameObject.SetActive(false);
         xpPopupRoutine = null;
+        // The next message waiting, if any
+        if (popups.Next(out PopupQueue.Popup next)) PlayPopup(next);
     }
 }

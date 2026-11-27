@@ -193,8 +193,7 @@ public class ChatUI : MonoBehaviour
     // Stops players from using rich text tags (huge text, colours) in chat
     public static string Escape(string text)
     {
-        if (string.IsNullOrEmpty(text)) return "";
-        return text.Replace("<", "<​");
+        return TextRules.Escape(text);
     }
 
     private void Layout()

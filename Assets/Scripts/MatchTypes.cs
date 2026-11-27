@@ -20,6 +20,8 @@ public class PlayerInfo
     public int ping = -1;
     // Ready to start, in a lobby room's warmup (Manager.Lobby.cs)
     public bool ready;
+    // Cap shot kills this match (PlayerStats.Capshots)
+    public short capshots;
 
     public PlayerInfo (ProfileData p, int a, short k, short d)
     {
@@ -45,6 +47,8 @@ public struct PlayerStats : INetworkStruct
     public byte Face;
     // Ready to start, in a lobby room's warmup (Manager.Lobby.cs)
     public NetworkBool Ready;
+    // Cap shot kills this match, counted by the host (Manager.PlayerKilled), for the scoreboard
+    public short Capshots;
 }
 
 // The match's game mode. (Not "GameMode", which is Fusion's host/client mode.)

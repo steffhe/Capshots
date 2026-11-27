@@ -46,7 +46,7 @@ public partial class Manager
         // Carrying on after the host left: no need to introduce the map again
         if (resumed)
         {
-            ShowMessage(HasStateAuthority ? "YOU'RE THE HOST NOW" : "NEW HOST: THE MATCH GOES ON");
+            ShowMessage(HasStateAuthority ? "YOU'RE THE HOST NOW" : "NEW HOST: THE MATCH GOES ON", false, PopupQueue.Kind.Urgent);
             return;
         }
         StartCoroutine(IntroBanner());
@@ -122,6 +122,10 @@ public partial class Manager
 
     private IEnumerator EndSequence(bool timeUp)
     {
+        // The popup and anything waiting for it go: the results show the XP instead
+        if (xpPopupRoutine != null) StopCoroutine(xpPopupRoutine);
+        xpPopupRoutine = null;
+        popups.Clear();
         if (xpPopup != null) xpPopup.gameObject.SetActive(false);
         leaderboard.gameObject.SetActive(false);
         GameObject intro = GameObject.Find("Canvas/Map Intro");
@@ -255,19 +259,33 @@ public partial class Manager
             if (sorted[i].kills > myKills) place++;
         }
 
+        // How many share the top score: a tie isn't claimed as anyone's win
+        int leaders = 0;
+        if (top != null) foreach (PlayerInfo p in sorted) if (p.kills == top.kills) leaders++;
+
         if (top == null || top.kills <= 0)
         {
             title = "MATCH OVER"; color = UITheme.TextColor;
             subtitle = "NOBODY SCORED";
+        }
+        else if (myKills == top.kills && leaders > 1)
+        {
+            title = "TIED FOR 1ST"; color = win;
+            subtitle = $"SHARING THE TOP WITH {myKills} {ScoreWord}";
         }
         else if (myKills == top.kills)
         {
             title = "VICTORY"; color = win;
             subtitle = $"TOP OF THE BOARD WITH {myKills} {ScoreWord}";
         }
+        else if (leaders > 1)
+        {
+            title = "TIE AT THE TOP"; color = UITheme.TextColor;
+            subtitle = $"YOU PLACED {Ordinal(place)} WITH {myKills} {ScoreWord}";
+        }
         else
         {
-            title = top.profile.username.ToUpperInvariant() + " WINS"; color = UITheme.TextColor;
+            title = TextRules.Escape(top.profile.username.ToUpperInvariant()) + " WINS"; color = UITheme.TextColor;
             subtitle = $"YOU PLACED {Ordinal(place)} WITH {myKills} {ScoreWord}";
         }
     }

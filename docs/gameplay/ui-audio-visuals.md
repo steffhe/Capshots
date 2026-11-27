@@ -37,7 +37,29 @@ Every menu (main menu and its tabs, settings, customize, option lists, pause men
 - **Transitions** (`MenuReveal`, added with `UITheme.Reveal`): the main menu's tabs, Settings, Customize and the pause menu fade in over 0.16 s as they open (the tabs also settle from 98.5% scale), in unscaled time. Only alpha and scale change, so input works throughout; scale is left off where code sets the scale (the settings panel's fit to the screen).
 - Removed for restraint: the Quick Play glow outline and pulse, and the NEW badge's pulse.
 
-Not yet in the system: the loading screen (its own look), the award stage, and the scoreboard's rows.
+- The scoreboard's header and the award stage's cards use the panel frame; award titles are in the accent and your own card is deep accent blue (gold stays for cap shots). The loading screen keeps its own full-screen look in the same palette.
+
+### Settings (`SettingsMenu`)
+
+Four tabs under the title, LB / RB to step through them; the panel opens on the tab it was left on.
+
+| Tab | Contents |
+| --- | --- |
+| GAME | Look sensitivity X / Y, stick sensitivity, aim sensitivity, field of view; sprint (hold / toggle), invert Y, camera effects |
+| AUDIO & VIDEO | Master, effects and music volume; graphics quality, colours (standard / colour blind), FPS counter |
+| HUD | Crosshair size (75-150%), colour (white, green, yellow, cyan, magenta), centre dot, spread ticks, with a preview on a mid-grey plate. Saved in `GameSettings.Crosshair*`; `HudFeedback` applies them live (`CrosshairChanged`) |
+| CONTROLS | Every keyboard / mouse binding in two columns (`GameInput.Rebindable`, including the form keys and chat), the controller's buttons in a third (`GameInput.GamepadRebindable`: the actions with a gamepad binding plus next / previous form), and RESET CONTROLS |
+
+Controller rebinding (`GameInput.StartGamepadRebind`) waits for the A that pressed the row to be let go, takes any button but stick directions, and is cancelled by Start or after 8 seconds; Start and Pause stay unbindable so a menu can always be reached. Bindings are saved with the keyboard ones (`input.bindings`).
+
+### Errors and connection
+
+- A start or join that fails (`LoadingScreen.Fail`) stays on the loading screen with the reason in red and PRESS ANY KEY TO CONTINUE, until a key, click, tap or controller button, or 8 seconds.
+- If the room list can't connect (`NetworkSession.LobbyFailed`), it says COULDN'T REACH THE MATCH SERVER and retries every 5 seconds; practice still works offline.
+
+### Player-typed text
+
+Names and match titles are cleaned (`Core/TextRules.CleanName`: no `<` or `>`, control characters or runs of spaces; at most 20 characters for a name, 32 for a title) by the menu as they're typed and saved, and by the host for every name it's sent (`Manager.RPC_Register`), so nobody can put rich text tags into other players' screens. Room titles from other machines are escaped in the room list, names in the kill feed, scoreboard and award cards, and name tags render as plain text.
 
 ## Combat HUD
 
@@ -58,6 +80,9 @@ Laid out by `UITheme.StyleHud` on the map's `HUD` prefab when the map loads (the
 - **Death screen** (`FeedbackUI.ShowDeath`): ELIMINATED BY and the killer's name, the weapon (and CAPSHOT), and a respawn countdown. The countdown starts when the kill feed message arrives and runs `Manager.respawnTime`, so it's an estimate of the host's respawn; at zero it reads RESPAWNING until the body appears. A fall reads YOU FELL, your own grenade SELF-ELIMINATED.
 - **Ultrawide:** the HUD and kill feed keep to a centred area no wider than twice the height (`HudRules.SafeInset`), so on 21:9 and wider the corners don't drift away from the crosshair. Full-screen effects (damage flash, low-health edge) still cover the whole screen.
 - The player's own name and the kills / deaths lines are still in the prefab and still written to, but not drawn (`Text.enabled = false`); the scoreboard and score strip carry that information. The XP popup is copied from the Kills text and turns its copy back on.
+- **Message popup** (under the callouts, `Manager.ShowMessage`): messages take turns by importance (`Core/PopupQueue`). Urgent (CONNECTION LOST, a host change) show at once and clear the rest; info (team, STUCK!, match state) wait their turn but cut an XP message short; XP replaces XP and waits behind info. Repeats are dropped, at most 3 wait, and a message holds 1 s instead of 1.5 s while others wait.
+- **Scoreboard** (`Manager.Scoreboard`): level, name (YOU, ping), cap shots (gold when above 0; the host counts them in `PlayerStats.Capshots`), score (KILLS, or CAPS in Cap Grab) and deaths. Ties are ordered by cap shots, then fewer deaths, then join order, the same on every machine. Rows are made once and reused.
+- **FPS counter** (`FpsCounter`): bottom centre, clear of the kill feed.
 
 ## Combat feedback
 
@@ -75,7 +100,7 @@ Local presentation driven only by the host's RPCs, so it shows what the host dec
 - **Kill sound once:** it plays with the kill's hit confirmation. The kill feed plays it only when that can't have arrived because the shooter's body is gone (a trade, or a grenade thrown before dying) and none has just played (`HudRules.KillSoundFallback`).
 - **ELIMINATED line:** under the crosshair, from the kill feed, the victim's name (gold for a cap shot); kills within 1.6 s list up to three names together.
 - **Damage:** a red glow at the screen's edges (the middle stays clear) and a red arc round the crosshair towards each source, which keeps pointing there as you turn. Hits within 35 degrees of a showing arc refresh it (`HudRules.SameDirection`); up to four at once. A grenade points at the blast, including your own; one stuck to you has no direction.
-- **Kill feed:** names escaped (`ChatUI.Escape`), weapons upper case, gold only for cap shots, your own name in the accent in free for all (team colours in team modes) and an accent stripe on rows involving you. A death nobody else caused reads "[FELL]  NAME". New rows slide in.
+- **Kill feed:** names escaped (`TextRules.Escape`), weapons upper case, gold only for cap shots, your own name in the accent in free for all (team colours in team modes) and an accent stripe on rows involving you. A death nobody else caused reads "[FELL]  NAME". New rows slide in.
 - While the HUD is hidden (dead), markers aren't started, so nothing replays on the next spawn; sounds and the kill feed still play.
 
 ## Player camera and look (`Look`, `Player.UpdateCamera`, local player only)

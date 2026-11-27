@@ -26,6 +26,8 @@ public class NetworkSession : MonoBehaviour, INetworkRunnerCallbacks
 
     // The sessions listed in the lobby, newest first as Photon sends them
     public static event Action<List<SessionInfo>> SessionListUpdated;
+    // Joining the session lobby failed (no connection, or Photon unreachable): the menu says so and retries
+    public static event Action LobbyFailed;
 
     private static NetworkSession Instance
     {
@@ -78,6 +80,7 @@ public class NetworkSession : MonoBehaviour, INetworkRunnerCallbacks
         {
             Debug.LogWarning($"Couldn't join the session lobby: {result.ShutdownReason} {result.ErrorMessage}");
             if (session.runner == lobbyRunner) session.runner = null;
+            LobbyFailed?.Invoke();
         }
     }
 

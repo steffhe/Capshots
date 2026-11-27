@@ -376,6 +376,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
             p.hat = s.Hat;
             p.face = s.Face;
             p.ready = s.Ready;
+            p.capshots = s.Capshots;
             list.Add(p);
         }
         list.Sort((a, b) => a.actor.CompareTo(b.actor));
@@ -493,8 +494,10 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         if (!Stats.ContainsKey(player)) AddPlayer(player);
 
         PlayerStats stats = Stats[player];
-        if (username != null && username.Length > 20) username = username.Substring(0, 20);
-        stats.Username = string.IsNullOrWhiteSpace(username) ? "PLAYER " + player.PlayerId : username;
+        // Cleaned here, on the host, so no client can put rich text tags into everyone's kill feed,
+        // scoreboard or name tags (TextRules)
+        username = TextRules.CleanName(username);
+        stats.Username = username.Length == 0 ? "PLAYER " + player.PlayerId : username;
         stats.Level = Mathf.Max(1, level);
         stats.Hat = (byte)Hats.Wearable(hat, level);
         stats.Face = (byte)Faces.Wearable(face, level);
@@ -581,6 +584,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
                         PlayerStats stats = Stats[player];
                         stats.Kills = 0;
                         stats.Deaths = 0;
+                        stats.Capshots = 0;
                         Stats.Set(player, stats);
                     }
                     MatchTime = matchlength;
@@ -628,6 +632,8 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
             // In Gun Game only gun kills move you up the ladder (Manager.GunGame.cs).
             bool scores = IsCapGrab ? false : IsGunGame ? GunGameRules.Counts(weaponName, PlasmaWeaponName) : true;
             if (killer.IsRealPlayer && killer != victim && scores) ChangeStats(killer, 1, 0);
+            // Every cap shot kill counts on the scoreboard, whether or not the mode scores it
+            if (killer.IsRealPlayer && killer != victim && headshot) CountCapshot(killer);
             CountStreaks(victim, killer, out multiKill, out streak, out endedStreak);
             CountForAwards(killer, victim, weaponName, headshot, streak);
         }
@@ -665,6 +671,14 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         streaks[killer] = count;
         multiKill = count.multiKill;
         streak = count.streak;
+    }
+
+    private void CountCapshot(PlayerRef player)
+    {
+        PlayerStats stats;
+        if (!Stats.TryGet(player, out stats)) return;
+        stats.Capshots += 1;
+        Stats.Set(player, stats);
     }
 
     private void ChangeStats(PlayerRef player, int kills, int deaths)
@@ -789,7 +803,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
     {
         if (matchEnded) return false;
         bool timedOut = reason == ShutdownReason.ConnectionTimeout || reason == ShutdownReason.PhotonCloudTimeout || reason == ShutdownReason.OperationTimeout;
-        ShowMessage(timedOut ? "CONNECTION LOST" : "THE HOST LEFT THE MATCH");
+        ShowMessage(timedOut ? "CONNECTION LOST" : "THE HOST LEFT THE MATCH", false, PopupQueue.Kind.Urgent);
         return true;
     }
 

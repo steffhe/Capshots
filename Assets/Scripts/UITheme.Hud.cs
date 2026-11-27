@@ -297,8 +297,8 @@ public static partial class UITheme
         if (header != null)
         {
             Image image = header.GetComponent<Image>();
-            Round(image, ControlRadius);
-            if (image != null) image.color = Panel;
+            // The menus' panel with its corner brackets
+            PanelChrome(image, false);
             StyleText(header.Find("Mode")?.GetComponent<Text>(), 22, TextColor);
             StyleText(header.Find("Map")?.GetComponent<Text>(), 15, MutedText);
         }
@@ -307,11 +307,12 @@ public static partial class UITheme
         if (card != null)
         {
             Image image = card.GetComponent<Image>();
+            Round(image, Space1);
             if (image != null) image.color = Surface;
             foreach (Text text in card.GetComponentsInChildren<Text>(true))
             {
                 bool tag = text.name.EndsWith("Tag");
-                StyleText(text, 15, tag ? MutedText : TextColor);
+                StyleText(text, tag ? MenuCaptionSize : MenuLabelSize, tag ? MutedText : TextColor);
                 if (text.name == "Level") text.color = AccentText;
             }
             Image icon = card.Find("Icon")?.GetComponent<Image>();

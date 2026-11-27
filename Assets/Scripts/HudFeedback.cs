@@ -21,6 +21,8 @@ using UnityEngine.UI;
 //    out, with a ring), a cap shot kill (gold, heaviest, with the ring and the cap logo and CAPSHOT
 //    stamped just above), and a spawn shield (small, light blue). FeedbackUI decides what to show,
 //    once a frame, from the host's confirmations.
+//  - The crosshair's colour, size, dot and spread ticks follow the settings (GameSettings.Crosshair*),
+//    live while the settings are open.
 //  - Ultrawide screens: the HUD keeps to a centred area (HudRules.SafeInset), so health and the gun
 //    stay near the crosshair.
 // Everything is safe to call when there's no HUD (static methods do nothing).
@@ -98,6 +100,11 @@ public class HudFeedback : MonoBehaviour
 
     private RectTransform[] ticks;
     private Graphic[] tickGraphics;
+    // The centre dot (styled in UITheme.StyleHud; Weapon fades it while aiming), and the settings' look
+    private Image dot;
+    private Color crosshairColour = Color.white;
+    private float crosshairSize = 1f;
+    private bool showTicks = true;
     private float gap, kick, tickAlpha;
     private int crosshairFrame = -1;
     private const float MinGap = 7f, MaxGap = 90f;
@@ -146,6 +153,7 @@ public class HudFeedback : MonoBehaviour
     private void OnDestroy()
     {
         if (Instance == this) Instance = null;
+        GameSettings.CrosshairChanged -= ApplyCrosshairSettings;
     }
 
     private void Setup(RectTransform healthBar, Image healthTrack, Text healthValue, Text weaponLabel, Transform crosshair,
@@ -178,6 +186,10 @@ public class HudFeedback : MonoBehaviour
         if (crosshair != null && ticks == null) BuildTicks(crosshair);
         if (crosshair != null && killRing == null) BuildKillConfirm(crosshair);
         if (crosshair != null && marks == null) BuildHitMarker(crosshair);
+        if (crosshair != null) dot = crosshair.Find("Dot")?.GetComponent<Image>();
+        GameSettings.CrosshairChanged -= ApplyCrosshairSettings;
+        GameSettings.CrosshairChanged += ApplyCrosshairSettings;
+        ApplyCrosshairSettings();
     }
 
     private void BuildMeter(RectTransform ammo)
@@ -649,6 +661,29 @@ public class HudFeedback : MonoBehaviour
 
     #region Crosshair
 
+    // The crosshair as the settings have it: colour, size, the dot and the spread ticks
+    private void ApplyCrosshairSettings()
+    {
+        crosshairColour = GameSettings.CrosshairColour;
+        crosshairSize = GameSettings.CrosshairSize;
+        showTicks = GameSettings.CrosshairTicks;
+        if (dot != null)
+        {
+            dot.enabled = GameSettings.CrosshairDot;
+            dot.color = new Color(crosshairColour.r, crosshairColour.g, crosshairColour.b, 0.92f);
+            dot.rectTransform.sizeDelta = Vector2.one * Mathf.Round(5f * crosshairSize);
+        }
+        if (ticks != null)
+        {
+            for (int i = 0; i < ticks.Length; i++)
+            {
+                float length = Mathf.Round(8f * crosshairSize), width = Mathf.Max(2f, Mathf.Round(2f * crosshairSize));
+                ticks[i].sizeDelta = i % 2 == 0 ? new Vector2(width, length) : new Vector2(length, width);
+                tickGraphics[i].color = new Color(crosshairColour.r, crosshairColour.g, crosshairColour.b, 0.8f);
+            }
+        }
+    }
+
     // The spread's reach on screen, in canvas units. The shot's direction is forward * 1000 plus up
     // to 'bloom' sideways (Weapon.Fire), so tan(angle) = bloom / 1000.
     private float SpreadToPixels(float bloom)
@@ -669,7 +704,7 @@ public class HudFeedback : MonoBehaviour
             kick = Mathf.MoveTowards(kick, 0f, dt * 40f);
             gap = Mathf.Lerp(gap, targetGap, 1f - Mathf.Exp(-dt * 14f));
             float distance = gap + kick + 4f;
-            float alpha = live ? tickAlpha : 0f;
+            float alpha = live && showTicks ? tickAlpha : 0f;
             for (int i = 0; i < ticks.Length; i++)
             {
                 Vector2 direction = i == 0 ? Vector2.up : i == 1 ? Vector2.right : i == 2 ? Vector2.down : Vector2.left;

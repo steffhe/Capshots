@@ -335,6 +335,9 @@ public partial class Launcher
         if (usernameField.textComponent != null) usernameField.textComponent.fontStyle = FontStyle.Bold;
         // Left out of controller navigation (moving onto it would start typing): the pencil button edits it
         usernameField.navigation = new Navigation { mode = Navigation.Mode.None };
+        // As long as everyone else will see it, and no tag brackets (TextRules)
+        usernameField.characterLimit = TextRules.MaxNameLength;
+        usernameField.onValidateInput += (string current, int at, char c) => TextRules.AllowedInName(c) ? c : '\0';
         usernameField.onEndEdit.AddListener(_ =>
         {
             VerifyUsername();

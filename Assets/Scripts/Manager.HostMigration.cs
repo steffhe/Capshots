@@ -134,6 +134,7 @@ public partial class Manager
             Level = p.profile.level,
             Kills = p.kills,
             Deaths = p.deaths,
+            Capshots = p.capshots,
             Team = p.team,
             Ping = 0,
             Hat = (byte)p.hat,
@@ -153,6 +154,7 @@ public partial class Manager
 
         stats.Kills = p.kills;
         stats.Deaths = p.deaths;
+        stats.Capshots = p.capshots;
         if (IsTeamMode) stats.Team = p.team;
         // Still ready in a lobby that starts over on the new host
         stats.Ready = p.ready;

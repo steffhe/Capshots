@@ -968,6 +968,8 @@ public class Player : NetworkBehaviour
         string name = manager.GetPlayerName(ActorId);
         if (name == shownName) return;
         shownName = name;
+        // The host has cleaned the name; plain text anyway, so nothing in it is read as a tag
+        playerUsername.richText = false;
         playerUsername.text = name;
         playerProfile = new ProfileData(name, manager.GetPlayerLevel(ActorId), 0, 150f, 150f);
     }

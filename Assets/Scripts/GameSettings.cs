@@ -1,7 +1,8 @@
 using UnityEngine;
 
 // Player settings. Mouse sensitivity is saved in the profile (profile.json), where it always was;
-// everything else is stored in PlayerPrefs.
+// everything else is stored in PlayerPrefs (look, audio, graphics, colours, the FPS counter, the
+// crosshair, sprint mode and camera effects).
 public static class GameSettings
 {
     public const float MinSensitivity = 10f;
@@ -184,7 +185,7 @@ public static class GameSettings
     // A match recolours everyone at once (Manager)
     public static event System.Action ColoursChanged;
 
-    // A frame rate readout in the top right corner (FpsCounter)
+    // A frame rate readout at the bottom of the screen (FpsCounter)
     private const string ShowFpsKey = "settings.showFps";
     public static bool ShowFps
     {
@@ -231,6 +232,53 @@ public static class GameSettings
         get => PlayerPrefs.GetInt(ScreenShakeKey, 1) == 1;
         set { PlayerPrefs.SetInt(ScreenShakeKey, value ? 1 : 0); PlayerPrefs.Save(); }
     }
+
+    #region Crosshair
+
+    // The crosshair's colour (an index into CrosshairColours), whether it has the centre dot and the
+    // spread ticks, and its size. Read by HudFeedback, which redraws it when CrosshairChanged fires.
+    private const string CrosshairColourKey = "settings.crosshairColour";
+    private const string CrosshairDotKey = "settings.crosshairDot";
+    private const string CrosshairTicksKey = "settings.crosshairTicks";
+    private const string CrosshairSizeKey = "settings.crosshairSize";
+    public const float MinCrosshairSize = 0.75f, MaxCrosshairSize = 1.5f;
+
+    // Picked to stand out against the maps: white first (the default), then the usual alternatives
+    public static readonly string[] CrosshairColourNames = { "WHITE", "GREEN", "YELLOW", "CYAN", "MAGENTA" };
+    public static readonly Color[] CrosshairColours =
+    {
+        new Color(1f, 1f, 1f), new Color(0.35f, 1f, 0.35f), new Color(1f, 0.95f, 0.3f), new Color(0.3f, 0.95f, 1f), new Color(1f, 0.4f, 1f),
+    };
+
+    public static int CrosshairColourIndex
+    {
+        get => Mathf.Clamp(PlayerPrefs.GetInt(CrosshairColourKey, 0), 0, CrosshairColours.Length - 1);
+        set { PlayerPrefs.SetInt(CrosshairColourKey, Mathf.Clamp(value, 0, CrosshairColours.Length - 1)); PlayerPrefs.Save(); CrosshairChanged?.Invoke(); }
+    }
+
+    public static Color CrosshairColour => CrosshairColours[CrosshairColourIndex];
+
+    public static bool CrosshairDot
+    {
+        get => PlayerPrefs.GetInt(CrosshairDotKey, 1) == 1;
+        set { PlayerPrefs.SetInt(CrosshairDotKey, value ? 1 : 0); PlayerPrefs.Save(); CrosshairChanged?.Invoke(); }
+    }
+
+    public static bool CrosshairTicks
+    {
+        get => PlayerPrefs.GetInt(CrosshairTicksKey, 1) == 1;
+        set { PlayerPrefs.SetInt(CrosshairTicksKey, value ? 1 : 0); PlayerPrefs.Save(); CrosshairChanged?.Invoke(); }
+    }
+
+    public static float CrosshairSize
+    {
+        get => Mathf.Clamp(PlayerPrefs.GetFloat(CrosshairSizeKey, 1f), MinCrosshairSize, MaxCrosshairSize);
+        set { PlayerPrefs.SetFloat(CrosshairSizeKey, Mathf.Clamp(value, MinCrosshairSize, MaxCrosshairSize)); PlayerPrefs.Save(); CrosshairChanged?.Invoke(); }
+    }
+
+    public static event System.Action CrosshairChanged;
+
+    #endregion
 
     public static string QualityName => QualitySettings.names.Length > 0 ? QualitySettings.names[Quality].ToUpper() : "-";
 

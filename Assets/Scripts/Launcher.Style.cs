@@ -417,6 +417,8 @@ public partial class Launcher
             roomnameField.transform.SetParent(card, false);
             UITheme.Row((RectTransform)roomnameField.transform, 22f, 40f);
             UITheme.StyleInput(roomnameField, "OPTIONAL");
+            roomnameField.characterLimit = TextRules.MaxTitleLength;
+            roomnameField.onValidateInput += (string current, int at, char c) => TextRules.AllowedInName(c) ? c : '\0';
         }
         RectTransform nameCard = anchor.Find("Name Card") as RectTransform;
 
