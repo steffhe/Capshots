@@ -381,6 +381,7 @@ public class Weapon : NetworkBehaviour
     // Presentation only: gun model position and aiming
     void Update()
     {
+        UpdateMuzzleFlash();
         if (Object == null || !Object.IsValid || currentWeapon == null) return;
 
         // Reloading is animated by DroneHands: the gun stays out and its energy cell is swapped
@@ -919,7 +920,7 @@ public class Weapon : NetworkBehaviour
     // other short. Not parented to the gun, so it stays where it was fired. Beams are reused (ShotEffects).
     static MaterialPropertyBlock beamBlock;
 
-    void ShotLine(Vector3 hitPos, bool pellet)
+    void ShotLine(Vector3 hitPos, Gun gun)
     {
         if (lineRend == null) return;
 
@@ -930,8 +931,9 @@ public class Weapon : NetworkBehaviour
         beam.positionCount = 2;
         beam.SetPosition(0, lineRend.transform.position);
         beam.SetPosition(1, hitPos);
-        // Pellets are thinner and gone sooner, so a shotgun blast doesn't fill the screen
-        float width = lineRend.widthMultiplier * (pellet ? 0.5f : 1f);
+        // Each form's own weight of beam (the shotgun's pellets thin and quick, so a blast doesn't fill
+        // the screen; the sniper rifle's thick and lingering)
+        float width = lineRend.widthMultiplier * gun.beamWidth;
         beam.widthMultiplier = width;
         beam.enabled = true;
 
@@ -943,7 +945,7 @@ public class Weapon : NetworkBehaviour
         block.SetColor("_Color", new Color(color.r, color.g, color.b, 0.85f));     // built-in shaders
         beam.SetPropertyBlock(block);
 
-        fade.Begin(beam, width, pellet ? 0.15f : 0.3f);
+        fade.Begin(beam, width, gun.beamTime);
     }
 
     // The colour this player's shots glow in: the team colour in Team Deathmatch, otherwise the player's
@@ -1145,7 +1147,7 @@ public class Weapon : NetworkBehaviour
     void PlayShotEffects(Vector3 endPoint, Vector3 hitNormal, bool hitWorld, bool first)
     {
         Gun gun = loadout[EquippedIndex];
-        ShotLine(endPoint, gun.pellets > 1);
+        ShotLine(endPoint, gun);
 
         // A force field ripples where it's hit instead of getting a scorch mark
         if (hitWorld && !BoundaryField.Ripple(endPoint))
@@ -1159,7 +1161,7 @@ public class Weapon : NetworkBehaviour
 
         PlayerSounds sounds = GetComponent<PlayerSounds>();
         if (sounds != null) sounds.PlayShot(gun);
-        MuzzleFlash();
+        MuzzleFlash(gun);
         LastShotTime = Time.time;
         if (HasInputAuthority) HudFeedback.Fired(gun.crosshairKick);
 
@@ -1171,22 +1173,96 @@ public class Weapon : NetworkBehaviour
         }
     }
 
-    void MuzzleFlash()
+    // The muzzle flash: one light and one glowing core per player, made on the first shot and reused,
+    // faded out over the form's flashTime in Update (UpdateMuzzleFlash). It used to be a new light
+    // destroyed after 0.04 s, which at a low frame rate could vanish before it was ever drawn.
+    Light flashLight;
+    Transform flashCore;
+    Renderer flashCoreRenderer;
+    MaterialPropertyBlock flashBlock;
+    float flashStart = -1f, flashDuration, flashPeak, flashCoreSize;
+    int flashFrame;
+    Color flashColor;
+
+    Vector3 MuzzlePosition => lineRend != null ? lineRend.transform.position : currentWeapon.transform.position + currentWeapon.transform.forward * 0.5f;
+
+    void MuzzleFlash(Gun gun)
     {
         if (currentWeapon == null) return;
 
-        Vector3 muzzle = lineRend != null ? lineRend.transform.position : currentWeapon.transform.position + currentWeapon.transform.forward * 0.5f;
+        if (flashLight == null)
+        {
+            // Under this body, so it goes with it
+            GameObject flash = new GameObject("Muzzle Flash");
+            flash.transform.SetParent(transform, false);
+            flashLight = flash.AddComponent<Light>();
+            flashLight.type = LightType.Point;
+            flashLight.shadows = LightShadows.None;
 
-        GameObject flash = new GameObject("Muzzle Flash");
-        flash.transform.position = muzzle;
-        Light light = flash.AddComponent<Light>();
-        light.type = LightType.Point;
-        light.color = ShotColor();
-        light.range = 6f;
-        light.intensity = Random.Range(3f, 4.5f);
-        light.shadows = LightShadows.None;
+            GameObject core = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            core.name = "Muzzle Flash Core";
+            Destroy(core.GetComponent<Collider>());
+            core.transform.SetParent(transform, false);
+            flashCoreRenderer = core.GetComponent<Renderer>();
+            flashCoreRenderer.sharedMaterial = DroneBody.GlowMaterial;
+            flashCoreRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            flashCoreRenderer.receiveShadows = false;
+            flashCore = core.transform;
+            flashBlock = new MaterialPropertyBlock();
+        }
 
-        Destroy(flash, 0.04f);
+        flashColor = ShotColor();
+        flashPeak = gun.flashIntensity * Random.Range(0.85f, 1.15f);
+        flashDuration = Mathf.Max(0.01f, gun.flashTime);
+        flashStart = Time.time;
+        flashFrame = Time.frameCount;
+        flashLight.color = flashColor;
+        flashLight.range = gun.flashRange;
+        flashLight.enabled = true;
+
+        // No core through the sniper scope: the gun model is enlarged to bring the scope to the eye, so
+        // the core would sit right in front of it
+        bool scoped = HasInputAuthority && isAiming && gun.scopeViewmodelFov > 0f;
+        flashCoreSize = scoped ? 0f : gun.flashSize;
+        bool core = flashCoreSize > 0f;
+        flashCore.gameObject.SetActive(core);
+        // Drawn with the gun: the viewmodel camera's layer for your own, so walls never cut it off
+        if (core) flashCore.gameObject.layer = currentWeapon.layer;
+        UpdateMuzzleFlash();
+    }
+
+    // Fades the muzzle flash, following the muzzle. Always shown for at least the frame it fired in.
+    void UpdateMuzzleFlash()
+    {
+        if (flashLight == null || !flashLight.enabled) return;
+        float t = (Time.time - flashStart) / flashDuration;
+        if (currentWeapon == null || (t >= 1f && Time.frameCount > flashFrame))
+        {
+            flashLight.enabled = false;
+            flashCore.gameObject.SetActive(false);
+            return;
+        }
+
+        float left = 1f - Mathf.Clamp01(t);
+        left *= left;
+        Vector3 muzzle = MuzzlePosition;
+        flashLight.transform.position = muzzle;
+        flashLight.intensity = flashPeak * left;
+
+        if (flashCoreSize > 0f)
+        {
+            // A bolt of plasma along the barrel, swelling a little as it burns out
+            Vector3 forward = currentWeapon.transform.forward;
+            float size = flashCoreSize * (1f + 0.5f * (1f - left));
+            flashCore.SetPositionAndRotation(muzzle + forward * size * 0.4f, Quaternion.LookRotation(forward));
+            flashCore.localScale = new Vector3(size, size, size * 1.8f) / Mathf.Max(0.0001f, transform.lossyScale.x);
+            Color glow = flashColor * (3f + flashPeak * 0.4f) * left;
+            flashCoreRenderer.GetPropertyBlock(flashBlock);
+            flashBlock.SetColor("_BaseColor", new Color(flashColor.r, flashColor.g, flashColor.b, 1f));
+            flashBlock.SetColor("_Color", new Color(flashColor.r, flashColor.g, flashColor.b, 1f));
+            flashBlock.SetColor("_EmissionColor", glow);
+            flashCoreRenderer.SetPropertyBlock(flashBlock);
+        }
     }
     #endregion
 }

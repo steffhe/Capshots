@@ -67,6 +67,18 @@ public class Gun : ScriptableObject
     // How far (HUD pixels) the spread ticks round the crosshair jump out with each shot
     public float crosshairKick = 5f;
 
+    [Header("Muzzle flash and beam")]
+    // The flash of light at the muzzle: brightness, reach (metres) and how long it takes to fade
+    // (it always shows for at least one frame)
+    public float flashIntensity = 3.75f;
+    public float flashRange = 6f;
+    public float flashTime = 0.04f;
+    // A glowing core of plasma at the muzzle (metres across), 0 for none
+    public float flashSize = 0f;
+    // The laser beam to where each shot (or pellet) landed: width, times the gun's line, and fade time
+    public float beamWidth = 1f;
+    public float beamTime = 0.3f;
+
     [Header("Movement")]
     // Movement speed multiplier while this gun is equipped, and while aiming with it
     public float moveSpeedMultiplier = 1f;

@@ -38,6 +38,12 @@ MonoBehaviour:
   shake: 1.4
   fovPunch: 2
   crosshairKick: 14
+  flashIntensity: 10
+  flashRange: 12
+  flashTime: 0.1
+  flashSize: 0.26
+  beamWidth: 1.8
+  beamTime: 0.6
   moveSpeedMultiplier: 0.85
   aimMoveSpeedMultiplier: 0.5
   scopeFov: 20
