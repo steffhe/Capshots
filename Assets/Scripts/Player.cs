@@ -1042,7 +1042,9 @@ public class Player : NetworkBehaviour
     // Host only. Applies a hit and reports whether it killed. bulletDirection and hitOffset (where
     // the bullet hit, relative to this player's position) throw the ragdoll on a kill. Leave them out
     // for damage that isn't a bullet: the ragdoll is then knocked away from the attacker.
-    public bool TakeDamage(int damage, PlayerRef attacker, string weaponName, bool headshot, Vector3 bulletDirection = default, Vector3 hitOffset = default)
+    // damageSource is where the damage came from, for the victim's damage direction marker, when that
+    // isn't the attacker (a grenade's blast); left out, it's the attacker, and none for your own.
+    public bool TakeDamage(int damage, PlayerRef attacker, string weaponName, bool headshot, Vector3 bulletDirection = default, Vector3 hitOffset = default, Vector3? damageSource = null)
     {
         if (!HasStateAuthority || Dead || IsProtected) return false;
 
@@ -1053,7 +1055,12 @@ public class Player : NetworkBehaviour
         Player attackerPlayer = FindPlayer(attacker);
         // Bots have no screen to flash; they turn to face whoever hit them instead
         if (IsBot) { if (brain != null) brain.OnDamaged(attackerPlayer); }
-        else RPC_Damaged((float)damage / maxHealth, attackerPlayer != null ? attackerPlayer.transform.position : transform.position, attackerPlayer != null && attackerPlayer != this);
+        else
+        {
+            bool fromOther = attackerPlayer != null && attackerPlayer != this;
+            Vector3 from = damageSource ?? (fromOther ? attackerPlayer.transform.position : transform.position);
+            RPC_Damaged((float)damage / maxHealth, from, damageSource.HasValue || fromOther);
+        }
 
         if (Health > 0) return false;
 

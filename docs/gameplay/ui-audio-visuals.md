@@ -40,11 +40,29 @@ Laid out by `UITheme.StyleHud` on the map's `HUD` prefab when the map loads (the
 - **Colour means one thing each** (tokens in `UITheme.Hud`): white and muted white for information, accent blue for you and the interface, `Capshot` gold only for cap shots, `Danger` red only for being hurt or out of energy, `Warning` amber for running low, `Shield` light blue for spawn protection. Health is white, amber from half and red from a quarter (`HudRules.StateFor`), as steps rather than a blend.
 - **Energy meter:** one segment per shot in a full cell; a form with more than 12 (the machine gun) gets a smooth bar (`HudRules.EnergySegments`). The segment being refilled is drawn faint until that shot is ready. Swapping the cell sweeps an accent bar across the meter.
 - **Form strip:** one slot per form with its number key; the active one is lit and underlined, a change of form fills the underline in under the new one. In Gun Game the forms the ladder hasn't given you are dimmed without keys. Hidden with touch controls (the SWAP button covers it), as is the grenade.
-- **Hit feedback, three tiers:** a hit is a white marker, a head hit a gold one (`Weapon.HitPlayer`); a kill also sends a ring out from the crosshair, white, or gold for a cap shot, and a cap shot kill stamps the cap logo and CAPSHOT just above the crosshair (`HudFeedback.Confirmed`, from `Weapon.RPC_HitConfirm`, so only for hits the host confirmed).
 - **Score strip:** team modes show your team on the left, the other on the right, and "YOU'RE BLUE · FIRST TO 50 KILLS". Free for all and Cap Grab show YOU against the LEADER, or the 2ND while you lead outright (`HudRules.OpponentLabel`). Gun Game shows the form each is on ("2/4") and the kills to the next form. The plates show from the countdown on; the goal line throughout.
 - **Death screen** (`FeedbackUI.ShowDeath`): ELIMINATED BY and the killer's name, the weapon (and CAPSHOT), and a respawn countdown. The countdown starts when the kill feed message arrives and runs `Manager.respawnTime`, so it's an estimate of the host's respawn; at zero it reads RESPAWNING until the body appears. A fall reads YOU FELL, your own grenade SELF-ELIMINATED.
 - **Ultrawide:** the HUD and kill feed keep to a centred area no wider than twice the height (`HudRules.SafeInset`), so on 21:9 and wider the corners don't drift away from the crosshair. Full-screen effects (damage flash, low-health edge) still cover the whole screen.
 - The player's own name and the kills / deaths lines are still in the prefab and still written to, but not drawn (`Text.enabled = false`); the scoreboard and score strip carry that information. The XP popup is copied from the Kills text and turns its copy back on.
+
+## Combat feedback
+
+Local presentation driven only by the host's RPCs, so it shows what the host decided (never a predicted hit that didn't count) and each event once.
+
+| Event | Source (host) | Shown by | When |
+| --- | --- | --- | --- |
+| Hit / kill confirmation | `Weapon.RPC_HitConfirm` → shooter (once per target a shot or blast hurt; host forward ticks only, per-target damage merged per shot) | `FeedbackUI.ConfirmHit` → `HudFeedback.HitMarker`, `Confirmed`; hit / kill sound | Tick of the hit |
+| Spawn shield hit | `Weapon.RPC_ShieldHit` → shooter | `FeedbackUI.ShieldHit` | Tick of the hit |
+| Damage taken | `Player.RPC_Damaged` → victim (from the attacker, or a grenade's blast via `TakeDamage`'s `damageSource`) | `FeedbackUI.Damaged`: edge flash, direction arc | Tick of the hit |
+| Kill | `Manager.RPC_KillFeed` → everyone (from `FinishDeath`, the tick after the kill) | Kill feed row; for the killer "ELIMINATED name", callouts, XP; for the victim the death screen | Tick after the kill |
+
+- **One per frame:** confirmations that land in the same frame (a shotgun blast or grenade catching several players) are merged in `FeedbackUI.LateUpdate`: one marker for the strongest (`HudRules.TierFor`) and one sound, and one view punch (`Weapon.RPC_HitConfirm`).
+- **Hit marker tiers** (`HudFeedback`, four diagonal ticks that snap in round the crosshair): hit (white, sized and held by the hit's share of the target's health), head hit (gold, longer), kill (white, heavier, drifting out, with a ring), cap shot kill (gold, heaviest, with a gold ring and the cap logo and CAPSHOT stamped above the crosshair), spawn shield (small, light blue). Red is never used for your hits. The scene's own `Hitmark` image is kept hidden.
+- **Kill sound once:** it plays with the kill's hit confirmation. The kill feed plays it only when that can't have arrived because the shooter's body is gone (a trade, or a grenade thrown before dying) and none has just played (`HudRules.KillSoundFallback`).
+- **ELIMINATED line:** under the crosshair, from the kill feed, the victim's name (gold for a cap shot); kills within 1.6 s list up to three names together.
+- **Damage:** a red glow at the screen's edges (the middle stays clear) and a red arc round the crosshair towards each source, which keeps pointing there as you turn. Hits within 35 degrees of a showing arc refresh it (`HudRules.SameDirection`); up to four at once. A grenade points at the blast, including your own; one stuck to you has no direction.
+- **Kill feed:** names escaped (`ChatUI.Escape`), weapons upper case, gold only for cap shots, your own name in the accent in free for all (team colours in team modes) and an accent stripe on rows involving you. A death nobody else caused reads "[FELL]  NAME". New rows slide in.
+- While the HUD is hidden (dead), markers aren't started, so nothing replays on the next spawn; sounds and the kill feed still play.
 
 ## Player camera and look (`Look`, `Player.UpdateCamera`, local player only)
 

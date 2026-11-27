@@ -112,37 +112,38 @@ public static partial class UITheme
         }
     }
 
-    private static Sprite ring;
+    private static Sprite ring, thinRing;
 
     // A white ring (a circle's outline, a tenth of its width thick), smooth-edged. The HUD's kill
     // confirmation expands one round the crosshair.
-    public static Sprite Ring
+    public static Sprite Ring => ring != null ? ring : (ring = MakeRing("UITheme Ring", 64, 0.1f));
+
+    // A large thin ring (3% of its width thick). Drawn as a radial fill, a short arc of it is a damage
+    // direction marker round the crosshair (FeedbackUI).
+    public static Sprite ThinRing => thinRing != null ? thinRing : (thinRing = MakeRing("UITheme Thin Ring", 256, 0.03f));
+
+    private static Sprite MakeRing(string name, int size, float thicknessFraction)
     {
-        get
+        float outer = size / 2f - 1f;
+        float thickness = size * thicknessFraction;
+        Texture2D tex = NewTexture(name, size, size);
+        Color32[] pixels = new Color32[size * size];
+        Vector2 centre = new Vector2(size / 2f, size / 2f);
+        for (int y = 0; y < size; y++)
         {
-            if (ring != null) return ring;
-            const int size = 64;
-            const float outer = size / 2f - 1f;
-            const float thickness = size / 10f;
-            Texture2D tex = NewTexture("UITheme Ring", size, size);
-            Color32[] pixels = new Color32[size * size];
-            Vector2 centre = new Vector2(size / 2f, size / 2f);
-            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
             {
-                for (int x = 0; x < size; x++)
-                {
-                    float d = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), centre);
-                    // Inside the band between outer - thickness and outer, with a pixel of soft edge
-                    float alpha = Mathf.Clamp01(outer - d + 0.5f) * Mathf.Clamp01(d - (outer - thickness) + 0.5f);
-                    pixels[y * size + x] = new Color32(255, 255, 255, (byte)(alpha * 255f));
-                }
+                float d = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), centre);
+                // Inside the band between outer - thickness and outer, with a pixel of soft edge
+                float alpha = Mathf.Clamp01(outer - d + 0.5f) * Mathf.Clamp01(d - (outer - thickness) + 0.5f);
+                pixels[y * size + x] = new Color32(255, 255, 255, (byte)(alpha * 255f));
             }
-            tex.SetPixels32(pixels);
-            tex.Apply();
-            ring = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
-            ring.name = tex.name;
-            return ring;
         }
+        tex.SetPixels32(pixels);
+        tex.Apply();
+        Sprite sprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+        sprite.name = name;
+        return sprite;
     }
 
     private static Texture2D NewTexture(string name, int width, int height)

@@ -15,9 +15,12 @@ using UnityEngine.UI;
 //    active one lit and underlined, a change of form filling in under the one it's becoming, and in
 //    Gun Game the forms you can't pick dimmed.
 //  - Crosshair: four small ticks round the dot that sit where the gun's spread currently reaches
-//    (wider while moving or in the air, tight while aiming) and kick out a little with each shot. A
-//    kill sends a ring out from the crosshair, gold for a cap shot, and a cap shot kill also stamps
-//    the cap logo and CAPSHOT just above it.
+//    (wider while moving or in the air, tight while aiming) and kick out a little with each shot.
+//  - Hit marker: four diagonal ticks that snap in round the crosshair, in five tiers that each look
+//    different even at a glance (see HitTier): a hit, a head hit (gold), a kill (heavier, drifting
+//    out, with a ring), a cap shot kill (gold, heaviest, with the ring and the cap logo and CAPSHOT
+//    stamped just above), and a spawn shield (small, light blue). FeedbackUI decides what to show,
+//    once a frame, from the host's confirmations.
 //  - Ultrawide screens: the HUD keeps to a centred area (HudRules.SafeInset), so health and the gun
 //    stay near the crosshair.
 // Everything is safe to call when there's no HUD (static methods do nothing).
@@ -100,6 +103,13 @@ public class HudFeedback : MonoBehaviour
     private const float MinGap = 7f, MaxGap = 90f;
     private float targetGap = MinGap;
 
+    // The hit marker: four diagonal ticks (Weapon's scene Hitmark image is no longer shown)
+    private RectTransform[] marks;
+    private Image[] markImages;
+    private float markTime = -1f;
+    private HudRules.HitTier markTier;
+    private float markStrength;
+
     // Kill confirmation: a ring out from the crosshair, and the cap shot stamp above it
     private Image killRing;
     private float killRingTime = -1f;
@@ -123,6 +133,15 @@ public class HudFeedback : MonoBehaviour
     }
 
     private void Awake() => Instance = this;
+
+    // The HUD shows again (a new spawn): nothing left over from the last life's hits
+    private void OnEnable()
+    {
+        markTime = killRingTime = stampTime = -1f;
+        if (markImages != null) foreach (Image mark in markImages) mark.enabled = false;
+        if (killRing != null) killRing.enabled = false;
+        if (stamp != null) stamp.gameObject.SetActive(false);
+    }
 
     private void OnDestroy()
     {
@@ -158,6 +177,7 @@ public class HudFeedback : MonoBehaviour
         if (ammo != null && meter == null) BuildMeter(ammo);
         if (crosshair != null && ticks == null) BuildTicks(crosshair);
         if (crosshair != null && killRing == null) BuildKillConfirm(crosshair);
+        if (crosshair != null && marks == null) BuildHitMarker(crosshair);
     }
 
     private void BuildMeter(RectTransform ammo)
@@ -223,6 +243,26 @@ public class HudFeedback : MonoBehaviour
         // Under the hit marker
         foreach (RectTransform rect in ticks) rect.SetAsFirstSibling();
         gap = MinGap;
+    }
+
+    private void BuildHitMarker(Transform crosshair)
+    {
+        marks = new RectTransform[4];
+        markImages = new Image[4];
+        for (int i = 0; i < 4; i++)
+        {
+            Image mark = UITheme.NewImage("Hit Mark " + i, crosshair, Color.white, 0f);
+            Outline outline = mark.gameObject.AddComponent<Outline>();
+            outline.effectColor = new Color(0f, 0f, 0f, 0.55f);
+            outline.effectDistance = new Vector2(1f, -1f);
+            RectTransform rect = mark.rectTransform;
+            rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
+            // Pointing out from the crosshair along the diagonals: up-right, down-right, down-left, up-left
+            rect.localEulerAngles = new Vector3(0f, 0f, -45f - 90f * i);
+            mark.enabled = false;
+            marks[i] = rect;
+            markImages[i] = mark;
+        }
     }
 
     private void BuildKillConfirm(Transform crosshair)
@@ -345,11 +385,22 @@ public class HudFeedback : MonoBehaviour
         Instance.kick = Mathf.Min(Instance.kick + amount, Mathf.Max(14f, amount));
     }
 
-    // The host confirmed one of the local player's hits (Weapon.RPC_HitConfirm). The hit marker itself
-    // is Weapon's; a kill adds the ring, a cap shot kill the stamp as well.
+    // Shows the hit marker for this frame's strongest confirmed hit (FeedbackUI merges them).
+    // strength is the hit's share of the target's health, 0 to 1: a bigger hit makes a bigger marker
+    // that holds a little longer, so machine gun hits tick and a sniper round lands.
+    public static void HitMarker(HudRules.HitTier tier, float strength)
+    {
+        // Not while the HUD is hidden (dead): it would freeze and play on the next spawn
+        if (Instance == null || Instance.marks == null || !Instance.isActiveAndEnabled) return;
+        Instance.markTier = tier;
+        Instance.markStrength = Mathf.Clamp01(strength);
+        Instance.markTime = 0f;
+    }
+
+    // A kill adds the ring, a cap shot kill the stamp as well (from FeedbackUI, with the marker)
     public static void Confirmed(bool headshot, bool killed)
     {
-        if (Instance == null || !killed) return;
+        if (Instance == null || !killed || !Instance.isActiveAndEnabled) return;
         HudFeedback hud = Instance;
         if (hud.killRing != null)
         {
@@ -628,6 +679,8 @@ public class HudFeedback : MonoBehaviour
             }
         }
 
+        UpdateHitMarker(dt);
+
         // The kill ring grows out and fades
         if (killRingTime >= 0f && killRing != null)
         {
@@ -659,6 +712,62 @@ public class HudFeedback : MonoBehaviour
                 stamp.gameObject.SetActive(false);
                 stampTime = -1f;
             }
+        }
+    }
+
+    // How each tier looks: tick length and width, how far out from the centre, how far it drifts out
+    // over its life (kills spread), and how long it pops in, holds and fades
+    private struct MarkStyle
+    {
+        public Color color;
+        public float length, width, distance, drift, pop, hold, fade;
+    }
+
+    private MarkStyle StyleFor(HudRules.HitTier tier, float strength)
+    {
+        switch (tier)
+        {
+            case HudRules.HitTier.Shield:
+                return new MarkStyle { color = UITheme.Shield, length = 6f, width = 2f, distance = 8f, drift = 0f, pop = 0.04f, hold = 0.1f, fade = 0.2f };
+            case HudRules.HitTier.Head:
+                return new MarkStyle { color = UITheme.Capshot, length = Mathf.Lerp(9f, 12f, strength), width = 3f, distance = 10f, drift = 0f, pop = 0.06f, hold = Mathf.Lerp(0.1f, 0.2f, strength), fade = 0.15f };
+            case HudRules.HitTier.Kill:
+                return new MarkStyle { color = Color.white, length = 13f, width = 3f, distance = 10f, drift = 7f, pop = 0.07f, hold = 0.3f, fade = 0.25f };
+            case HudRules.HitTier.CapshotKill:
+                return new MarkStyle { color = UITheme.Capshot, length = 15f, width = 3.5f, distance = 11f, drift = 9f, pop = 0.08f, hold = 0.45f, fade = 0.3f };
+            default:
+                return new MarkStyle { color = Color.white, length = Mathf.Lerp(7f, 11f, strength), width = 2f, distance = 9f, drift = 0f, pop = 0.05f, hold = Mathf.Lerp(0.05f, 0.16f, strength), fade = 0.12f };
+        }
+    }
+
+    private void UpdateHitMarker(float dt)
+    {
+        if (markTime < 0f || marks == null) return;
+        markTime += dt;
+        MarkStyle style = StyleFor(markTier, markStrength);
+        float life = style.pop + style.hold + style.fade;
+        if (markTime >= life)
+        {
+            markTime = -1f;
+            for (int i = 0; i < marks.Length; i++) markImages[i].enabled = false;
+            return;
+        }
+
+        // Snaps in from a little further out, then (for kills) drifts slowly outwards
+        float pop = Mathf.Clamp01(markTime / style.pop);
+        float snap = 1f - (1f - pop) * (1f - pop) * (1f - pop);
+        float distance = style.distance + 6f * (1f - snap) + style.drift * Mathf.Clamp01(markTime / life);
+        Color color = style.color;
+        color.a = markTime < style.pop + style.hold ? 1f : 1f - (markTime - style.pop - style.hold) / style.fade;
+        for (int i = 0; i < marks.Length; i++)
+        {
+            float angle = (45f - 90f * i) * Mathf.Deg2Rad;
+            Vector2 direction = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+            marks[i].sizeDelta = new Vector2(style.width, style.length);
+            // The tick's middle sits half its length beyond the gap
+            marks[i].anchoredPosition = direction * (distance + style.length / 2f);
+            markImages[i].color = color;
+            markImages[i].enabled = true;
         }
     }
 

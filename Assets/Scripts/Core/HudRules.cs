@@ -1,8 +1,10 @@
 using UnityEngine;
 
-// The arithmetic behind the combat HUD (HudFeedback, Manager.ScoreStrip), kept apart from the UI so
-// the EditMode tests can check it: the safe width on very wide screens, the energy meter's segments,
-// health states, and who the score strip compares you with.
+// The arithmetic behind the combat HUD (HudFeedback, FeedbackUI, Manager.ScoreStrip), kept apart from
+// the UI so the EditMode tests can check it: the safe width on very wide screens, the energy meter's
+// segments, health states, who the score strip compares you with, and how combat feedback is merged
+// (which hit marker a frame's hits make, which damage arcs share a direction, when the kill sound's
+// fallback plays).
 public static class HudRules
 {
     #region Safe width
@@ -84,6 +86,39 @@ public static class HudRules
     public static int CountdownSeconds(float remaining)
     {
         return remaining <= 0f ? 0 : Mathf.CeilToInt(remaining);
+    }
+
+    #endregion
+
+    #region Combat feedback
+
+    // The hit marker's tiers, weakest first: a spawn shield (the hit did nothing), a hit, a head hit,
+    // a kill, a cap shot kill
+    public enum HitTier { Shield, Hit, Head, Kill, CapshotKill }
+
+    // The one marker for everything the host confirmed in a frame: the strongest thing that happened
+    public static HitTier TierFor(bool hit, bool head, bool kill, bool capshotKill)
+    {
+        if (capshotKill) return HitTier.CapshotKill;
+        if (kill) return HitTier.Kill;
+        if (head) return HitTier.Head;
+        return hit ? HitTier.Hit : HitTier.Shield;
+    }
+
+    // Whether two damage directions (degrees) are close enough to share one arc
+    public static bool SameDirection(float angleA, float angleB, float within)
+    {
+        return Mathf.Abs(Mathf.DeltaAngle(angleA, angleB)) < within;
+    }
+
+    // The kill sound normally comes with the host's hit confirmation. The kill feed plays it instead
+    // only when that confirmation can't have arrived (the shooter's body is gone) and no kill sound
+    // has just played, so a kill is never silent and never heard twice.
+    public const float KillSoundGap = 0.3f;
+
+    public static bool KillSoundFallback(bool shooterBodyGone, float secondsSinceKillSound)
+    {
+        return shooterBodyGone && secondsSinceKillSound > KillSoundGap;
     }
 
     #endregion

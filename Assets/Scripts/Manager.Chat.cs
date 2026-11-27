@@ -20,32 +20,33 @@ public partial class Manager
                 if (player != null && player.ActorId == killer) player.Celebrate();
             }
         }
-        if (IsTeamMode)
-        {
-            FeedbackUI.AddKillFeed(GetPlayerName(killer), GetPlayerName(victim), weapon, headshot, killer == me || victim == me,
-                TeamHex(GetTeam(killer)), TeamHex(GetTeam(victim)));
-        }
-        else
-        {
-            FeedbackUI.AddKillFeed(GetPlayerName(killer), GetPlayerName(victim), weapon, headshot, killer == me || victim == me);
-        }
+        // A death nobody else caused (a fall, your own grenade) has no killer in the feed. Names are
+        // team coloured in team modes; in free for all yours is in the accent, the rest white.
+        bool byOther = killer >= 0 && killer != victim;
+        string killerName = byOther ? GetPlayerName(killer) : null;
+        string you = UITheme.Hex(UITheme.AccentText);
+        string killerColor = IsTeamMode ? TeamHex(GetTeam(killer)) : killer == me ? you : null;
+        string victimColor = IsTeamMode ? TeamHex(GetTeam(victim)) : victim == me ? you : null;
+        FeedbackUI.AddKillFeed(killerName, GetPlayerName(victim), weapon, headshot, killer == me || victim == me, killerColor, victimColor);
 
         // Streaks: a milestone, or a long one ended, goes in everyone's kill feed
         string streakName = KillStreaks.StreakName(streak);
         if (streakName != null && killer >= 0 && killer != me)
         {
-            FeedbackUI.AddKillFeedNote($"{GetPlayerName(killer)} IS ON A <color={FeedbackUI.CapshotColor}>{streakName}</color>  ({streak})");
+            FeedbackUI.AddKillFeedNote($"{ChatUI.Escape(GetPlayerName(killer))} IS ON A <color={UITheme.Hex(UITheme.Warning)}>{streakName}</color>  ({streak})");
         }
         bool shutdown = endedStreak >= KillStreaks.ShutdownStreak && killer >= 0 && killer != victim;
         if (shutdown && killer != me && victim != me)
         {
-            FeedbackUI.AddKillFeedNote($"{GetPlayerName(killer)} ENDED {GetPlayerName(victim)}'S STREAK OF {endedStreak}");
+            FeedbackUI.AddKillFeedNote($"{ChatUI.Escape(GetPlayerName(killer))} ENDED {ChatUI.Escape(GetPlayerName(victim))}'S STREAK OF {endedStreak}");
         }
 
         bool counts = state == GameState.Playing && !matchEnded;
         if (killer == me && victim != me)
         {
-            FeedbackUI.Kill(headshot);
+            // "ELIMINATED name" under the crosshair. The kill sound, ring and cap shot stamp already came
+            // with the host's hit confirmation (FeedbackUI.ConfirmHit), a tick earlier.
+            FeedbackUI.KillAnnounced(GetPlayerName(victim), headshot);
             // Kills during warmup and the countdown don't count
             if (counts)
             {
@@ -72,8 +73,7 @@ public partial class Manager
             if (counts) Summary.Died();
             FeedbackUI.Died();
             // Killed by someone else: their name. A fall or your own grenade says so instead of
-            // naming you as your own killer.
-            bool byOther = killer >= 0 && killer != victim;
+            // naming you as your own killer (byOther, above).
             bool fell = weapon == "Fell";
             string headline = byOther ? null : fell ? "YOU FELL" : killer == victim ? "SELF-ELIMINATED" : null;
             FeedbackUI.ShowDeath(byOther ? GetPlayerName(killer) : null, fell ? null : weapon, headshot, respawnTime, headline);

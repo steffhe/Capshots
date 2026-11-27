@@ -78,12 +78,10 @@ public class Weapon : NetworkBehaviour
     // Looked up once instead of every shot or frame
     private Player player;
     private Look look;
-    private Image hitmarkImage;
     // The HUD's centre dot, faded out while aiming so the gun's own sights take over
     private Graphic crosshairDot;
     private float crosshairAlpha = 1f;
     private Transform weaponAnchor, stateAds, stateHip;
-    private Coroutine hitmarkRoutine;
 
     public int EquippedIndex => Object != null && Object.IsValid ? Equipped : 0;
     public Gun CurrentGun => loadout != null && EquippedIndex >= 0 && EquippedIndex < loadout.Length ? loadout[EquippedIndex] : null;
@@ -175,7 +173,6 @@ public class Weapon : NetworkBehaviour
             if (Manager.Instance != null && Manager.Instance.Hud != null) Manager.Instance.Hud.SetActive(true);
 
             hitmark = GameObject.Find("HUD/Crosshair/Hitmark");
-            if (hitmark != null) hitmarkImage = hitmark.GetComponent<Image>();
             HideHitmark();
             GameObject dot = GameObject.Find("HUD/Crosshair/Dot");
             crosshairDot = dot != null ? dot.GetComponent<Graphic>() : null;
@@ -202,9 +199,7 @@ public class Weapon : NetworkBehaviour
             Manager.Instance.ThrowGrenade(cookOwner, cookActor, cookBody, GrenadesThrown, transform.position + Vector3.up * 0.3f, Vector3.zero, left);
         }
 
-        // Dying mid-marker stops the coroutine before it can hide the marker
         StopAllCoroutines();
-        hitmarkRoutine = null;
         HideHitmark();
     }
 
@@ -868,52 +863,35 @@ public class Weapon : NetworkBehaviour
         PlayReloadSound(reloadTime);
     }
 
-    // The host confirms a hit to the shooter: hit marker and sound
+    // The host confirms a hit to the shooter, once per target a shot or blast hurt (sent only from the
+    // host's forward ticks, so never repeated). The marker and sound are FeedbackUI's, which merges
+    // hits confirmed in the same frame into one.
     [Rpc(RpcSources.StateAuthority, RpcTargets.InputAuthority)]
     private void RPC_HitConfirm(NetworkBool headshot, NetworkBool killed, byte weight)
     {
         float strength = weight / 255f;
-        if (hitmarkRoutine != null) StopCoroutine(hitmarkRoutine);
-        hitmarkRoutine = StartCoroutine(HitPlayer(headshot, killed, strength));
-        FeedbackUI.Hit(headshot, strength);
-        HudFeedback.Confirmed(headshot, killed);
+        FeedbackUI.ConfirmHit(headshot, killed, strength);
         if (Manager.Instance != null && Manager.Instance.CountsForSummary) Manager.Summary.Hit();
-        // A kill shakes the view a little, a cap shot more
-        if (killed && look != null) look.Punch(headshot ? 2.2f : 1.3f);
+        // A kill shakes the view a little, a cap shot more; once a frame, however many it was
+        if (killed && look != null && punchFrame != Time.frameCount)
+        {
+            punchFrame = Time.frameCount;
+            look.Punch(headshot ? 2.2f : 1.3f);
+        }
     }
+    private int punchFrame = -1;
 
     // The host tells the shooter they hit a spawn-protected player: a small blue marker and a dull
     // knock instead of the hit sound
     [Rpc(RpcSources.StateAuthority, RpcTargets.InputAuthority)]
     private void RPC_ShieldHit()
     {
-        if (hitmarkRoutine != null) StopCoroutine(hitmarkRoutine);
-        hitmarkRoutine = StartCoroutine(ShieldMarker());
         FeedbackUI.ShieldHit();
     }
 
     #endregion
 
     #region Presentation
-
-    IEnumerator ShieldMarker()
-    {
-        if (hitmark == null) yield break;
-        Transform marker = hitmark.transform;
-        // The spawn protection countdown's blue
-        Color color = new Color(0.55f, 0.85f, 1f, 1f);
-        hitmark.SetActive(true);
-        const float time = 0.35f;
-        for (float t = 0f; t < time; t += Time.deltaTime)
-        {
-            marker.localScale = Vector3.one * 0.7f;
-            color.a = 1f - t / time;
-            hitmarkImage.color = color;
-            yield return null;
-        }
-        HideHitmark();
-        hitmarkRoutine = null;
-    }
 
     // This player's sounds, looked up once (Player adds them at runtime, so not yet in Awake)
     PlayerSounds soundsCache;
@@ -925,55 +903,7 @@ public class Weapon : NetworkBehaviour
         if (sounds != null) sounds.PlayReload(reloadTime);
     }
 
-    // Hit marker colours: a hit and a kill white (a kill also sends a ring out, HudFeedback.Confirmed),
-    // a head hit the cap logo's gold. Red is kept for the player's own damage, so it never means two things.
-    static readonly Color HitColor = Color.white;
-    static readonly Color CapshotHitColor = UITheme.Capshot;
-    static readonly Color KillColor = Color.white;
-
-    // Every hit pops in and fades fast, so a stream of hits reads as separate ticks. A cap shot is
-    // gold and bigger; a kill pops out big and holds a moment, red, or gold and bigger still for a
-    // cap shot kill.
-    // strength is how hard the hit landed, 0 to 1 (its share of the target's health): a machine gun
-    // bullet makes a small quick tick, a full shotgun blast or a sniper round a big one that holds
-    IEnumerator HitPlayer(bool headshot, bool targetIsDead, float strength)
-    {
-        if (hitmark == null) yield break;
-
-        Transform marker = hitmark.transform;
-        Color color = targetIsDead && !headshot ? KillColor : headshot ? CapshotHitColor : HitColor;
-        hitmarkImage.color = color;
-        hitmark.SetActive(true);
-
-        float pop, hold, fadeOut, from, to;
-        if (targetIsDead)
-        {
-            pop = 0.15f; hold = headshot ? 0.45f : 0.3f; fadeOut = headshot ? 0.3f : 0.25f;
-            from = headshot ? 2.4f : 2f; to = headshot ? 1.2f : 1f;
-        }
-        else
-        {
-            pop = 0.07f; hold = headshot ? 0.16f : 0.1f; fadeOut = 0.15f;
-            from = headshot ? 1.5f : 1.25f; to = headshot ? 1.1f : 0.9f;
-            float size = Mathf.Lerp(0.85f, 1.3f, strength);
-            from *= size; to *= size;
-            hold *= Mathf.Lerp(0.8f, 1.6f, strength);
-        }
-
-        for (float t = 0f; t < pop + hold + fadeOut; t += Time.deltaTime)
-        {
-            float scale = t < pop ? Mathf.Lerp(from, to, 1f - Mathf.Pow(1f - t / pop, 3f)) : to;
-            marker.localScale = Vector3.one * scale;
-            color.a = t < pop + hold ? 1f : 1f - (t - pop - hold) / fadeOut;
-            hitmarkImage.color = color;
-            yield return null;
-        }
-
-        HideHitmark();
-        hitmarkRoutine = null;
-    }
-
-    // The marker lives on the shared HUD, not on this body, so it must be put away explicitly
+    // The scene's own hit marker image is kept hidden: the HUD draws its own (HudFeedback.HitMarker)
     void HideHitmark()
     {
         if (hitmark == null) return;
@@ -1201,7 +1131,6 @@ public class Weapon : NetworkBehaviour
     private void OnDestroy()
     {
         if (crosshairDot != null) crosshairDot.canvasRenderer.SetAlpha(1f);
-        // Dying mid-marker stops the coroutine before it can hide it
         HideHitmark();
     }
 

@@ -74,4 +74,35 @@ public class HudRulesTests
     {
         Assert.AreEqual(expected, HudRules.CountdownSeconds(remaining));
     }
+
+    [Test]
+    public void TierFor_TheStrongestThingThatHappenedWins()
+    {
+        Assert.AreEqual(HudRules.HitTier.Shield, HudRules.TierFor(false, false, false, false));
+        Assert.AreEqual(HudRules.HitTier.Hit, HudRules.TierFor(true, false, false, false));
+        Assert.AreEqual(HudRules.HitTier.Head, HudRules.TierFor(true, true, false, false));
+        // A shotgun blast that kills one player and grazes another's head: the kill wins
+        Assert.AreEqual(HudRules.HitTier.Kill, HudRules.TierFor(true, true, true, false));
+        Assert.AreEqual(HudRules.HitTier.CapshotKill, HudRules.TierFor(true, true, true, true));
+    }
+
+    [TestCase(10f, 30f, true)]
+    [TestCase(10f, 50f, false)]
+    [TestCase(170f, -170f, true)]   // either side of straight behind
+    [TestCase(-90f, 90f, false)]
+    public void SameDirection_WrapsRoundBehind(float a, float b, bool expected)
+    {
+        Assert.AreEqual(expected, HudRules.SameDirection(a, b, 35f));
+    }
+
+    [Test]
+    public void KillSoundFallback_OnlyWhenTheConfirmationCouldNotArrive()
+    {
+        // Body still there: the hit confirmation plays the sound
+        Assert.IsFalse(HudRules.KillSoundFallback(false, 10f));
+        // Body gone, no kill sound for a while: the kill feed plays it
+        Assert.IsTrue(HudRules.KillSoundFallback(true, 10f));
+        // Body gone but the confirmation's sound just played: not twice
+        Assert.IsFalse(HudRules.KillSoundFallback(true, 0.05f));
+    }
 }

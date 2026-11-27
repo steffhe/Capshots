@@ -3,18 +3,28 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
-// Combat feedback for the local player: damage flash, damage direction, kill feed,
-// death screen ("ELIMINATED BY", how, and a respawn countdown) and short feedback sounds. Everything is built at runtime,
-// so no scene or prefab changes are needed. The Manager creates it when a map loads.
+// Combat feedback for the local player: damage flash, damage direction, hit confirmation, kill
+// confirmation, kill feed, death screen ("ELIMINATED BY", how, and a respawn countdown) and short
+// feedback sounds. Everything is built at runtime, so no scene or prefab changes are needed. The
+// Manager creates it when a map loads. Local presentation only, driven by the host's RPCs:
+//  - Hits: the host confirms each target a shot or blast hurt (Weapon.RPC_HitConfirm/RPC_ShieldHit).
+//    Several can land in one frame (a shotgun or grenade catching two players), so they're merged and
+//    shown once a frame (LateUpdate): one marker for the strongest (HudFeedback.HitMarker) and one sound.
+//  - Kills: the kill sound, ring and cap shot stamp come with the host's hit confirmation (the tick of
+//    the kill), the "ELIMINATED name" line with the kill feed message (the next tick). If the
+//    confirmation can't arrive (the shooter's body was already gone: a trade, or a grenade thrown
+//    before dying) the kill feed plays the kill sound instead, once.
+//  - Damage: a red arc round the crosshair towards each source (merged per direction, up to four at
+//    once), and a red glow at the screen's edges, not over the middle where you aim.
 public class FeedbackUI : MonoBehaviour
 {
     public static FeedbackUI Instance { get; private set; }
 
     [Header("Damage")]
-    public float maxFlashAlpha = 0.45f;
-    public float flashFadeTime = 0.6f;
-    public float indicatorTime = 1.5f;
-    public float indicatorRadius = 140f;
+    public float maxFlashAlpha = 0.55f;
+    public float flashFadeTime = 0.5f;
+    public float indicatorTime = 1.4f;
+    public float indicatorRadius = 150f;
 
     [Header("Kill feed")]
     public int maxKillFeedEntries = 5;
@@ -39,11 +49,33 @@ public class FeedbackUI : MonoBehaviour
     private int lowHealthFrame = -1;
     private float pulsePhase;
 
-    private RectTransform indicatorPivot;
-    private Image indicator;
-    private float indicatorTimeLeft;
-    private Vector3 attackerPosition;
+    // Damage direction arcs, one per direction hurt from (see Damaged)
+    private class DamageArc
+    {
+        public RectTransform pivot;
+        public Image arc;
+        public Vector3 source;
+        public float timeLeft, strength;
+    }
+    private readonly List<DamageArc> damageArcs = new List<DamageArc>();
     private Transform viewer;
+    private const int MaxDamageArcs = 4;
+    // Hits from within this many degrees of an arc already showing refresh it instead of adding one
+    private const float DamageArcMerge = 35f;
+
+    // This frame's confirmed hits, merged and shown once in LateUpdate
+    private bool pendingHit, pendingHead, pendingKill, pendingCapshotKill, pendingShield;
+    private float pendingStrength;
+    // When the last kill sound played (unscaled), so the kill feed's fallback never doubles it
+    private float lastKillSoundAt = -10f;
+
+    // "ELIMINATED VOLT · SPARK" under the crosshair, for the local player's kills
+    private Text eliminatedText;
+    private CanvasGroup eliminatedGroup;
+    private string eliminatedNames = "";
+    private int eliminatedCount;
+    private float eliminatedTime = -1f;
+    private const float EliminatedHold = 1.6f, EliminatedFade = 0.3f;
 
     private Text deathText;
     // Under the weapon line: "RESPAWN IN 3"
@@ -101,18 +133,12 @@ public class FeedbackUI : MonoBehaviour
         lowHealthEdge.sprite = EdgeSprite();
         Stretch(lowHealthEdge.rectTransform);
 
-        // Full screen red flash when taking damage
-        damageFlash = NewImage("Damage Flash", root, new Color(0.8f, 0f, 0f, 0f));
+        // A red flash at the screen's edges when taking damage, leaving the middle (where you aim) clear
+        damageFlash = NewImage("Damage Flash", root, new Color(0.85f, 0.02f, 0f, 0f));
+        damageFlash.sprite = EdgeSprite();
         Stretch(damageFlash.rectTransform);
 
-        // Bar that circles the crosshair and points towards whoever shot you
-        GameObject pivot = new GameObject("Damage Indicator", typeof(RectTransform));
-        indicatorPivot = (RectTransform)pivot.transform;
-        indicatorPivot.SetParent(root, false);
-        Center(indicatorPivot, Vector2.zero);
-        indicator = NewImage("Bar", indicatorPivot, new Color(1f, 0.15f, 0.1f, 0f));
-        Center(indicator.rectTransform, new Vector2(90f, 10f));
-        indicator.rectTransform.anchoredPosition = new Vector2(0f, indicatorRadius);
+        // Arcs round the crosshair pointing towards whatever hurt you, built when first needed
 
         // "Killed by" text in the middle of the screen while waiting to respawn
         deathText = NewText("Death Text", root, 32, TextAnchor.MiddleCenter);
@@ -131,6 +157,18 @@ public class FeedbackUI : MonoBehaviour
         respawnText.rectTransform.anchoredPosition = new Vector2(0f, -70f);
         respawnText.color = UITheme.HudMuted;
         deathText.gameObject.SetActive(false);
+
+        // "ELIMINATED VOLT" under the crosshair when the local player gets a kill
+        GameObject eliminated = new GameObject("Eliminated", typeof(RectTransform), typeof(CanvasGroup));
+        RectTransform eliminatedRect = (RectTransform)eliminated.transform;
+        eliminatedRect.SetParent(root, false);
+        Center(eliminatedRect, new Vector2(900f, 28f));
+        eliminatedRect.anchoredPosition = new Vector2(0f, -62f);
+        eliminatedGroup = eliminated.GetComponent<CanvasGroup>();
+        eliminatedGroup.interactable = eliminatedGroup.blocksRaycasts = false;
+        eliminatedText = NewText("Text", eliminatedRect, 18, TextAnchor.MiddleCenter);
+        Stretch(eliminatedText.rectTransform);
+        eliminated.SetActive(false);
 
         // Spawn protection countdown under the crosshair
         protectionText = NewText("Spawn Protection Text", root, 22, TextAnchor.MiddleCenter);
@@ -204,9 +242,8 @@ public class FeedbackUI : MonoBehaviour
 
         if (fromPosition.HasValue && viewerTransform != null)
         {
-            ui.attackerPosition = fromPosition.Value;
             ui.viewer = viewerTransform;
-            ui.indicatorTimeLeft = ui.indicatorTime;
+            ui.AddDamageArc(fromPosition.Value, Mathf.Clamp01(fraction * 2f));
         }
 
         ui.Play(ui.hurtClip, 0.43f);
@@ -220,23 +257,76 @@ public class FeedbackUI : MonoBehaviour
         Instance.lowHealthFrame = Time.frameCount;
     }
 
-    // Local player hit someone else
-    public static void Hit(bool headshot) => Hit(headshot, 0.5f);
-
-    // ...louder the harder it landed (strength 0 to 1, its share of the target's health), so a stream
-    // of machine gun hits ticks softly and a shotgun blast or sniper round lands with weight
-    public static void Hit(bool headshot, float strength)
+    // The host confirmed the local player hurt someone (Weapon.RPC_HitConfirm): headshot means a cap
+    // shot (ShotRules.IsCapshot), strength is the hit's share of the target's health, 0 to 1. Shown
+    // in LateUpdate, merged with any other hit confirmed this frame.
+    public static void ConfirmHit(bool headshot, bool killed, float strength)
     {
         if (Instance == null) return;
-        float level = Mathf.Lerp(0.8f, 1.2f, Mathf.Clamp01(strength));
-        Instance.Play(headshot ? Instance.headshotClip : Instance.hitClip, (headshot ? 0.142f : 0.136f) * level);
+        FeedbackUI ui = Instance;
+        ui.pendingHit = true;
+        ui.pendingHead |= headshot;
+        ui.pendingKill |= killed;
+        ui.pendingCapshotKill |= killed && headshot;
+        ui.pendingStrength = Mathf.Max(ui.pendingStrength, Mathf.Clamp01(strength));
     }
 
-    // Local player's shot hit someone under spawn protection: it did nothing
+    // Local player's shot hit someone under spawn protection: it did nothing (merged like hits)
     public static void ShieldHit()
     {
         if (Instance == null) return;
-        Instance.Play(Instance.shieldClip, 0.14f);
+        Instance.pendingShield = true;
+    }
+
+    private void LateUpdate()
+    {
+        if (!pendingHit && !pendingShield) return;
+
+        // One marker and one sound for everything confirmed this frame, the strongest winning
+        HudRules.HitTier tier = HudRules.TierFor(pendingHit, pendingHead, pendingKill, pendingCapshotKill);
+        HudFeedback.HitMarker(tier, pendingStrength);
+        if (pendingKill) HudFeedback.Confirmed(pendingCapshotKill, true);
+
+        if (pendingKill) PlayKillSound(pendingCapshotKill);
+        else if (pendingHit)
+        {
+            // Louder the harder it landed, so a stream of machine gun hits ticks softly and a shotgun
+            // blast or sniper round lands with weight
+            float level = Mathf.Lerp(0.8f, 1.2f, pendingStrength);
+            Play(pendingHead ? headshotClip : hitClip, (pendingHead ? 0.142f : 0.136f) * level);
+        }
+        else Play(shieldClip, 0.14f);
+
+        pendingHit = pendingHead = pendingKill = pendingCapshotKill = pendingShield = false;
+        pendingStrength = 0f;
+    }
+
+    private void PlayKillSound(bool capshot)
+    {
+        lastKillSoundAt = Time.unscaledTime;
+        if (capshot) Play(capshotKillClip, 0.42f);
+        else Play(killClip, 0.32f);
+    }
+
+    // The host's kill feed says the local player got a kill: "ELIMINATED name" under the crosshair
+    // (kills within a moment of each other list their names together). The kill sound came with the
+    // hit confirmation; it plays here only if that couldn't arrive because the local player's body is
+    // gone (died in the same moment, or a grenade thrown before dying), and not twice in a row.
+    public static void KillAnnounced(string victimName, bool capshot)
+    {
+        if (Instance == null) return;
+        FeedbackUI ui = Instance;
+        if (HudRules.KillSoundFallback(Player.Local == null, Time.unscaledTime - ui.lastKillSoundAt)) ui.PlayKillSound(capshot);
+
+        string name = ChatUI.Escape(string.IsNullOrEmpty(victimName) ? "PLAYER" : victimName);
+        string coloured = capshot ? $"<color={CapshotColor}>{name}</color>" : name;
+        bool stacking = ui.eliminatedTime >= 0f && ui.eliminatedTime < EliminatedHold && ui.eliminatedCount < 3;
+        ui.eliminatedNames = stacking ? ui.eliminatedNames + $"<color={UITheme.Hex(UITheme.HudMuted)}>  ·  </color>" + coloured : coloured;
+        ui.eliminatedCount = stacking ? ui.eliminatedCount + 1 : 1;
+        ui.eliminatedText.text = $"<color={UITheme.Hex(UITheme.HudMuted)}>ELIMINATED</color>   " + ui.eliminatedNames;
+        ui.eliminatedTime = 0f;
+        ui.eliminatedGroup.transform.localScale = Vector3.one * 1.12f;
+        ui.eliminatedGroup.gameObject.SetActive(true);
     }
 
     // A multi-kill or streak for the local player: "DOUBLE KILL" big and gold, with an optional detail
@@ -281,12 +371,12 @@ public class FeedbackUI : MonoBehaviour
         Instance.Play(Instance.pickupClip, 0.154f);
     }
 
-    // Local player got a kill: louder, and grander for a cap shot (headshot)
+    // Local player got a kill: louder, and grander for a cap shot (headshot). Normally played by the
+    // hit confirmation (ConfirmHit); kept for anything that confirms a kill another way.
     public static void Kill(bool headshot = false)
     {
         if (Instance == null) return;
-        if (headshot) Instance.Play(Instance.capshotKillClip, 0.42f);
-        else Instance.Play(Instance.killClip, 0.32f);
+        Instance.PlayKillSound(headshot);
     }
 
     // The local player died: the drone powering down
@@ -356,8 +446,11 @@ public class FeedbackUI : MonoBehaviour
     // The gold of the logo's sparkle
     public const string CapshotColor = "#ffcc4d";
 
-    // In team mode, killerColor and victimColor give each name its team colour.
-    // A headshot is a cap shot: "KILLER  (cap logo) [SNIPER · CAPSHOT]  VICTIM", in gold.
+    // killerColor and victimColor colour the names (team colours in team modes; the accent for you
+    // in free for all; white otherwise). killer is null for a death nobody else caused (a fall, your
+    // own grenade): then the row is just "[FELL]  VICTIM". A cap shot is "KILLER  (cap logo)
+    // [SNIPER RIFLE · CAPSHOT]  VICTIM", the weapon in gold. Names are escaped, so a name can't carry
+    // rich text tags into everyone's feed. Your own kills and deaths get an accent stripe.
     public static void AddKillFeed(string killer, string victim, string weapon, bool headshot, bool involvesMe, string killerColor = null, string victimColor = null)
     {
         if (Instance == null) return;
@@ -366,20 +459,19 @@ public class FeedbackUI : MonoBehaviour
         RectTransform rect = ui.NewKillFeedEntry("Kill Feed Entry", involvesMe);
         GameObject entry = rect.gameObject;
 
-        if (killerColor == null) killerColor = involvesMe ? "#ffd84a" : "#ff6a5a";
-        if (victimColor == null) victimColor = involvesMe ? "#ffd84a" : "#ffffff";
-        // In team mode the names are team coloured, so mark your own kills and deaths with an arrow
-        string marker = involvesMe ? "<color=#ffd84a>></color> " : "";
-        string killerPart = marker + $"<color={killerColor}>{killer}</color>";
-        string weaponPart = headshot ? $"<color={CapshotColor}>[{weapon} · CAPSHOT]</color>" : $"<color=#bbbbbb>[{weapon}]</color>";
-        string victimPart = $"<color={victimColor}>{victim}</color>";
+        if (killerColor == null) killerColor = "#ffffff";
+        if (victimColor == null) victimColor = "#ffffff";
+        string weaponName = string.IsNullOrEmpty(weapon) ? "" : weapon.ToUpperInvariant();
+        string killerPart = killer != null ? $"<color={killerColor}>{ChatUI.Escape(killer)}</color>" : "";
+        string weaponPart = headshot ? $"<color={CapshotColor}>[{weaponName} · CAPSHOT]</color>" : $"<color={UITheme.Hex(UITheme.HudMuted)}>[{weaponName}]</color>";
+        string victimPart = $"<color={victimColor}>{ChatUI.Escape(victim)}</color>";
 
         Sprite iconSprite = headshot ? CapshotIcon : null;
         if (iconSprite == null)
         {
             Text line = ui.NewText("Text", rect, 20, TextAnchor.MiddleRight);
             FeedInset(line.rectTransform, 0f);
-            line.text = killerPart + "  " + weaponPart + "  " + victimPart;
+            line.text = (killer != null ? killerPart + "  " : "") + weaponPart + "  " + victimPart;
             FitKillFeedEntry(rect, line.preferredWidth);
         }
         else
@@ -407,7 +499,8 @@ public class FeedbackUI : MonoBehaviour
         ui.AddKillFeedEntry(entry);
     }
 
-    // A line of its own in the kill feed, like "VOLT IS ON A KILLING SPREE", in light grey
+    // A line of its own in the kill feed, like "VOLT IS ON A KILLING SPREE", in light grey. The text is
+    // the caller's (names in it must already be escaped).
     public static void AddKillFeedNote(string text)
     {
         if (Instance == null) return;
@@ -427,7 +520,8 @@ public class FeedbackUI : MonoBehaviour
     private const float FeedRowGap = 5f;
     private const float FeedPadding = 12f;
     private static readonly Color FeedPlate = new Color(0.02f, 0.03f, 0.06f, 0.55f);
-    private static readonly Color FeedStripe = new Color(1f, 0.85f, 0.29f, 0.95f);
+    // Your own rows: the accent, which means "you" across the HUD (gold is kept for cap shots)
+    private static readonly Color FeedStripe = UITheme.AccentText;
 
     private RectTransform NewKillFeedEntry(string name, bool involvesMe)
     {
@@ -436,6 +530,9 @@ public class FeedbackUI : MonoBehaviour
         rect.SetParent(killFeed, false);
         rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(1f, 1f);
         rect.sizeDelta = new Vector2(600f, FeedRowHeight);
+        // Faded with a CanvasGroup (slides in, fades out), so coloured names fade too
+        CanvasGroup group = entry.AddComponent<CanvasGroup>();
+        group.interactable = group.blocksRaycasts = false;
 
         Image plate = UITheme.NewImage("Plate", rect, FeedPlate, 6f);
         RectTransform plateRect = plate.rectTransform;
@@ -477,7 +574,27 @@ public class FeedbackUI : MonoBehaviour
             killFeedEntries.RemoveAt(killFeedEntries.Count - 1);
         }
         LayoutKillFeed();
+        StartCoroutine(SlideInKillFeedEntry(entry));
         StartCoroutine(ExpireKillFeedEntry(entry));
+    }
+
+    // A new row slides in a little from the right and fades up, so a new kill catches the eye. Only the
+    // row's x moves; LayoutKillFeed owns its y.
+    private IEnumerator SlideInKillFeedEntry(GameObject entry)
+    {
+        const float time = 0.15f;
+        RectTransform rect = entry != null ? (RectTransform)entry.transform : null;
+        CanvasGroup group = entry != null ? entry.GetComponent<CanvasGroup>() : null;
+        for (float t = 0f; t < time && entry != null; t += Time.unscaledDeltaTime)
+        {
+            float k = 1f - (1f - t / time) * (1f - t / time);
+            if (group != null) group.alpha = k;
+            rect.anchoredPosition = new Vector2(24f * (1f - k), rect.anchoredPosition.y);
+            yield return null;
+        }
+        if (entry == null) yield break;
+        if (group != null) group.alpha = 1f;
+        rect.anchoredPosition = new Vector2(0f, rect.anchoredPosition.y);
     }
 
     #endregion
@@ -527,25 +644,109 @@ public class FeedbackUI : MonoBehaviour
             lowHealthEdge.color = edge;
         }
 
-        // Damage direction, kept pointing at where the shot came from as the player turns
-        if (indicatorTimeLeft > 0f && viewer != null)
+        UpdateDamageArcs();
+        UpdateEliminated();
+    }
+
+    // Where a source is, in degrees clockwise from where the local player faces (seen from above)
+    private float AngleTo(Vector3 source)
+    {
+        if (viewer == null) return 0f;
+        Vector3 forward = Vector3.ProjectOnPlane(viewer.forward, Vector3.up);
+        Vector3 toSource = Vector3.ProjectOnPlane(source - viewer.position, Vector3.up);
+        return Vector3.SignedAngle(forward, toSource, Vector3.up);
+    }
+
+    // A hit from 'source': refreshes the arc already pointing that way, or takes a free one (or the
+    // one closest to fading). strength 0 to 1 makes the arc longer.
+    private void AddDamageArc(Vector3 source, float strength)
+    {
+        // Damage from right on top of you (a grenade stuck to you) has no direction to show
+        if (viewer == null || Vector3.ProjectOnPlane(source - viewer.position, Vector3.up).sqrMagnitude < 0.75f * 0.75f) return;
+        float angle = AngleTo(source);
+        DamageArc pick = null;
+        foreach (DamageArc a in damageArcs)
         {
-            indicatorTimeLeft -= Time.deltaTime;
-
-            Vector3 forward = Vector3.ProjectOnPlane(viewer.forward, Vector3.up);
-            Vector3 toAttacker = Vector3.ProjectOnPlane(attackerPosition - viewer.position, Vector3.up);
-            float angle = Vector3.SignedAngle(forward, toAttacker, Vector3.up);
-            indicatorPivot.localEulerAngles = new Vector3(0f, 0f, -angle);
-
-            Color c = indicator.color;
-            c.a = Mathf.Clamp01(indicatorTimeLeft / (indicatorTime * 0.5f)) * 0.9f;
-            indicator.color = c;
+            if (a.timeLeft > 0f && HudRules.SameDirection(AngleTo(a.source), angle, DamageArcMerge)) { pick = a; break; }
         }
-        else if (indicator.color.a > 0f)
+        if (pick == null)
         {
-            Color c = indicator.color;
-            c.a = 0f;
-            indicator.color = c;
+            foreach (DamageArc a in damageArcs)
+            {
+                if (a.timeLeft <= 0f) { pick = a; break; }
+            }
+        }
+        if (pick == null && damageArcs.Count < MaxDamageArcs) pick = NewDamageArc();
+        if (pick == null)
+        {
+            pick = damageArcs[0];
+            foreach (DamageArc a in damageArcs) if (a.timeLeft < pick.timeLeft) pick = a;
+        }
+
+        pick.strength = pick.timeLeft > 0f ? Mathf.Max(pick.strength, strength) : strength;
+        pick.source = source;
+        pick.timeLeft = indicatorTime;
+        // A short arc of the ring, centred on its top: the fill runs clockwise from the top, so it's
+        // turned back by half its length
+        float fill = Mathf.Lerp(0.07f, 0.12f, pick.strength);
+        pick.arc.fillAmount = fill;
+        pick.arc.rectTransform.localEulerAngles = new Vector3(0f, 0f, fill * 180f);
+        pick.arc.enabled = true;
+    }
+
+    private DamageArc NewDamageArc()
+    {
+        DamageArc a = new DamageArc();
+        GameObject pivot = new GameObject("Damage Arc", typeof(RectTransform));
+        a.pivot = (RectTransform)pivot.transform;
+        a.pivot.SetParent(root, false);
+        Center(a.pivot, Vector2.zero);
+        // Over the edge glow, under everything else
+        a.pivot.SetSiblingIndex(damageFlash.transform.GetSiblingIndex() + 1);
+        a.arc = NewImage("Arc", a.pivot, UITheme.Danger);
+        a.arc.sprite = UITheme.ThinRing;
+        a.arc.type = Image.Type.Filled;
+        a.arc.fillMethod = Image.FillMethod.Radial360;
+        a.arc.fillOrigin = (int)Image.Origin360.Top;
+        a.arc.fillClockwise = true;
+        Center(a.arc.rectTransform, new Vector2(indicatorRadius * 2f, indicatorRadius * 2f));
+        a.arc.enabled = false;
+        damageArcs.Add(a);
+        return a;
+    }
+
+    // Arcs keep pointing at where the damage came from as the player turns, and fade over the second half
+    private void UpdateDamageArcs()
+    {
+        foreach (DamageArc a in damageArcs)
+        {
+            if (a.timeLeft <= 0f) continue;
+            a.timeLeft -= Time.deltaTime;
+            if (a.timeLeft <= 0f || viewer == null)
+            {
+                a.timeLeft = 0f;
+                a.arc.enabled = false;
+                continue;
+            }
+            a.pivot.localEulerAngles = new Vector3(0f, 0f, -AngleTo(a.source));
+            Color c = UITheme.Danger;
+            c.a = Mathf.Clamp01(a.timeLeft / (indicatorTime * 0.5f)) * Mathf.Lerp(0.6f, 0.9f, a.strength);
+            a.arc.color = c;
+        }
+    }
+
+    // The "ELIMINATED" line: settles from a touch larger, holds, fades
+    private void UpdateEliminated()
+    {
+        if (eliminatedTime < 0f) return;
+        eliminatedTime += Time.unscaledDeltaTime;
+        Transform t = eliminatedGroup.transform;
+        t.localScale = Vector3.one * Mathf.Lerp(1.12f, 1f, Mathf.Clamp01(eliminatedTime / 0.12f));
+        eliminatedGroup.alpha = eliminatedTime < EliminatedHold ? 1f : 1f - (eliminatedTime - EliminatedHold) / EliminatedFade;
+        if (eliminatedTime >= EliminatedHold + EliminatedFade)
+        {
+            eliminatedTime = -1f;
+            eliminatedGroup.gameObject.SetActive(false);
         }
     }
 
@@ -596,7 +797,7 @@ public class FeedbackUI : MonoBehaviour
 
         // Fade the whole entry, coloured names (and the cap shot logo) included
         const float fade = 0.5f;
-        CanvasGroup group = entry != null ? entry.AddComponent<CanvasGroup>() : null;
+        CanvasGroup group = entry != null ? entry.GetComponent<CanvasGroup>() : null;
         for (float t = 0f; t < fade && entry != null; t += Time.deltaTime)
         {
             group.alpha = 1f - t / fade;

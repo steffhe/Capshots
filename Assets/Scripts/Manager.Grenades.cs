@@ -184,7 +184,8 @@ public partial class Manager
             Vector3 hitOffset = stuck ? center - p.transform.position : default;
 
             bool wasProtected = p.IsProtected;
-            bool killed = p.TakeDamage(damage, g.owner, PlasmaWeaponName, false, direction, hitOffset);
+            // The victim's damage marker points at the blast, not the thrower (and shows for your own grenade)
+            bool killed = p.TakeDamage(damage, g.owner, PlasmaWeaponName, false, direction, hitOffset, center);
             if (!wasProtected && thrower != null && thrower != p && !thrower.IsBot)
             {
                 Weapon weapon = thrower.GetComponent<Weapon>();
