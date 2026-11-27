@@ -29,6 +29,7 @@ public class Weapon : NetworkBehaviour
     public LayerMask canBeShot;
     public LineRenderer lineRend;
 
+    // No longer used: the HUD's form strip is built by HudFeedback. Kept so the prefab's reference stays valid.
     public GameObject weaponImagePrefab;
 
     [Header("Game feel")]
@@ -77,18 +78,10 @@ public class Weapon : NetworkBehaviour
     // Looked up once instead of every shot or frame
     private Player player;
     private Look look;
-    private Image hitmarkImage;
     // The HUD's centre dot, faded out while aiming so the gun's own sights take over
     private Graphic crosshairDot;
     private float crosshairAlpha = 1f;
-    private readonly List<Image> arsenalImages = new List<Image>();
-    // An accent bar beside the equipped form's icon
-    private RectTransform arsenalMarker;
-    // The gun form icons' holder on the HUD; hidden while touch controls are showing, which cover it
-    private GameObject arsenalRoot;
-    private const float ArsenalIconStep = 120f;
     private Transform weaponAnchor, stateAds, stateHip;
-    private Coroutine hitmarkRoutine;
 
     public int EquippedIndex => Object != null && Object.IsValid ? Equipped : 0;
     public Gun CurrentGun => loadout != null && EquippedIndex >= 0 && EquippedIndex < loadout.Length ? loadout[EquippedIndex] : null;
@@ -179,48 +172,9 @@ public class Weapon : NetworkBehaviour
             // The HUD is hidden while the local player has no body, and GameObject.Find can't see hidden objects
             if (Manager.Instance != null && Manager.Instance.Hud != null) Manager.Instance.Hud.SetActive(true);
 
-            GameObject arsenal = GameObject.Find("HUD/Arsenal");
-            foreach (Transform child in arsenal.transform)
-            {
-                GameObject.Destroy(child.gameObject);
-            }
-
-            arsenalRoot = arsenal;
-            int ind = 0;
-            foreach (Gun gun in loadout)
-            {
-                GameObject weaponimageObject = Instantiate(weaponImagePrefab, arsenal.transform);
-                weaponimageObject.name = "WeaponImage" + ind.ToString();
-                // Stacked upwards in canvas units (not screen pixels), so the spacing is the same at
-                // any resolution: at 1440p and up, pixel spacing packed the icons into each other
-                RectTransform iconRect = (RectTransform)weaponimageObject.transform;
-                iconRect.anchorMin = iconRect.anchorMax = iconRect.pivot = Vector2.zero;
-                iconRect.anchoredPosition = new Vector2(0f, ind * ArsenalIconStep);
-
-                // Set the icon on the copy, not on the prefab asset
-                Image image = weaponimageObject.GetComponent<Image>();
-                Rect rect = new Rect(0, 0, gun.image.width, gun.image.height);
-                image.sprite = Sprite.Create(gun.image, rect, new Vector2(0.5f, 0.5f), 100);
-                // A dark edge so the dimmed icons still read over sky and bright walls (the thin
-                // sniper rifle at the top of the stack all but vanished without one)
-                Outline edge = weaponimageObject.GetComponent<Outline>();
-                if (edge == null) edge = weaponimageObject.AddComponent<Outline>();
-                edge.effectColor = new Color(0f, 0f, 0f, 0.55f);
-                edge.effectDistance = new Vector2(1.5f, -1.5f);
-                arsenalImages.Add(image);
-                ind += 1;
-            }
-            // Right of the icons (200 x 100 each), moved to the equipped one in ShowGun
-            Image marker = UITheme.NewImage("Active Marker", arsenal.transform, UITheme.Accent, 2f);
-            arsenalMarker = marker.rectTransform;
-            arsenalMarker.anchorMin = arsenalMarker.anchorMax = Vector2.zero;
-            arsenalMarker.pivot = new Vector2(0f, 0.5f);
-            arsenalMarker.sizeDelta = new Vector2(4f, 56f);
-
-            hitmark = GameObject.Find("HUD/Crosshair/Hitmark");
-            if (hitmark != null) hitmarkImage = hitmark.GetComponent<Image>();
+            hitmark = GameObject.Find(HudPaths.Hitmark);
             HideHitmark();
-            GameObject dot = GameObject.Find("HUD/Crosshair/Dot");
+            GameObject dot = GameObject.Find(HudPaths.CrosshairDot);
             crosshairDot = dot != null ? dot.GetComponent<Graphic>() : null;
             SetCrosshairAlpha(1f);
             BuildGrenadeIndicator();
@@ -245,9 +199,7 @@ public class Weapon : NetworkBehaviour
             Manager.Instance.ThrowGrenade(cookOwner, cookActor, cookBody, GrenadesThrown, transform.position + Vector3.up * 0.3f, Vector3.zero, left);
         }
 
-        // Dying mid-marker stops the coroutine before it can hide the marker
         StopAllCoroutines();
-        hitmarkRoutine = null;
         HideHitmark();
     }
 
@@ -496,20 +448,17 @@ public class Weapon : NetworkBehaviour
         RPC_HitConfirm(false, killed, 200);
     }
 
+    // Every frame for the local player: the shots left, the energy meter and what the gun is busy with
+    // (HudFeedback draws them), and the grenade
     public void RefreshAmmo(Text text)
     {
-        if (text == null || Object == null || !Object.IsValid) return;
-        // Shots left in this form large; shots in a full cell smaller and muted. The energy is
-        // shared, so the numbers change with the form.
+        if (Object == null || !Object.IsValid) return;
         Gun gun = CurrentGun;
         if (gun == null) return;
-        int shots = GunEnergy.ShotsLeft(Energy, gun.energyPerShot);
-        int full = GunEnergy.ShotsLeft(maxEnergy, gun.energyPerShot);
-        text.supportRichText = true;
-        // The count turns amber when a quarter of the cell or less is left, as a hint to swap it
-        string count = shots.ToString("d2");
-        if (shots * 4 <= full) count = $"<color={UITheme.Hex(UITheme.TimerWarning)}>{count}</color>";
-        text.text = count + $"<size={Mathf.RoundToInt(text.fontSize * 0.55f)}><color={UITheme.Hex(UITheme.MutedText)}> / " + full.ToString("d2") + "</color></size>";
+        // The form strip: in Gun Game the ladder picks the form, so the others show as unavailable
+        Manager match = Manager.Instance;
+        HudFeedback.SyncWeapon(loadout, match == null || !match.IsGunGame, EquippedIndex);
+        HudFeedback.SetGunState(text, Energy, maxEnergy, gun.energyPerShot, ReloadProgress, MorphProgress);
         RefreshGrenadeIndicator();
     }
 
@@ -914,51 +863,35 @@ public class Weapon : NetworkBehaviour
         PlayReloadSound(reloadTime);
     }
 
-    // The host confirms a hit to the shooter: hit marker and sound
+    // The host confirms a hit to the shooter, once per target a shot or blast hurt (sent only from the
+    // host's forward ticks, so never repeated). The marker and sound are FeedbackUI's, which merges
+    // hits confirmed in the same frame into one.
     [Rpc(RpcSources.StateAuthority, RpcTargets.InputAuthority)]
     private void RPC_HitConfirm(NetworkBool headshot, NetworkBool killed, byte weight)
     {
         float strength = weight / 255f;
-        if (hitmarkRoutine != null) StopCoroutine(hitmarkRoutine);
-        hitmarkRoutine = StartCoroutine(HitPlayer(headshot, killed, strength));
-        FeedbackUI.Hit(headshot, strength);
+        FeedbackUI.ConfirmHit(headshot, killed, strength);
         if (Manager.Instance != null && Manager.Instance.CountsForSummary) Manager.Summary.Hit();
-        // A kill shakes the view a little, a cap shot more
-        if (killed && look != null) look.Punch(headshot ? 2.2f : 1.3f);
+        // A kill shakes the view a little, a cap shot more; once a frame, however many it was
+        if (killed && look != null && punchFrame != Time.frameCount)
+        {
+            punchFrame = Time.frameCount;
+            look.Punch(headshot ? 2.2f : 1.3f);
+        }
     }
+    private int punchFrame = -1;
 
     // The host tells the shooter they hit a spawn-protected player: a small blue marker and a dull
     // knock instead of the hit sound
     [Rpc(RpcSources.StateAuthority, RpcTargets.InputAuthority)]
     private void RPC_ShieldHit()
     {
-        if (hitmarkRoutine != null) StopCoroutine(hitmarkRoutine);
-        hitmarkRoutine = StartCoroutine(ShieldMarker());
         FeedbackUI.ShieldHit();
     }
 
     #endregion
 
     #region Presentation
-
-    IEnumerator ShieldMarker()
-    {
-        if (hitmark == null) yield break;
-        Transform marker = hitmark.transform;
-        // The spawn protection countdown's blue
-        Color color = new Color(0.55f, 0.85f, 1f, 1f);
-        hitmark.SetActive(true);
-        const float time = 0.35f;
-        for (float t = 0f; t < time; t += Time.deltaTime)
-        {
-            marker.localScale = Vector3.one * 0.7f;
-            color.a = 1f - t / time;
-            hitmarkImage.color = color;
-            yield return null;
-        }
-        HideHitmark();
-        hitmarkRoutine = null;
-    }
 
     // This player's sounds, looked up once (Player adds them at runtime, so not yet in Awake)
     PlayerSounds soundsCache;
@@ -970,54 +903,7 @@ public class Weapon : NetworkBehaviour
         if (sounds != null) sounds.PlayReload(reloadTime);
     }
 
-    // Hit marker colours: a hit white, a cap shot (headshot) the cap logo's gold, a kill red
-    static readonly Color HitColor = Color.white;
-    static readonly Color CapshotHitColor = new Color(1f, 0.8f, 0.3f, 1f);
-    static readonly Color KillColor = new Color(1f, 0.22f, 0.18f, 1f);
-
-    // Every hit pops in and fades fast, so a stream of hits reads as separate ticks. A cap shot is
-    // gold and bigger; a kill pops out big and holds a moment, red, or gold and bigger still for a
-    // cap shot kill.
-    // strength is how hard the hit landed, 0 to 1 (its share of the target's health): a machine gun
-    // bullet makes a small quick tick, a full shotgun blast or a sniper round a big one that holds
-    IEnumerator HitPlayer(bool headshot, bool targetIsDead, float strength)
-    {
-        if (hitmark == null) yield break;
-
-        Transform marker = hitmark.transform;
-        Color color = targetIsDead && !headshot ? KillColor : headshot ? CapshotHitColor : HitColor;
-        hitmarkImage.color = color;
-        hitmark.SetActive(true);
-
-        float pop, hold, fadeOut, from, to;
-        if (targetIsDead)
-        {
-            pop = 0.15f; hold = headshot ? 0.45f : 0.3f; fadeOut = headshot ? 0.3f : 0.25f;
-            from = headshot ? 2.4f : 2f; to = headshot ? 1.2f : 1f;
-        }
-        else
-        {
-            pop = 0.07f; hold = headshot ? 0.16f : 0.1f; fadeOut = 0.15f;
-            from = headshot ? 1.5f : 1.25f; to = headshot ? 1.1f : 0.9f;
-            float size = Mathf.Lerp(0.85f, 1.3f, strength);
-            from *= size; to *= size;
-            hold *= Mathf.Lerp(0.8f, 1.6f, strength);
-        }
-
-        for (float t = 0f; t < pop + hold + fadeOut; t += Time.deltaTime)
-        {
-            float scale = t < pop ? Mathf.Lerp(from, to, 1f - Mathf.Pow(1f - t / pop, 3f)) : to;
-            marker.localScale = Vector3.one * scale;
-            color.a = t < pop + hold ? 1f : 1f - (t - pop - hold) / fadeOut;
-            hitmarkImage.color = color;
-            yield return null;
-        }
-
-        HideHitmark();
-        hitmarkRoutine = null;
-    }
-
-    // The marker lives on the shared HUD, not on this body, so it must be put away explicitly
+    // The scene's own hit marker image is kept hidden: the HUD draws its own (HudFeedback.HitMarker)
     void HideHitmark()
     {
         if (hitmark == null) return;
@@ -1114,14 +1000,7 @@ public class Weapon : NetworkBehaviour
         stateAds = currentWeapon.transform.Find("States/ADS");
         stateHip = currentWeapon.transform.Find("States/Hip");
 
-        // Highlight the equipped gun in the HUD: bright white with an accent bar beside it, the others
-        // dimmer grey (outlined, so they still show over a bright background), and its name above the ammo count
-        for (int i = 0; i < arsenalImages.Count; i++)
-        {
-            arsenalImages[i].color = i == ind ? new Color(1f, 1f, 1f, 0.95f) : new Color(0.8f, 0.8f, 0.8f, 0.55f);
-        }
-        if (arsenalMarker != null) arsenalMarker.anchoredPosition = new Vector2(206f, ind * ArsenalIconStep + 50f);
-        if (HasInputAuthority) HudFeedback.SetWeapon(loadout[ind].gunName);
+        // The HUD's form strip and form name follow the equipped form (RefreshAmmo, every frame)
     }
 
     // The local player's gun goes on the LocalGun layer, which only the viewmodel camera draws, so it
@@ -1163,10 +1042,11 @@ public class Weapon : NetworkBehaviour
     // ring when they don't. The HUD outlives the body, so it's made once and reused.
     Image grenadeDot;
     Text grenadeLabel;
+    int grenadeLabelSeconds = -1;
 
     void BuildGrenadeIndicator()
     {
-        GameObject ammo = GameObject.Find("HUD/Ammo");
+        GameObject ammo = GameObject.Find(HudPaths.AmmoRoot);
         if (ammo == null) return;
 
         Transform existing = ammo.transform.Find("Grenade");
@@ -1186,9 +1066,8 @@ public class Weapon : NetworkBehaviour
             label.text = "PLASMA";
             UITheme.AddShadow(label);
         }
-        // Its own row above the gun form's name (UITheme.Hud puts that at 62 to 86 above the ammo
-        // count) and below the gun form icons (110 above the ammo count), so the two never overlap
-        UITheme.Place(holder, new Vector2(1f, 0f), new Vector2(0f, 88f), new Vector2(220f, 22f));
+        // Its own row above the form strip (UITheme.GrenadeRowY), right-aligned with the shots left
+        UITheme.Place(holder, new Vector2(1f, 0f), new Vector2(0f, UITheme.GrenadeRowY), new Vector2(220f, 22f));
         grenadeDot = holder.Find("Dot")?.GetComponent<Image>();
         grenadeLabel = holder.Find("Label")?.GetComponent<Text>();
         RefreshGrenadeIndicator();
@@ -1197,9 +1076,8 @@ public class Weapon : NetworkBehaviour
     void RefreshGrenadeIndicator()
     {
         // The touch controls cover the bottom right of the screen: there the NADE button shows the
-        // grenade instead (TouchControls), and the gun form icons step aside too
+        // grenade instead (TouchControls), and the form strip steps aside too (HudFeedback)
         bool touch = TouchControls.UsingTouch;
-        if (arsenalRoot != null && arsenalRoot.activeSelf == touch) arsenalRoot.SetActive(!touch);
         if (grenadeDot == null) return;
         GameObject holder = grenadeDot.transform.parent.gameObject;
         if (holder.activeSelf == touch) holder.SetActive(!touch);
@@ -1216,21 +1094,35 @@ public class Weapon : NetworkBehaviour
             if (grenadeLabel != null)
             {
                 grenadeLabel.color = Color.Lerp(Color.white, new Color(1f, 0.35f, 0.3f), cook);
-                grenadeLabel.text = ((1f - cook) * PlasmaGrenadeRules.FreeFuse).ToString("0.0");
+                // The fuse in tenths, rewritten only when the tenth shown changes. Stored negative, so
+                // the "PLASMA n" label below (whole seconds, 0 and up) is rewritten after the throw.
+                int tenths = Mathf.RoundToInt((1f - cook) * PlasmaGrenadeRules.FreeFuse * 10f);
+                if (-1 - tenths != grenadeLabelSeconds)
+                {
+                    grenadeLabelSeconds = -1 - tenths;
+                    grenadeLabel.text = (tenths / 10f).ToString("0.0");
+                }
             }
             return;
         }
 
         bool has = GrenadeCount > 0;
-        // Breathes gently while ready, like the grenade itself. Recharging, it fills in faintly in the
-        // player's colour and the label counts down the seconds.
-        float pulse = 0.85f + 0.15f * Mathf.Sin(Time.time * 6f);
+        // Steady in the player's colour while ready (an idle readout doesn't move). Recharging, it fills
+        // in faintly and the label counts down the seconds; the label is only rewritten when it changes.
         float charge = GrenadeRechargeProgress;
-        grenadeDot.color = has ? new Color(c.r * pulse, c.g * pulse, c.b * pulse, 1f) : new Color(c.r, c.g, c.b, Mathf.Lerp(0.12f, 0.5f, charge));
+        Color dotColor = has ? new Color(c.r, c.g, c.b, 1f) : new Color(c.r, c.g, c.b, Mathf.Lerp(0.12f, 0.5f, Mathf.Round(charge * 10f) / 10f));
+        if (grenadeDot.color != dotColor) grenadeDot.color = dotColor;
         if (grenadeLabel != null)
         {
-            grenadeLabel.color = has ? UITheme.MutedText : new Color(1f, 1f, 1f, 0.35f);
-            grenadeLabel.text = has ? "PLASMA" : "PLASMA  " + Mathf.CeilToInt(GrenadeRechargeSeconds);
+            Color labelColor = has ? UITheme.HudMuted : UITheme.HudFaint;
+            if (grenadeLabel.color != labelColor) grenadeLabel.color = labelColor;
+            int seconds = HudRules.CountdownSeconds(GrenadeRechargeSeconds);
+            if (has) seconds = 0;
+            if (seconds != grenadeLabelSeconds || grenadeLabel.text.Length == 0)
+            {
+                grenadeLabelSeconds = seconds;
+                grenadeLabel.text = has ? "PLASMA" : "PLASMA  " + seconds;
+            }
         }
     }
 
@@ -1244,7 +1136,6 @@ public class Weapon : NetworkBehaviour
     private void OnDestroy()
     {
         if (crosshairDot != null) crosshairDot.canvasRenderer.SetAlpha(1f);
-        // Dying mid-marker stops the coroutine before it can hide it
         HideHitmark();
     }
 

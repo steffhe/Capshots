@@ -17,6 +17,7 @@ Tests only reach code in `Assets/Scripts/Core/` (plus config files they parse). 
 | Bots / input | `BotLogicTests`, `AimAssistTests` |
 | Profile / cosmetics | `ProfileDataTests`, `HatsTests`, `FacesTests`, `FaceDesignsTests`, `SurfacePrintTests` |
 | Maps | `OfficeMapTests`, `PrototypeMapTests`, `BoundaryLayoutTests` |
+| UI rules | `HudRulesTests` (safe width, energy segments, health states, score strip, hit marker tiers, damage arc merging, kill sound fallback), `PopupQueueTests`, `TextRulesTests` (name cleaning and escaping) |
 
 ## Other checks
 
@@ -30,3 +31,5 @@ Anything networked (prediction feel, hit registration under latency, host migrat
 ## Without a Unity editor (e.g. cloud sessions)
 
 Code cannot be compiled or tested locally. Validate by careful reading, keep changes small, run the Python generators if relevant, and rely on CI's EditMode run on the PR. Report clearly what was not verified.
+
+Partial checks that do work without Unity (unverified as a general approach, used for the UI rules): `mcs --parse -langversion:experimental <file>` (Mono, `apt-get install mono-mcs`) catches syntax errors, but not C# 8 syntax (switch expressions, local functions), which it reports as errors in files that compile fine in Unity. Core rules that use only plain .NET (`TextRules`, `PopupQueue`) can be compiled and run together with their test files against a minimal stand-in for NUnit's `Test` / `TestCase` / `Assert`.

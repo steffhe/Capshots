@@ -19,11 +19,89 @@ When adding UI, follow this pattern and `UITheme` helpers instead of adding new 
 | --- | --- |
 | Main menu | `Launcher.cs` (rooms, create/join, settings fields wired in `Menu.unity`), `Launcher.Home.cs`, `Launcher.Style.cs`, `MainMenu`, `MenuScenery`, `MenuBattle` (cosmetic bots), `RotateTowards` |
 | In-match menus | `Pause.cs`, `SettingsMenu`, `CustomizeMenu`, `Manager.Scoreboard`, `Manager.Voting`, `AwardStage` |
-| HUD and feedback | `UITheme.Hud`, `HudFeedback`, `FeedbackUI` (damage flash, kill feed, killed-by), `Manager.CapArrows`, `Manager.RaceScore`, `Manager.Lobby` (lobby card) |
+| Menu design system | `UITheme.Menu` (tokens, panel chrome, section headers, switches), `UITheme.StyleButton*` (button styles), `MenuButtonFx` (hover / focus rail), `MenuReveal` (screen fade-in), `MenuNavigation` (controller focus brackets) |
+| HUD and feedback | `UITheme.Hud` (layout and tokens), `HudFeedback` (health, weapon cluster, crosshair, kill confirmation), `FeedbackUI` (damage flash, kill feed, death screen), `Manager.ScoreStrip`, `Manager.CapArrows`, `Manager.Lobby` (lobby card), `Core/HudRules` |
 | Controller / touch / browser | `MenuNavigation` (controller menus), `TouchControls`, `BrowserGamepad`, `Browser` + `Assets/Plugins/WebGL/Browser.jslib`, `BrowserGraphics` |
 | Cameras | `Look` (player view), `DeathCam`, `MapCamera` (directed spectator/results camera) |
 | Effects | `ShotEffects` (pooled), `BeamFade`, `KillSpark`, `CapshotBurst`, `NeckSparks`, `HoverVisuals` |
 | Settings and saves | `GameSettings` (PlayerPrefs), `Data` (profile JSON; PlayerPrefs on WebGL), `GameInput` (rebinds in PlayerPrefs `input.bindings`) |
+
+## Menu design system
+
+Every menu (main menu and its tabs, settings, customize, option lists, pause menu, lobby card, results and the vote) is styled from `UITheme` at runtime, so the look lives in code, not in scenes:
+
+- **Tokens** (`UITheme.Menu`): type scale `MenuDisplaySize` 56 / `MenuTitleSize` 34 / `MenuHeadingSize` 20 / `MenuBodySize` 18 / `MenuLabelSize` 15 / `MenuCaptionSize` 13; spacing `Space1`-`Space6` on a 4-unit grid; `ControlRadius` 6 and `PanelRadius` 10. Colours are the palette in `UITheme` plus `Hairline`, `Bracket`, `SurfaceHover`, `DangerText` and `DangerSurface`. Accent blue means interface and "you"; gold stays for cap shots.
+- **Buttons** (`UITheme.ButtonStyle`): `Primary` (accent; the one main action on a screen: QUICK PLAY, CREATE MATCH, DONE, BACK TO MATCH), `Secondary` (dark surface, lighter on hover), `Ghost` (quiet: BACK, QUIT, RESET CONTROLS, leaving the results) and `Danger` (red text and hover: LEAVE MATCH, the host leaving the results). Every styled button gets an accent rail on its left edge while pointed at, or selected with a controller (`MenuButtonFx`; a mouse click's leftover selection doesn't show it). Selectors that open a list keep a downward chevron; buttons that step through values (`UITheme.StyleCycle`) point onwards; on / off settings show a switch (`UITheme.AddSwitch` / `SetSwitch`).
+- **Panels** (`UITheme.PanelChrome`): the dark plate with corner brackets just inside each corner and a short accent tab on its top edge. Settings, Customize, the profile card, the XP summary and the vote have it; the lobby card and option lists have the brackets only. The controller's selection is shown with the same brackets in the accent (`MenuNavigation`).
+- **Section headings** (`UITheme.SectionHeader`): caption size, accent, with a hairline running on to the right.
+- **Transitions** (`MenuReveal`, added with `UITheme.Reveal`): the main menu's tabs, Settings, Customize and the pause menu fade in over 0.16 s as they open (the tabs also settle from 98.5% scale), in unscaled time. Only alpha and scale change, so input works throughout; scale is left off where code sets the scale (the settings panel's fit to the screen).
+- Removed for restraint: the Quick Play glow outline and pulse, and the NEW badge's pulse.
+
+- The scoreboard's header and the award stage's cards use the panel frame; award titles are in the accent and your own card is deep accent blue (gold stays for cap shots). The loading screen keeps its own full-screen look in the same palette.
+
+### Settings (`SettingsMenu`)
+
+Four tabs under the title, LB / RB to step through them; the panel opens on the tab it was left on.
+
+| Tab | Contents |
+| --- | --- |
+| GAME | Look sensitivity X / Y, stick sensitivity, aim sensitivity, field of view; sprint (hold / toggle), invert Y, camera effects |
+| AUDIO & VIDEO | Master, effects and music volume; graphics quality, colours (standard / colour blind), FPS counter |
+| HUD | Crosshair size (75-150%), colour (white, green, yellow, cyan, magenta), centre dot, spread ticks, with a preview on a mid-grey plate. Saved in `GameSettings.Crosshair*`; `HudFeedback` applies them live (`CrosshairChanged`) |
+| CONTROLS | Every keyboard / mouse binding in two columns (`GameInput.Rebindable`, including the form keys and chat), the controller's buttons in a third (`GameInput.GamepadRebindable`: the actions with a gamepad binding plus next / previous form), and RESET CONTROLS |
+
+Controller rebinding (`GameInput.StartGamepadRebind`) waits for the A that pressed the row to be let go, takes any button but stick directions, and is cancelled by Start or after 8 seconds; Start and Pause stay unbindable so a menu can always be reached. Bindings are saved with the keyboard ones (`input.bindings`).
+
+### Errors and connection
+
+- A start or join that fails (`LoadingScreen.Fail`) stays on the loading screen with the reason in red and PRESS ANY KEY TO CONTINUE, until a key, click, tap or controller button, or 8 seconds.
+- If the room list can't connect (`NetworkSession.LobbyFailed`), it says COULDN'T REACH THE MATCH SERVER and retries every 5 seconds; practice still works offline.
+
+### Player-typed text
+
+Names and match titles are cleaned (`Core/TextRules.CleanName`: no `<` or `>`, control characters or runs of spaces; at most 20 characters for a name, 32 for a title) by the menu as they're typed and saved, and by the host for every name it's sent (`Manager.RPC_Register`), so nobody can put rich text tags into other players' screens. Room titles from other machines are escaped in the room list, names in the kill feed, scoreboard and award cards, and name tags render as plain text.
+
+## Combat HUD
+
+Laid out by `UITheme.StyleHud` on the map's `HUD` prefab when the map loads (the prefab objects stay where `Player`, `Weapon` and `Manager` look them up by path; only their look and place change), then driven by `HudFeedback`, `FeedbackUI` and `Manager`. Four clusters round a clear centre, canvas units at 1080 high:
+
+| Where | What | Driven by |
+| --- | --- | --- |
+| Bottom left | Health: the number over a slim bar marked in quarters, with a red trail for damage just taken | `Player.RefreshHealthBar` → `HudFeedback.SetHealth` |
+| Bottom right | Weapon: shots left (`HUD/Ammo/Text`), a status line left of it (the form's name, or SWAPPING CELL / TRANSFORMING / NO ENERGY), a segmented energy meter under both, the form strip above (`HUD/Arsenal`) and the plasma grenade above that | `Weapon.RefreshAmmo` → `HudFeedback.SyncWeapon` / `SetGunState`; grenade: `Weapon.RefreshGrenadeIndicator` |
+| Top centre | Match clock with a score plate either side and the goal line under it; stays up while dead | `Manager.RefreshTimerUI`, `Manager.ScoreStrip` |
+| Top right | Kill feed | `FeedbackUI` |
+| Centre | Dot, spread ticks, hit marker, kill ring, cap shot stamp | `Weapon` (dot alpha, hit marker), `HudFeedback` |
+
+- **Colour means one thing each** (tokens in `UITheme.Hud`): white and muted white for information, accent blue for you and the interface, `Capshot` gold only for cap shots, `Danger` red only for being hurt or out of energy, `Warning` amber for running low, `Shield` light blue for spawn protection. Health is white, amber from half and red from a quarter (`HudRules.StateFor`), as steps rather than a blend.
+- **Energy meter:** one segment per shot in a full cell; a form with more than 12 (the machine gun) gets a smooth bar (`HudRules.EnergySegments`). The segment being refilled is drawn faint until that shot is ready. Swapping the cell sweeps an accent bar across the meter.
+- **Form strip:** one slot per form with its number key; the active one is lit and underlined, a change of form fills the underline in under the new one. In Gun Game the forms the ladder hasn't given you are dimmed without keys. Hidden with touch controls (the SWAP button covers it), as is the grenade.
+- **Score strip:** team modes show your team on the left, the other on the right, and "YOU'RE BLUE · FIRST TO 50 KILLS". Free for all and Cap Grab show YOU against the LEADER, or the 2ND while you lead outright (`HudRules.OpponentLabel`). Gun Game shows the form each is on ("2/4") and the kills to the next form. The plates show from the countdown on; the goal line throughout.
+- **Death screen** (`FeedbackUI.ShowDeath`): ELIMINATED BY and the killer's name, the weapon (and CAPSHOT), and a respawn countdown. The countdown starts when the kill feed message arrives and runs `Manager.respawnTime`, so it's an estimate of the host's respawn; at zero it reads RESPAWNING until the body appears. A fall reads YOU FELL, your own grenade SELF-ELIMINATED.
+- **Ultrawide:** the HUD and kill feed keep to a centred area no wider than twice the height (`HudRules.SafeInset`), so on 21:9 and wider the corners don't drift away from the crosshair. Full-screen effects (damage flash, low-health edge) still cover the whole screen.
+- The player's own name and the kills / deaths lines are still in the prefab and still written to, but not drawn (`Text.enabled = false`); the scoreboard and score strip carry that information. The XP popup is copied from the Kills text and turns its copy back on.
+- **Message popup** (under the callouts, `Manager.ShowMessage`): messages take turns by importance (`Core/PopupQueue`). Urgent (CONNECTION LOST, a host change) show at once and clear the rest; info (team, STUCK!, match state) wait their turn but cut an XP message short; XP replaces XP and waits behind info. Repeats are dropped, at most 3 wait, and a message holds 1 s instead of 1.5 s while others wait.
+- **Scoreboard** (`Manager.Scoreboard`): level, name (YOU, ping), cap shots (gold when above 0; the host counts them in `PlayerStats.Capshots`), score (KILLS, or CAPS in Cap Grab) and deaths. Ties are ordered by cap shots, then fewer deaths, then join order, the same on every machine. Rows are made once and reused.
+- **FPS counter** (`FpsCounter`): bottom centre, clear of the kill feed.
+
+## Combat feedback
+
+Local presentation driven only by the host's RPCs, so it shows what the host decided (never a predicted hit that didn't count) and each event once.
+
+| Event | Source (host) | Shown by | When |
+| --- | --- | --- | --- |
+| Hit / kill confirmation | `Weapon.RPC_HitConfirm` → shooter (once per target a shot or blast hurt; host forward ticks only, per-target damage merged per shot) | `FeedbackUI.ConfirmHit` → `HudFeedback.HitMarker`, `Confirmed`; hit / kill sound | Tick of the hit |
+| Spawn shield hit | `Weapon.RPC_ShieldHit` → shooter | `FeedbackUI.ShieldHit` | Tick of the hit |
+| Damage taken | `Player.RPC_Damaged` → victim (from the attacker, or a grenade's blast via `TakeDamage`'s `damageSource`) | `FeedbackUI.Damaged`: edge flash, direction arc | Tick of the hit |
+| Kill | `Manager.RPC_KillFeed` → everyone (from `FinishDeath`, the tick after the kill) | Kill feed row; for the killer "ELIMINATED name", callouts, XP; for the victim the death screen | Tick after the kill |
+
+- **One per frame:** confirmations that land in the same frame (a shotgun blast or grenade catching several players) are merged in `FeedbackUI.LateUpdate`: one marker for the strongest (`HudRules.TierFor`) and one sound, and one view punch (`Weapon.RPC_HitConfirm`).
+- **Hit marker tiers** (`HudFeedback`, four diagonal ticks that snap in round the crosshair): hit (white, sized and held by the hit's share of the target's health), head hit (gold, longer), kill (white, heavier, drifting out, with a ring), cap shot kill (gold, heaviest, with a gold ring and the cap logo and CAPSHOT stamped above the crosshair), spawn shield (small, light blue). Red is never used for your hits. The scene's own `Hitmark` image is kept hidden.
+- **Kill sound once:** it plays with the kill's hit confirmation. The kill feed plays it only when that can't have arrived because the shooter's body is gone (a trade, or a grenade thrown before dying) and none has just played (`HudRules.KillSoundFallback`).
+- **ELIMINATED line:** under the crosshair, from the kill feed, the victim's name (gold for a cap shot); kills within 1.6 s list up to three names together.
+- **Damage:** a red glow at the screen's edges (the middle stays clear) and a red arc round the crosshair towards each source, which keeps pointing there as you turn. Hits within 35 degrees of a showing arc refresh it (`HudRules.SameDirection`); up to four at once. A grenade points at the blast, including your own; one stuck to you has no direction.
+- **Kill feed:** names escaped (`TextRules.Escape`), weapons upper case, gold only for cap shots, your own name in the accent in free for all (team colours in team modes) and an accent stripe on rows involving you. A death nobody else caused reads "[FELL]  NAME". New rows slide in.
+- While the HUD is hidden (dead), markers aren't started, so nothing replays on the next spawn; sounds and the kill feed still play.
 
 ## Player camera and look (`Look`, `Player.UpdateCamera`, local player only)
 

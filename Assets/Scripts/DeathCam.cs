@@ -330,7 +330,7 @@ public class DeathCam : MonoBehaviour
         fadingOut = false;
         fadeOutAge = 0f;
         fadeInAge = 0f;
-        spectateLabel.text = "SPECTATING  <color=#ff5a4a>" + (string.IsNullOrEmpty(killerName) ? "KILLER" : killerName.ToUpper()) + "</color>";
+        spectateLabel.text = "SPECTATING  <color=#ff5a4a>" + (string.IsNullOrEmpty(killerName) ? "KILLER" : TextRules.Escape(killerName.ToUpper())) + "</color>";
         spectateLabel.gameObject.SetActive(true);
         // Straight to the spot behind them, under cover of the black
         Vector3 position, aimAt;

@@ -134,11 +134,11 @@ public partial class Manager
         }
         else if (ownerActor == me && !denied && counts)
         {
-            FeedbackUI.AddKillFeedNote($"{GetPlayerName(takerActor)} GRABBED YOUR CAP");
+            FeedbackUI.AddKillFeedNote($"{ChatUI.Escape(GetPlayerName(takerActor))} GRABBED YOUR CAP");
         }
         else if (denied && counts && takerActor != ownerActor && ownerActor == me)
         {
-            FeedbackUI.AddKillFeedNote($"{GetPlayerName(takerActor)} SAVED YOUR CAP");
+            FeedbackUI.AddKillFeedNote($"{ChatUI.Escape(GetPlayerName(takerActor))} SAVED YOUR CAP");
         }
     }
 

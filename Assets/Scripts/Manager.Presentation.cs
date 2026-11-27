@@ -46,7 +46,7 @@ public partial class Manager
         // Carrying on after the host left: no need to introduce the map again
         if (resumed)
         {
-            ShowMessage(HasStateAuthority ? "YOU'RE THE HOST NOW" : "NEW HOST: THE MATCH GOES ON");
+            ShowMessage(HasStateAuthority ? "YOU'RE THE HOST NOW" : "NEW HOST: THE MATCH GOES ON", false, PopupQueue.Kind.Urgent);
             return;
         }
         StartCoroutine(IntroBanner());
@@ -122,9 +122,13 @@ public partial class Manager
 
     private IEnumerator EndSequence(bool timeUp)
     {
+        // The popup and anything waiting for it go: the results show the XP instead
+        if (xpPopupRoutine != null) StopCoroutine(xpPopupRoutine);
+        xpPopupRoutine = null;
+        popups.Clear();
         if (xpPopup != null) xpPopup.gameObject.SetActive(false);
         leaderboard.gameObject.SetActive(false);
-        GameObject intro = GameObject.Find("Canvas/Map Intro");
+        GameObject intro = GameObject.Find(HudPaths.MapIntro);
         if (intro != null) Destroy(intro);
         // The end music is made while everyone is frozen on the banner, ready for the awards
         MatchMusic.Prepare();
@@ -152,7 +156,7 @@ public partial class Manager
         yield return new WaitForSecondsRealtime(BannerTime - 0.45f);
 
         // 2. Fade to black and cut to the map camera
-        Image black = UITheme.NewImage("End Fade", GameObject.Find("Canvas").transform, Color.clear, 0f);
+        Image black = UITheme.NewImage("End Fade", MatchCanvas, Color.clear, 0f);
         UITheme.Stretch(black.rectTransform);
         black.raycastTarget = true;
         yield return FadeImage(black, 0f, 1f, CutFadeTime);
@@ -181,7 +185,7 @@ public partial class Manager
             while ((awards == null || awards.Count == 0) && Time.unscaledTime < slotEnd - CutFadeTime - 1f) yield return null;
             if (awards != null && awards.Count > 0)
             {
-                AwardStage stage = AwardStage.Create(AwardEntries(), mapcam.GetComponentInChildren<Camera>(), GameObject.Find("Canvas").transform);
+                AwardStage stage = AwardStage.Create(AwardEntries(), mapcam.GetComponentInChildren<Camera>(), MatchCanvas);
                 black.transform.SetAsLastSibling();
                 MatchMusic.PlayVictory();
                 yield return FadeImage(black, 1f, 0f, fadeIn);
@@ -255,19 +259,33 @@ public partial class Manager
             if (sorted[i].kills > myKills) place++;
         }
 
+        // How many share the top score: a tie isn't claimed as anyone's win
+        int leaders = 0;
+        if (top != null) foreach (PlayerInfo p in sorted) if (p.kills == top.kills) leaders++;
+
         if (top == null || top.kills <= 0)
         {
             title = "MATCH OVER"; color = UITheme.TextColor;
             subtitle = "NOBODY SCORED";
+        }
+        else if (myKills == top.kills && leaders > 1)
+        {
+            title = "TIED FOR 1ST"; color = win;
+            subtitle = $"SHARING THE TOP WITH {myKills} {ScoreWord}";
         }
         else if (myKills == top.kills)
         {
             title = "VICTORY"; color = win;
             subtitle = $"TOP OF THE BOARD WITH {myKills} {ScoreWord}";
         }
+        else if (leaders > 1)
+        {
+            title = "TIE AT THE TOP"; color = UITheme.TextColor;
+            subtitle = $"YOU PLACED {Ordinal(place)} WITH {myKills} {ScoreWord}";
+        }
         else
         {
-            title = top.profile.username.ToUpperInvariant() + " WINS"; color = UITheme.TextColor;
+            title = TextRules.Escape(top.profile.username.ToUpperInvariant()) + " WINS"; color = UITheme.TextColor;
             subtitle = $"YOU PLACED {Ordinal(place)} WITH {myKills} {ScoreWord}";
         }
     }
@@ -414,8 +432,9 @@ public partial class Manager
         RectTransform panel = NewLayer("XP", new Vector2(0.5f, 0f), new Vector2(620f, (newHats != null ? 124f : 92f) + summaryRow), parent);
         // A row taller for the new hats, grown downwards (towards the countdown) to keep clear of the leaderboard
         panel.anchoredPosition = new Vector2(0f, newHats != null ? 40f : 56f);
-        Image bg = UITheme.NewImage("Background", panel, UITheme.Panel, 10f);
+        Image bg = UITheme.NewImage("Background", panel, UITheme.Panel, UITheme.PanelRadius);
         UITheme.Stretch(bg.rectTransform);
+        UITheme.PanelChrome(bg);
 
         Text summary = UITheme.NewText("Summary", panel, 16, UITheme.TextColor, TextAnchor.MiddleCenter);
         UITheme.Row(summary.rectTransform, 12f, 24f);
@@ -539,7 +558,7 @@ public partial class Manager
     {
         GameObject go = new GameObject(name, typeof(RectTransform));
         RectTransform rect = (RectTransform)go.transform;
-        rect.SetParent(parent != null ? parent : GameObject.Find("Canvas").transform, false);
+        rect.SetParent(parent != null ? parent : MatchCanvas, false);
         UITheme.Place(rect, anchor, Vector2.zero, size);
         rect.SetAsLastSibling();
         return rect;

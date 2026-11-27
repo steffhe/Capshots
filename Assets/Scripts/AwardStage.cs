@@ -480,7 +480,8 @@ public class AwardStage : MonoBehaviour
         Text kicker = UITheme.NewText("Kicker", title, 20, UITheme.MutedText, TextAnchor.MiddleCenter);
         UITheme.Row(kicker.rectTransform, 0f, 26f);
         kicker.text = "THE BEST (AND WORST) OF THE MATCH";
-        Text heading = UITheme.NewText("Heading", title, 64, new Color(1f, 0.8f, 0.3f), TextAnchor.MiddleCenter);
+        // White, like the other end screens' titles (gold is kept for cap shots)
+        Text heading = UITheme.NewText("Heading", title, 64, UITheme.TextColor, TextAnchor.MiddleCenter);
         UITheme.Row(heading.rectTransform, 30f, 76f);
         heading.text = "MATCH AWARDS";
         UITheme.AddShadow(heading, 0.8f);
@@ -490,7 +491,11 @@ public class AwardStage : MonoBehaviour
         for (int i = 0; i < entries.Count; i++)
         {
             Entry entry = entries[i];
-            Image card = UITheme.NewImage("Award", screen, entry.mine ? new Color(0.45f, 0.36f, 0.08f, 0.9f) : new Color(0.05f, 0.07f, 0.1f, 0.9f), 12f);
+            // The menus' panel, with its corner brackets (the winner's colour runs along the top instead
+            // of the accent tab); your own card in a deep accent blue, which means "you" everywhere
+            Image card = UITheme.NewImage("Award", screen, UITheme.Panel, UITheme.PanelRadius);
+            UITheme.PanelChrome(card, false);
+            card.color = entry.mine ? new Color(0.03f, 0.2f, 0.34f, 0.94f) : UITheme.Panel;
             RectTransform rect = card.rectTransform;
             rect.anchorMin = rect.anchorMax = new Vector2(0.5f, CardTop);
             rect.pivot = new Vector2(0.5f, 1f);
@@ -501,16 +506,16 @@ public class AwardStage : MonoBehaviour
 
             Text name = UITheme.NewText("Name", rect, 32, Color.white, TextAnchor.MiddleCenter);
             UITheme.Row(name.rectTransform, 14f, 40f);
-            name.text = entry.mine ? "YOU" : entry.name.ToUpperInvariant();
+            name.text = entry.mine ? "YOU" : TextRules.Escape(entry.name.ToUpperInvariant());
 
             // Each award under the name: its title, and why
             for (int a = 0; a < entry.titles.Count; a++)
             {
                 float top = CardNameHeight + a * CardAwardHeight;
-                Text awardTitle = UITheme.NewText("Title", rect, 20, new Color(1f, 0.8f, 0.3f), TextAnchor.MiddleCenter);
+                Text awardTitle = UITheme.NewText("Title", rect, UITheme.MenuHeadingSize, UITheme.AccentText, TextAnchor.MiddleCenter);
                 UITheme.Row(awardTitle.rectTransform, top, 24f);
                 awardTitle.text = entry.titles[a];
-                Text detail = UITheme.NewText("Detail", rect, 16, UITheme.MutedText, TextAnchor.MiddleCenter);
+                Text detail = UITheme.NewText("Detail", rect, UITheme.MenuLabelSize, UITheme.MutedText, TextAnchor.MiddleCenter);
                 UITheme.Row(detail.rectTransform, top + 23f, 20f);
                 detail.text = entry.details[a];
             }

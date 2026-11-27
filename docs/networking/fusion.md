@@ -68,7 +68,7 @@ Adding a control means: a `GameInput` action → latch in `InputCollector` → f
 | `Weapon` | `Equipped` (with `OnChangedRender`), `Energy`, regen/morph/fire/reload/burst timers, `Aiming`, `ShotCount`, starting-form window, grenade count/recharge/throw/cook timers |
 | `Manager` | `State` (`GameState`), `MatchTime`, `Heartbeat`, `Stats` (`NetworkDictionary<PlayerRef, PlayerStats>`, capacity `Manager.MaxPlayers` = 16), `HostPlayer`, `AwardCards` |
 
-`PlayerStats` (in `MatchTypes.cs`) is the synced scoreboard row; `PlayerInfo` is the local copy rebuilt when `Stats` changes.
+`PlayerStats` (in `MatchTypes.cs`) is the synced scoreboard row (name, level, kills, deaths, team, ping, hat, face, ready, cap shots; new fields go at the end); `PlayerInfo` is the local copy rebuilt when `Stats` changes. The host cleans every name it's sent (`Core/TextRules`) before it goes into `Stats`.
 
 ## RPCs and non-networked objects
 

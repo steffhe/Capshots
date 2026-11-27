@@ -3,7 +3,8 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
-// Team Deathmatch: teams, team score and team colours.
+// Team modes (Team Deathmatch, Team Cap Grab): teams, team score and team colours. The team score on
+// the HUD is part of the score strip (Manager.ScoreStrip.cs).
 public partial class Manager
 {
     public MatchMode mode = MatchMode.FreeForAll;
@@ -23,14 +24,12 @@ public partial class Manager
     private void OnColoursChanged()
     {
         TeamsVersion++;
-        RefreshTeamScore();
+        RefreshScoreStrip();
     }
 
     // Goes up whenever the player list changes, so players know to refresh their team colours
     public static int TeamsVersion { get; private set; }
 
-    private Text teamScore;
-    private Image teamScoreBackdrop;
     private int announcedTeam = -1;
 
     // The player's team in team mode, or -1 in free for all or if they aren't known yet
@@ -89,48 +88,11 @@ public partial class Manager
     private string TeamHeader()
     {
         string score = $"<color={TeamHex(0)}>{TeamNames[0]} {TeamKills(0)}</color>  -  <color={TeamHex(1)}>{TeamKills(1)} {TeamNames[1]}</color>";
-        if (state != GameState.Ending) return "TEAM DEATHMATCH   " + score;
+        if (state != GameState.Ending) return LoadingScreen.ModeName((int)mode) + "   " + score;
 
         int winner = WinningTeam();
         string result = winner < 0 ? "DRAW" : $"<color={TeamHex(winner)}>{TeamNames[winner]} TEAM WINS</color>";
         return result + "   " + score;
-    }
-
-    // Team score shown under the match timer, built from the timer text so it matches the HUD style
-    // Under the timer: the team score in team modes, otherwise the race to the limit (CreateRaceScore)
-    private void CreateTeamScore()
-    {
-        if (!IsTeamMode)
-        {
-            CreateRaceScore();
-            return;
-        }
-        if (timer == null) return;
-
-        GameObject scoreObject = Instantiate(timer.gameObject, timer.transform.parent);
-        scoreObject.name = "Team Score";
-
-        teamScore = scoreObject.GetComponent<Text>();
-        teamScore.supportRichText = true;
-        teamScore.horizontalOverflow = HorizontalWrapMode.Overflow;
-
-        RectTransform rect = (RectTransform)scoreObject.transform;
-        RectTransform timerRect = (RectTransform)timer.transform;
-        // The timer sits at the top of the screen, so the score goes below it
-        rect.anchoredPosition = timerRect.anchoredPosition - new Vector2(0f, timerRect.sizeDelta.y + 4f);
-        teamScore.fontSize = 20;
-        teamScore.color = UITheme.TextColor;
-        UITheme.AddShadow(teamScore);
-
-        RefreshTeamScore();
-    }
-
-    private void RefreshTeamScore()
-    {
-        RefreshRaceScore();
-        if (teamScore == null) return;
-        teamScore.text = $"<color={TeamHex(0)}>{TeamNames[0]} {TeamKills(0)}</color>  -  <color={TeamHex(1)}>{TeamKills(1)} {TeamNames[1]}</color>";
-        teamScoreBackdrop = UITheme.FitBackdrop(teamScoreBackdrop, teamScore);
     }
 
     private void AnnounceTeam()

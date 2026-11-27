@@ -162,8 +162,9 @@ public class CustomizeMenu : MenuPanel
         }
         rect.sizeDelta = new Vector2(PanelWidth, PanelHeight);
         Image background = panel.GetComponent<Image>();
-        UITheme.Round(background, 14f);
-        background.color = UITheme.Panel;
+        UITheme.PanelChrome(background);
+        // Fades in each time it opens
+        UITheme.Reveal(panel);
 
         // Children are placed from the panel's centre, whichever way the panel itself is anchored
         RectTransform content = new GameObject("Content", typeof(RectTransform)).GetComponent<RectTransform>();
@@ -171,12 +172,12 @@ public class CustomizeMenu : MenuPanel
         UITheme.Stretch(content);
 
         float top = PanelHeight / 2f;
-        NewLabel(content, "CUSTOMIZE", new Vector2(0f, top - 48f), ColumnWidth, 34, TextAnchor.MiddleCenter);
+        NewLabel(content, "CUSTOMIZE", new Vector2(0f, top - 48f), ColumnWidth, UITheme.MenuTitleSize, TextAnchor.MiddleCenter);
 
         // Starting gun and face, side by side, each a list to pick from
         float half = (ColumnWidth - HatColumnGap) / 2f;
         float left = -(half + HatColumnGap) / 2f, right = (half + HatColumnGap) / 2f;
-        NewLabel(content, "STARTING GUN", new Vector2(left, top - 106f), half, 16, TextAnchor.MiddleLeft).color = UITheme.AccentText;
+        UITheme.SectionHeader(NewLabel(content, "STARTING GUN", new Vector2(left, top - 106f), half, UITheme.MenuCaptionSize, TextAnchor.MiddleLeft));
         Button startingGunButton = null;
         GameObject startingGun = NewButton(content, "", () => PickStartingGun(startingGunButton));
         startingGunButton = startingGun.GetComponent<Button>();
@@ -184,7 +185,7 @@ public class CustomizeMenu : MenuPanel
         Place(startingGun, new Vector2(left, top - 146f), new Vector2(half, 48f));
         startingGunText = startingGun.GetComponentInChildren<Text>();
 
-        NewLabel(content, "FACE", new Vector2(right, top - 106f), half, 16, TextAnchor.MiddleLeft).color = UITheme.AccentText;
+        UITheme.SectionHeader(NewLabel(content, "FACE", new Vector2(right, top - 106f), half, UITheme.MenuCaptionSize, TextAnchor.MiddleLeft));
         Button faceButton = null;
         GameObject face = NewButton(content, "", () => PickFace(faceButton));
         faceButton = face.GetComponent<Button>();
@@ -194,7 +195,8 @@ public class CustomizeMenu : MenuPanel
 
         // Hats: every one, in unlock order, in two columns
         float y = top - 204f;
-        NewLabel(content, "CAP", new Vector2(0f, y), ColumnWidth, 16, TextAnchor.MiddleLeft).color = UITheme.AccentText;
+        // The rule stops short of the level on the right
+        UITheme.SectionHeader(NewLabel(content, "CAP", new Vector2(-ColumnWidth * 0.2f, y), ColumnWidth * 0.6f, UITheme.MenuCaptionSize, TextAnchor.MiddleLeft));
         levelText = NewLabel(content, "", new Vector2(0f, y), ColumnWidth, 14, TextAnchor.MiddleRight);
         levelText.color = UITheme.MutedText;
 

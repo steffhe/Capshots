@@ -12,7 +12,7 @@ The match is one `NetworkBehaviour`, `Manager`, split into partial files by topi
 | `Manager.Teams.cs` | Teams, balancing, team score and colours |
 | `Manager.CapGrab.cs`, `Manager.CapArrows.cs`, `CapPickup.cs`, `Core/CapFlight` | Cap Grab and Team Cap Grab |
 | `Manager.GunGame.cs` + `Core/GunGameRules` | Gun Game ladder |
-| `Manager.RaceScore.cs` | "First to N" race line in free-for-all modes |
+| `Manager.ScoreStrip.cs` | Score plates either side of the match clock and the goal line under it (all modes; see [ui-audio-visuals.md](ui-audio-visuals.md#combat-hud)) |
 | `Manager.Bots.cs` | Filling the room with bots (see [bots.md](bots.md)) |
 | `Manager.Grenades.cs` | Plasma grenades (see [weapons.md](weapons.md)) |
 | `Manager.Glass.cs` | Office glass pane state |
@@ -52,4 +52,5 @@ Set in `Launcher` and read by `Manager` on spawn (e.g. `map`, `mapname`, mode, b
 
 - Kill streaks (`Core/KillStreaks`): multi-kills within 4 s (DOUBLE … MULTI KILL); streaks every 5 kills (KILLING SPREE, RAMPAGE, UNSTOPPABLE, LEGENDARY); ending a streak of 5+ is a SHUTDOWN (100 XP).
 - Awards (`Core/MatchAwards`): CAPSHOT KING, ON A ROLL, STICKY FINGERS, UNTOUCHABLE, PUNCHING BAG; the host counts the inputs in `Manager.Awards`.
-- Cap shot: a kill where the head took at least half the shot's damage (`ShotRules.IsCapshot`).
+- Cap shot: a kill where the head took at least half the shot's damage (`ShotRules.IsCapshot`). The host counts each player's cap shot kills while the match is played (`PlayerStats.Capshots`, reset with kills and deaths when it starts, carried through host migration) for the scoreboard; they count in every mode, whether or not the mode scores the kill.
+- End banner in free for all: a tie for the top score reads TIED FOR 1ST (for those sharing it) or TIE AT THE TOP, rather than naming one winner. XP is unchanged: everyone on the top score gets the win bonus, as before.

@@ -112,6 +112,40 @@ public static partial class UITheme
         }
     }
 
+    private static Sprite ring, thinRing;
+
+    // A white ring (a circle's outline, a tenth of its width thick), smooth-edged. The HUD's kill
+    // confirmation expands one round the crosshair.
+    public static Sprite Ring => ring != null ? ring : (ring = MakeRing("UITheme Ring", 64, 0.1f));
+
+    // A large thin ring (3% of its width thick). Drawn as a radial fill, a short arc of it is a damage
+    // direction marker round the crosshair (FeedbackUI).
+    public static Sprite ThinRing => thinRing != null ? thinRing : (thinRing = MakeRing("UITheme Thin Ring", 256, 0.03f));
+
+    private static Sprite MakeRing(string name, int size, float thicknessFraction)
+    {
+        float outer = size / 2f - 1f;
+        float thickness = size * thicknessFraction;
+        Texture2D tex = NewTexture(name, size, size);
+        Color32[] pixels = new Color32[size * size];
+        Vector2 centre = new Vector2(size / 2f, size / 2f);
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float d = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), centre);
+                // Inside the band between outer - thickness and outer, with a pixel of soft edge
+                float alpha = Mathf.Clamp01(outer - d + 0.5f) * Mathf.Clamp01(d - (outer - thickness) + 0.5f);
+                pixels[y * size + x] = new Color32(255, 255, 255, (byte)(alpha * 255f));
+            }
+        }
+        tex.SetPixels32(pixels);
+        tex.Apply();
+        Sprite sprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+        sprite.name = name;
+        return sprite;
+    }
+
     private static Texture2D NewTexture(string name, int width, int height)
     {
         return new Texture2D(width, height, TextureFormat.RGBA32, false)
@@ -169,10 +203,13 @@ public static partial class UITheme
         shadow.effectDistance = new Vector2(1.5f, -1.5f);
     }
 
-    public enum ButtonStyle { Primary, Secondary }
+    // Primary: the one main action on a screen, in the accent. Secondary: everything else, on a dark
+    // surface. Ghost: quiet actions like BACK, text on a see-through plate. Danger: leaving or quitting.
+    // Every style gets the accent rail on hover and controller focus (MenuButtonFx).
+    public enum ButtonStyle { Primary, Secondary, Ghost, Danger }
 
     // Rounded background and hover / press colours. Leaves the button's text alone.
-    public static void StyleButtonBackground(Selectable selectable, ButtonStyle style, float radius = 8f)
+    public static void StyleButtonBackground(Selectable selectable, ButtonStyle style, float radius = ControlRadius)
     {
         if (selectable == null) return;
         Image image = selectable.targetGraphic as Image;
@@ -185,9 +222,29 @@ public static partial class UITheme
         }
 
         ColorBlock colors = selectable.colors;
-        colors.normalColor = style == ButtonStyle.Primary ? Accent : Surface;
-        colors.highlightedColor = AccentHover;
-        colors.pressedColor = AccentPressed;
+        switch (style)
+        {
+            case ButtonStyle.Primary:
+                colors.normalColor = Accent;
+                colors.highlightedColor = AccentHover;
+                colors.pressedColor = AccentPressed;
+                break;
+            case ButtonStyle.Ghost:
+                colors.normalColor = new Color(1f, 1f, 1f, 0.04f);
+                colors.highlightedColor = Field;
+                colors.pressedColor = new Color(1f, 1f, 1f, 0.16f);
+                break;
+            case ButtonStyle.Danger:
+                colors.normalColor = Surface;
+                colors.highlightedColor = DangerSurface;
+                colors.pressedColor = new Color(0.45f, 0.1f, 0.1f, 0.95f);
+                break;
+            default:
+                colors.normalColor = Surface;
+                colors.highlightedColor = SurfaceHover;
+                colors.pressedColor = AccentPressed;
+                break;
+        }
         // After a click the button stays selected: keep it looking normal rather than highlighted
         colors.selectedColor = colors.normalColor;
         colors.disabledColor = new Color(0.3f, 0.3f, 0.3f, 0.5f);
@@ -195,16 +252,21 @@ public static partial class UITheme
         colors.fadeDuration = 0.08f;
         selectable.colors = colors;
         selectable.transition = Selectable.Transition.ColorTint;
+
+        MenuButtonFx fx = selectable.GetComponent<MenuButtonFx>();
+        if (fx == null) fx = selectable.gameObject.AddComponent<MenuButtonFx>();
+        fx.SetColor(style == ButtonStyle.Primary ? Color.white : style == ButtonStyle.Danger ? DangerText : AccentText);
     }
 
-    // Background plus a centred, upper-case label
+    // Background plus a centred, upper-case label (muted for Ghost, red for Danger)
     public static void StyleButton(Button button, ButtonStyle style, int fontSize = 22)
     {
         if (button == null) return;
         StyleButtonBackground(button, style);
         Text label = button.GetComponentInChildren<Text>(true);
         if (label == null) return;
-        StyleText(label, fontSize, TextColor, TextAnchor.MiddleCenter);
+        Color color = style == ButtonStyle.Ghost ? new Color(1f, 1f, 1f, 0.78f) : style == ButtonStyle.Danger ? DangerText : TextColor;
+        StyleText(label, fontSize, color, TextAnchor.MiddleCenter);
         // Leave rich text alone: upper-casing would break its tags
         if (!label.text.Contains("<")) label.text = label.text.ToUpperInvariant();
     }

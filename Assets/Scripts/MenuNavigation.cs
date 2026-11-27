@@ -13,7 +13,7 @@ using UnityEngine.UI;
 //    input manager and never saw a controller (least of all the browser's, see BrowserGamepad), to
 //    the Input System's UI module, which reads <Gamepad> like the rest of the game.
 //  - When the controller is used and nothing is selected, the menu's first button is (the one a
-//    panel asked for with Focus, else the highest one on screen), and a glowing frame shows which
+//    panel asked for with Focus, else the highest one on screen), and corner brackets show which
 //    button is selected. Using the mouse or a finger hides the frame again.
 //  - B ("back") is handed out once a frame through TakeBack, so the option list, a panel and the
 //    pause menu don't all close on the same press.
@@ -286,13 +286,18 @@ public class MenuNavigation : MonoBehaviour
         frame.anchorMin = frame.anchorMax = Vector2.zero;
         frame.pivot = new Vector2(0.5f, 0.5f);
 
+        // Corner brackets in the accent, like the menu panels' (UITheme.PanelChrome): they mark the
+        // selection clearly without boxing it in
         Color glow = UITheme.AccentText;
-        // Four bars: top, bottom, left, right
-        Edge("Top", new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, FrameThickness), glow);
-        Edge("Bottom", new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0f, FrameThickness), glow);
-        Edge("Left", new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(FrameThickness, 0f), glow);
-        Edge("Right", new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(FrameThickness, 0f), glow);
+        for (int i = 0; i < 4; i++)
+        {
+            Vector2 corner = new Vector2(i % 2, i / 2);
+            Edge("Corner", corner, corner, new Vector2(FrameArm, FrameThickness), glow);
+            Edge("Corner", corner, corner, new Vector2(FrameThickness, FrameArm), glow);
+        }
     }
+
+    private const float FrameArm = 16f;
 
     private void Edge(string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 size, Color color)
     {

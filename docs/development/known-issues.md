@@ -4,7 +4,6 @@ Only verified items. Remove an entry when it's fixed.
 
 ## Verified
 
-- **Stale comment:** `Assets/Scripts/Manager.cs` header lists `Manager.Pickups.cs`, which doesn't exist (ammo pickups were removed with the Fusion migration), and omits several newer partials.
 - **Unreachable Office rooms:** the Office generator reports rooms 44a and 58 can't be entered (their doors open onto a 24 cm gap). See [Tools/OfficeMap](../../Tools/OfficeMap/README.md).
 - **Capture points without a mode:** `ObjectiveMarker` places A/B/C points on Test Site 07, but no game mode uses them.
 - **Disabled build scenes:** `Assets/Scenes/Map.unity` and `Map 1.unity` are in Build Settings but disabled. Whether they are still needed is unverified.

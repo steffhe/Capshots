@@ -21,7 +21,7 @@ Conventions observed in `Assets/Scripts/`. Match the surrounding code; don't ref
 
 - Pure logic with no scene access goes in `Assets/Scripts/Core/` (`Capshots.Core` assembly) with EditMode tests. Gameplay scripts call into it.
 - Tunable values are Inspector fields on prefabs/scenes or fields on `Gun` ScriptableObjects. Check the prefab/asset value before trusting a script default.
-- `Resources.Load` uses asset **names** (`"Player"`, `"Dead Player"`, `"Maps/Office"`, `"Hats/Hat…"`, `"UI/…"`), and `Manager` finds HUD objects by hierarchy path. Renaming or moving these breaks things at runtime, not compile time.
+- `Resources.Load` uses asset **names** (`"Player"`, `"Dead Player"`, `"Maps/Office"`, `"Hats/Hat…"`, `"UI/…"`), and `Manager`, `Player` and `Weapon` find HUD objects by hierarchy path (all listed in `HudPaths`). Renaming or moving these breaks things at runtime, not compile time.
 - Prefer building UI/visuals in code with `UITheme` helpers over editing scenes (see [ui-audio-visuals](../gameplay/ui-audio-visuals.md)).
 - Don't hand-edit `.unity`, `.prefab`, `.asset` or `.meta` YAML unless the change is trivial and certain; never change GUIDs.
 - Physics layers are in `Layers` (`MatchTypes.cs`) and must match Project Settings → Tags and Layers.

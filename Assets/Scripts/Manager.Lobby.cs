@@ -94,7 +94,7 @@ public partial class Manager
 
     #region Panel
 
-    // Top left, under the kills and deaths: a card with the room code, how many are ready (with a
+    // Top left: a card with the room code, how many are ready (with a
     // bar), a row per person with a READY / NOT READY pill, the countdown, and how to ready up
     private RectTransform lobbyPanel;
     private Text lobbyTitle, lobbyCode, lobbyCount, lobbyBots, lobbyCountdown, lobbyStatus, lobbyKey, lobbyHint, lobbyHostHint;
@@ -125,10 +125,12 @@ public partial class Manager
         lobbyPanel.SetParent(canvas, false);
         // Right above the HUD, like the scoreboard (which goes over it): under the chat, pause menu and results
         if (Hud != null && Hud.transform.parent == canvas) lobbyPanel.SetSiblingIndex(Hud.transform.GetSiblingIndex() + 1);
-        UITheme.Place(lobbyPanel, new Vector2(0f, 1f), new Vector2(28f, -100f), new Vector2(LobbyWidth, 200f));
+        UITheme.Place(lobbyPanel, new Vector2(0f, 1f), new Vector2(28f, -28f), new Vector2(LobbyWidth, 200f));
 
-        Image background = UITheme.NewImage("Background", lobbyPanel, UITheme.Panel, 12f);
+        Image background = UITheme.NewImage("Background", lobbyPanel, UITheme.Panel, UITheme.PanelRadius);
         UITheme.Stretch(background.rectTransform);
+        // The menus' corner brackets (its own accent line, below, stands in for the panel's tab)
+        UITheme.PanelChrome(background, false);
         // A thin accent line along the top, like the match clock's
         Image accent = UITheme.NewImage("Accent", lobbyPanel, UITheme.Accent, 1.5f);
         LobbyPlace(accent.rectTransform, 0f, 3f, 12f, 12f);

@@ -8,8 +8,8 @@ using Fusion;
 // The match: player list, game state and timer, and the end of the match.
 // A network object in each map scene. The host owns it: it keeps everyone's stats, runs the
 // match timer and spawns players; Fusion syncs that state to everyone else.
-// Other parts of this class are in Manager.Teams.cs, Manager.Scoreboard.cs, Manager.Spawning.cs,
-// Manager.Pickups.cs, Manager.Grenades.cs, Manager.Chat.cs, Manager.Xp.cs and Manager.Lobby.cs.
+// Other parts of this class are in the Manager.*.cs files (teams, scoreboard, score strip, spawning,
+// grenades, chat, XP, lobby and the rest; see docs/gameplay/match-and-modes.md).
 public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 {
     public static Manager Instance { get; private set; }
@@ -46,6 +46,8 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
     private Text myKills;
     private Text myDeaths;
     private Text timer;
+    // The clock and score strip, moved out of the HUD so they stay up while the local player is dead
+    private GameObject clock;
 
     public Transform leaderboard;
     private Transform endgame;
@@ -191,6 +193,8 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         // The HUD goes away for the end of match banner and results
         bool showHud = alive && !matchEnded;
         if (Hud.activeSelf != showHud) Hud.SetActive(showHud);
+        // The clock and score stay up while dead, until the end of match banner
+        if (clock != null && clock.activeSelf == matchEnded) clock.SetActive(!matchEnded);
         UpdateCapArrows();
         UpdateLobby();
 
@@ -239,19 +243,34 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         }
     }
 
+    // The map scene's canvas, found once (and again after a map change, when the old one is gone)
+    private static Transform matchCanvas;
+    private static Transform MatchCanvas
+    {
+        get
+        {
+            if (matchCanvas == null)
+            {
+                GameObject found = GameObject.Find(HudPaths.Canvas);
+                matchCanvas = found != null ? found.transform : null;
+            }
+            return matchCanvas;
+        }
+    }
+
     public void InitializeUI()
     {
         // Restyle first: the XP popup, chat, kill feed and touch controls copy the HUD's font and style
-        Transform canvas = GameObject.Find("Canvas").transform;
-        UITheme.StyleHud(Hud != null ? Hud.transform : canvas.Find("HUD"));
-        UITheme.StyleEndGame(canvas.Find("End Game"));
+        Transform canvas = MatchCanvas;
+        UITheme.StyleHud(Hud != null ? Hud.transform : canvas.Find(HudPaths.Hud));
+        UITheme.StyleEndGame(canvas.Find(HudPaths.EndGame));
 
-        myKills = GameObject.Find("HUD/Stats/Kills").GetComponent<Text>();
-        myDeaths = GameObject.Find("HUD/Stats/Deaths").GetComponent<Text>();
-        timer = GameObject.Find("HUD/Timer/Text").GetComponent<Text>();
+        myKills = GameObject.Find(HudPaths.Kills).GetComponent<Text>();
+        myDeaths = GameObject.Find(HudPaths.Deaths).GetComponent<Text>();
+        timer = GameObject.Find(HudPaths.TimerText).GetComponent<Text>();
         // Out of the HUD (which hides while you're dead) so the scoreboard can be held up while waiting
         // to respawn too. Right above the HUD, as before: under the chat, pause menu and results.
-        Transform hud = GameObject.Find("HUD").transform;
+        Transform hud = GameObject.Find(HudPaths.Hud).transform;
         leaderboard = hud.Find("Leaderboard");
         if (leaderboard != null)
         {
@@ -259,12 +278,20 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
             leaderboard.SetSiblingIndex(hud.GetSiblingIndex() + 1);
         }
         else leaderboard = hud.parent.Find("Leaderboard");
-        endgame = GameObject.Find("Canvas").transform.Find("End Game").transform;
-        uiUsername = GameObject.Find("HUD/Username/Text").GetComponent<Text>();
+        // The clock (and the score strip built round it) out of the HUD too, so the time and score stay
+        // up while waiting to respawn. Right above the HUD, under the scoreboard.
+        clock = timer.transform.parent != null && timer.transform.parent.name == "Timer" ? timer.transform.parent.gameObject : null;
+        if (clock != null && clock.transform.parent == hud)
+        {
+            clock.transform.SetParent(hud.parent, false);
+            clock.transform.SetSiblingIndex(hud.GetSiblingIndex() + 1);
+        }
+        endgame = canvas.Find(HudPaths.EndGame);
+        uiUsername = GameObject.Find(HudPaths.UsernameText).GetComponent<Text>();
         CreateXpPopup();
-        FeedbackUI.Create(GameObject.Find("Canvas").transform, myKills.font);
-        CreateTeamScore();
-        ChatUI.Create(GameObject.Find("Canvas").transform, myKills.font, this);
+        FeedbackUI.Create(canvas, myKills.font);
+        CreateScoreStrip();
+        ChatUI.Create(canvas, myKills.font, this);
         TouchControls.Create(myKills.font);
         CreateLobbyPanel(canvas);
 
@@ -338,7 +365,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
             myDeaths.text = "0 DEATHS";
         }
 
-        RefreshTeamScore();
+        RefreshScoreStrip();
         RefreshLobbyPanel();
         if (leaderboard.gameObject.activeSelf) Leaderboard(leaderboard);
     }
@@ -364,6 +391,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
             p.hat = s.Hat;
             p.face = s.Face;
             p.ready = s.Ready;
+            p.capshots = s.Capshots;
             list.Add(p);
         }
         list.Sort((a, b) => a.actor.CompareTo(b.actor));
@@ -481,8 +509,10 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         if (!Stats.ContainsKey(player)) AddPlayer(player);
 
         PlayerStats stats = Stats[player];
-        if (username != null && username.Length > 20) username = username.Substring(0, 20);
-        stats.Username = string.IsNullOrWhiteSpace(username) ? "PLAYER " + player.PlayerId : username;
+        // Cleaned here, on the host, so no client can put rich text tags into everyone's kill feed,
+        // scoreboard or name tags (TextRules)
+        username = TextRules.CleanName(username);
+        stats.Username = username.Length == 0 ? "PLAYER " + player.PlayerId : username;
         stats.Level = Mathf.Max(1, level);
         stats.Hat = (byte)Hats.Wearable(hat, level);
         stats.Face = (byte)Faces.Wearable(face, level);
@@ -569,6 +599,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
                         PlayerStats stats = Stats[player];
                         stats.Kills = 0;
                         stats.Deaths = 0;
+                        stats.Capshots = 0;
                         Stats.Set(player, stats);
                     }
                     MatchTime = matchlength;
@@ -616,6 +647,8 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
             // In Gun Game only gun kills move you up the ladder (Manager.GunGame.cs).
             bool scores = IsCapGrab ? false : IsGunGame ? GunGameRules.Counts(weaponName, PlasmaWeaponName) : true;
             if (killer.IsRealPlayer && killer != victim && scores) ChangeStats(killer, 1, 0);
+            // Every cap shot kill counts on the scoreboard, whether or not the mode scores it
+            if (killer.IsRealPlayer && killer != victim && headshot) CountCapshot(killer);
             CountStreaks(victim, killer, out multiKill, out streak, out endedStreak);
             CountForAwards(killer, victim, weaponName, headshot, streak);
         }
@@ -653,6 +686,14 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         streaks[killer] = count;
         multiKill = count.multiKill;
         streak = count.streak;
+    }
+
+    private void CountCapshot(PlayerRef player)
+    {
+        PlayerStats stats;
+        if (!Stats.TryGet(player, out stats)) return;
+        stats.Capshots += 1;
+        Stats.Set(player, stats);
     }
 
     private void ChangeStats(PlayerRef player, int kills, int deaths)
@@ -747,6 +788,8 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
     private void OnStateChanged(GameState previousState)
     {
         RefreshTimerUI();
+        // The score plates show once the match is starting
+        RefreshScoreStrip();
 
         switch (state)
         {
@@ -775,7 +818,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
     {
         if (matchEnded) return false;
         bool timedOut = reason == ShutdownReason.ConnectionTimeout || reason == ShutdownReason.PhotonCloudTimeout || reason == ShutdownReason.OperationTimeout;
-        ShowMessage(timedOut ? "CONNECTION LOST" : "THE HOST LEFT THE MATCH");
+        ShowMessage(timedOut ? "CONNECTION LOST" : "THE HOST LEFT THE MATCH", false, PopupQueue.Kind.Urgent);
         return true;
     }
 

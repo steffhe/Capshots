@@ -24,6 +24,9 @@ public static class GameInput
 
     // Actions shown in the settings menu for rebinding, with their display names
     public static readonly List<KeyValuePair<string, InputAction>> Rebindable = new List<KeyValuePair<string, InputAction>>();
+    // The controller bindings the settings can change: the actions above that have one, and stepping
+    // through the gun forms (Pause stays on Start, so a menu can always be reached)
+    public static readonly List<KeyValuePair<string, InputAction>> GamepadRebindable = new List<KeyValuePair<string, InputAction>>();
 
     private static bool initialized;
 
@@ -93,6 +96,13 @@ public static class GameInput
         Rebindable.Add(new KeyValuePair<string, InputAction>("SCOREBOARD", Scoreboard));
         Rebindable.Add(new KeyValuePair<string, InputAction>("CHAT", Chat));
         Rebindable.Add(new KeyValuePair<string, InputAction>("READY (LOBBY)", Ready));
+
+        foreach (KeyValuePair<string, InputAction> entry in Rebindable)
+        {
+            if (GamepadBindingIndex(entry.Value) >= 0) GamepadRebindable.Add(entry);
+        }
+        GamepadRebindable.Add(new KeyValuePair<string, InputAction>("NEXT FORM", WeaponNext));
+        GamepadRebindable.Add(new KeyValuePair<string, InputAction>("PREVIOUS FORM", WeaponPrev));
 
         LoadBindings();
         Map.Enable();
@@ -198,6 +208,17 @@ public static class GameInput
         return -1;
     }
 
+    // The controller binding shown in the settings menu: the first gamepad one, or -1
+    public static int GamepadBindingIndex(InputAction action)
+    {
+        for (int i = 0; i < action.bindings.Count; i++)
+        {
+            InputBinding b = action.bindings[i];
+            if (!b.isComposite && !b.isPartOfComposite && b.groups != null && b.groups.Contains(GamepadGroup)) return i;
+        }
+        return -1;
+    }
+
     // Indices of the WASD composite parts of Move, in up/down/left/right order
     public static int[] MovePartIndices()
     {
@@ -255,6 +276,27 @@ public static class GameInput
             .WithControlsExcluding("<Mouse>/delta")
             .WithControlsExcluding("<Mouse>/scroll")
             .WithCancelingThrough("<Keyboard>/escape")
+            .OnMatchWaitForAnother(0.1f)
+            .OnComplete(operation => FinishRebind(operation, onDone))
+            .OnCancel(operation => FinishRebind(operation, onDone))
+            .Start();
+    }
+
+    // Waits for a controller button (not a stick direction, which steer and aim) and binds it.
+    // Start cancels (so it can't be bound, and the menu can always be opened), and so does waiting
+    // 8 seconds (there's only one cancel binding, and a keyboard player may have started it).
+    public static void StartGamepadRebind(InputAction action, int bindingIndex, System.Action onDone)
+    {
+        IsRebinding = true;
+        Map.Disable();
+
+        action.PerformInteractiveRebinding(bindingIndex)
+            .WithControlsHavingToMatchPath("<Gamepad>")
+            .WithExpectedControlType("Button")
+            .WithControlsExcluding("<Gamepad>/leftStick/*")
+            .WithControlsExcluding("<Gamepad>/rightStick/*")
+            .WithCancelingThrough("<Gamepad>/start")
+            .WithTimeout(8f)
             .OnMatchWaitForAnother(0.1f)
             .OnComplete(operation => FinishRebind(operation, onDone))
             .OnCancel(operation => FinishRebind(operation, onDone))
