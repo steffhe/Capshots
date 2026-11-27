@@ -514,7 +514,7 @@ MonoBehaviour:
   weapon: {fileID: 2799757467745635848}
   xSensitivity: 150
   ySensitivity: 175
-  maxAngle: 60
+  maxAngle: 85
   recoilSnappiness: 25
   recoilRecovery: 7
 --- !u!114 &2799757468120159457

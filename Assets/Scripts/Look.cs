@@ -4,7 +4,11 @@ using UnityEngine;
 
 // Mouse and stick look for the local player. Keeps the view as a yaw and pitch angle, which are
 // sent to the host with the player's input (see InputCollector) and also applied here every frame,
-// so turning never waits for the network.
+// so turning never waits for the network. The mouse is read once per frame (SampleLook), by whichever
+// comes first, this script or the input sent for a tick, so shots always go where the crosshair is
+// drawn that frame. No smoothing or acceleration is applied. Camera effects (firing shake, kill punch)
+// only roll the view, which keeps the crosshair on the real aim; their up and sideways kick goes to
+// the gun model instead.
 public class Look : MonoBehaviour
 {
 
@@ -38,7 +42,8 @@ public class Look : MonoBehaviour
 
     [Header("Firing shake")]
     // Each shot's shake of the view (Gun.shake) and widening of the field of view (Gun.fovPunch): short
-    // and separate from the kill punch, so firing never cuts a kill's shake short. Camera only.
+    // and separate from the kill punch, so firing never cuts a kill's shake short. The view rolls and
+    // the gun kicks (ApplyView); where you aim (Yaw, Pitch) and the crosshair don't move.
     public float fireShakeTime = 0.16f;
     public float fovKickRecovery = 14f;
     private float fireShakeStrength;
@@ -48,7 +53,8 @@ public class Look : MonoBehaviour
     public float FovKick { get; private set; }
 
     [Header("Kill punch")]
-    // A short shake of the view on a kill. Only the camera moves: where you aim (Yaw, Pitch) doesn't.
+    // A short shake on a kill: the view rolls and the gun kicks (ApplyView); where you aim (Yaw, Pitch)
+    // and the crosshair don't move.
     public float punchTime = 0.35f;
     private float punchStrength;
     private float punchAge = 1f;
@@ -61,6 +67,11 @@ public class Look : MonoBehaviour
     private Player owner;
     private Weapon weaponComponent;
     private bool initialized;
+    // The frame the mouse was last read in (SampleLook)
+    private int sampledFrame = -1;
+
+    // Degrees turned per count of mouse movement at a sensitivity setting
+    public static float DegreesPerCount(float sensitivity) => sensitivity * GameInput.MouseScale * SensitivityScale;
 
     #endregion
 
@@ -95,6 +106,19 @@ public class Look : MonoBehaviour
 
         if (Pause.paused) return;
 
+        SampleLook();
+        UpdateCursorLock();
+    }
+
+    // Turns the view by this frame's mouse and stick movement and recoil, once per frame. Called from
+    // Update and from InputCollector before it sends Yaw and Pitch, whichever runs first: Fusion may
+    // gather a tick's input before this script's Update, and the shot would then use last frame's aim.
+    public void SampleLook()
+    {
+        if (!initialized || owner == null || !owner.IsLocal || Pause.paused) return;
+        if (sampledFrame == Time.frameCount) return;
+        sampledFrame = Time.frameCount;
+
         // Sensitivity is changed in the settings menu and saved in the profile
         xSensitivity = GameSettings.XSensitivity;
         ySensitivity = GameSettings.YSensitivity;
@@ -105,8 +129,6 @@ public class Look : MonoBehaviour
         Yaw = Mathf.Repeat(Yaw + look.x * xSensitivity * SensitivityScale, 360f);
         if (GameSettings.InvertY) look.y = -look.y;
         Pitch = Mathf.Clamp(Pitch + look.y * ySensitivity * SensitivityScale, -maxAngle, maxAngle);
-
-        UpdateCursorLock();
     }
 
     // After Fusion has placed the body for this frame, turn it and the camera to the newest view,
@@ -140,9 +162,20 @@ public class Look : MonoBehaviour
         }
         Vector2 look = pointer + stick;
 
-        if (weaponComponent != null && weaponComponent.isAiming) look *= GameSettings.AdsSensitivity;
+        // Aiming zooms in, so turning slows by as much as the view narrows (the same mouse movement
+        // sweeps the same distance on screen), then the player's own aim multiplier on top
+        if (weaponComponent != null && weaponComponent.isAiming) look *= GameSettings.AdsSensitivity * AimZoomSensitivity();
 
         return look;
+    }
+
+    // How much slower turning is while aiming the current gun: its scope's view, or the plain aim zoom
+    float AimZoomSensitivity()
+    {
+        Gun gun = weaponComponent != null ? weaponComponent.CurrentGun : null;
+        float baseFov = GameSettings.Fov;
+        float aimFov = gun != null && gun.scopeFov > 0f ? gun.scopeFov : baseFov * Player.AimFovMultiplier;
+        return LookRules.ZoomSensitivity(aimFov, baseFov);
     }
 
     // AimAssist's slowdown for the enemy nearest the crosshair that can be seen, or 1 for none
@@ -181,8 +214,11 @@ public class Look : MonoBehaviour
     void ApplyView()
     {
         player.rotation = Quaternion.Euler(0f, Yaw, 0f);
-        cam.localRotation = camCenter * Quaternion.AngleAxis(Pitch, -Vector3.right) * KillPunch() * FireShake();
-        weapon.rotation = cam.rotation;
+        // Shakes as (up, sideways, roll) degrees. The view only rolls, which turns the picture round the
+        // crosshair without moving it off where shots go; the gun takes the up and sideways kick.
+        Vector3 shake = KillPunch() + FireShake();
+        cam.localRotation = camCenter * Quaternion.AngleAxis(Pitch, -Vector3.right) * Quaternion.Euler(0f, 0f, shake.z);
+        weapon.rotation = cam.rotation * Quaternion.Euler(-shake.x, shake.y, 0f);
     }
 
     // Shakes the view for a moment: strength is the first swing, in degrees
@@ -211,31 +247,31 @@ public class Look : MonoBehaviour
         if (fovPunch > 0f) FovKick = Mathf.Max(FovKick, fovPunch);
     }
 
-    // This frame's firing shake: a fast, tight shudder (quicker than the kill punch) that's gone in
-    // fireShakeTime
-    Quaternion FireShake()
+    // This frame's firing shake as (up, sideways, roll) degrees: a fast, tight shudder (quicker than the
+    // kill punch) that's gone in fireShakeTime
+    Vector3 FireShake()
     {
-        if (fireShakeAge >= fireShakeTime) return Quaternion.identity;
+        if (fireShakeAge >= fireShakeTime) return Vector3.zero;
         fireShakeAge += Time.deltaTime;
         float t = fireShakeAge;
         float fade = Mathf.Exp(-t * 18f) * Mathf.Clamp01(1f - t / fireShakeTime);
         float up = Mathf.Sin(t * 90f + fireShakeSeed) * fireShakeStrength * fade;
         float side = Mathf.Sin(t * 70f + fireShakeSeed * 1.3f) * fireShakeStrength * 0.5f * fade;
         float roll = Mathf.Sin(t * 60f + fireShakeSeed * 0.7f) * fireShakeStrength * 0.9f * fade;
-        return Quaternion.Euler(-up, side, roll);
+        return new Vector3(up, side, roll);
     }
 
-    // This frame's shake: a quick wobble up and sideways that dies away over punchTime
-    Quaternion KillPunch()
+    // This frame's kill shake as (up, sideways, roll) degrees: a quick wobble that dies away over punchTime
+    Vector3 KillPunch()
     {
-        if (punchAge >= punchTime) return Quaternion.identity;
+        if (punchAge >= punchTime) return Vector3.zero;
         punchAge += Time.deltaTime;
         float t = punchAge;
         float fade = Mathf.Exp(-t * 9f) * Mathf.Clamp01(1f - t / punchTime);
         float up = Mathf.Sin(t * 55f + punchSeed) * punchStrength * fade;
         float side = Mathf.Sin(t * 41f + punchSeed * 1.7f) * punchStrength * 0.6f * fade;
         float roll = Mathf.Sin(t * 33f + punchSeed * 0.5f) * punchStrength * 0.8f * fade;
-        return Quaternion.Euler(-up, side, roll);
+        return new Vector3(up, side, roll);
     }
 
     void UpdateCursorLock()
@@ -283,8 +319,9 @@ public class Look : MonoBehaviour
     {
         Vector2 previous = recoilCurrent;
         float recovery = currentRecovery > 0f ? currentRecovery : recoilRecovery;
-        recoilCurrent = Vector2.Lerp(recoilCurrent, recoilTarget, Time.deltaTime * recoilSnappiness);
-        recoilTarget = Vector2.Lerp(recoilTarget, Vector2.zero, Time.deltaTime * recovery);
+        // Eased the same at any frame rate (as these rates felt at 60 frames a second)
+        recoilCurrent = Vector2.Lerp(recoilCurrent, recoilTarget, LookRules.Ease(recoilSnappiness, Time.deltaTime));
+        recoilTarget = Vector2.Lerp(recoilTarget, Vector2.zero, LookRules.Ease(recovery, Time.deltaTime));
 
         Vector2 delta = recoilCurrent - previous;
         Pitch = Mathf.Clamp(Pitch + delta.x, -maxAngle, maxAngle);

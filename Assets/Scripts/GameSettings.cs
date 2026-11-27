@@ -203,8 +203,10 @@ public static class GameSettings
         set { PlayerPrefs.SetInt(InvertYKey, value ? 1 : 0); PlayerPrefs.Save(); }
     }
 
-    // The view's shake on a kill and from a nearby grenade (Look.Punch). Off for players who get
-    // motion sick; recoil still moves the aim, since that's part of how the guns handle.
+    // Camera effects, shown as CAMERA EFFECTS in the settings: the view's shake when firing, on a kill
+    // and from a nearby grenade (Look), and the field of view widening with speed (Player.UpdateCamera).
+    // Off for players who get motion sick or want a still view; recoil still moves the aim, since
+    // that's part of how the guns handle. (Saved under its old name, screen shake.)
     public static bool ScreenShake
     {
         get => PlayerPrefs.GetInt(ScreenShakeKey, 1) == 1;

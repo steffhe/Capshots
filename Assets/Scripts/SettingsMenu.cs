@@ -6,7 +6,7 @@ using UnityEngine.UI;
 
 // Settings panel inside the pause menu: look sensitivity, ADS sensitivity, field of view, master,
 // effects and music volume, graphics quality, colours, the FPS counter, key bindings, invert Y and
-// screen shake. Built at runtime from copies of the pause menu's own button,
+// camera effects (screen shake and speed FOV). Built at runtime from copies of the pause menu's own button,
 // slider and label (styled by UITheme.StylePause), so the Pause prefab doesn't need editing.
 // It also adds the pause menu's Customize button and panel (CustomizeMenu), under Settings.
 // The main menu has the same panel (CreateForMainMenu), built from copies of its own button,
@@ -284,7 +284,7 @@ public class SettingsMenu : MenuPanel
             AddBindingRow(rect, entry.Key, entry.Value, GameInput.KeyboardBindingIndex(entry.Value));
         }
 
-        // Under the bindings, level with DONE: screen shake, and invert Y above it
+        // Under the bindings, level with DONE: camera effects (screen shake and speed FOV), and invert Y above it
         float toggleY = -PanelHeight / 2f + 58f;
         GameObject shake = NewButton(rect, "", () =>
         {
@@ -369,7 +369,9 @@ public class SettingsMenu : MenuPanel
 
     private void RefreshLabels()
     {
-        xSensValue.text = Mathf.RoundToInt(GameSettings.XSensitivity).ToString();
+        // With the mouse travel for a full turn at a common 800 DPI, so the number means something
+        float cmPerTurn = LookRules.CentimetresPer360(Look.DegreesPerCount(GameSettings.XSensitivity), 800f);
+        xSensValue.text = Mathf.RoundToInt(GameSettings.XSensitivity) + $"  <size=13><color={UITheme.Hex(UITheme.MutedText)}>{cmPerTurn:0.#} cm/360 @800 DPI</color></size>";
         ySensValue.text = Mathf.RoundToInt(GameSettings.YSensitivity).ToString();
         fovValue.text = Mathf.RoundToInt(GameSettings.Fov).ToString();
         adsValue.text = GameSettings.AdsSensitivity.ToString("0.00") + "x";
@@ -379,7 +381,7 @@ public class SettingsMenu : MenuPanel
         qualityText.text = UITheme.Option("GRAPHICS", GameSettings.QualityName.ToUpperInvariant());
         if (fpsText != null) fpsText.text = UITheme.Option("FPS COUNTER", GameSettings.ShowFps ? "ON" : "OFF");
         if (invertText != null) invertText.text = UITheme.Option("INVERT Y", GameSettings.InvertY ? "ON" : "OFF");
-        if (shakeText != null) shakeText.text = UITheme.Option("SCREEN SHAKE", GameSettings.ScreenShake ? "ON" : "OFF");
+        if (shakeText != null) shakeText.text = UITheme.Option("CAMERA EFFECTS", GameSettings.ScreenShake ? "ON" : "OFF");
         if (coloursText != null) coloursText.text = UITheme.Option("COLOURS", GameSettings.Colourblind ? "COLOUR BLIND" : "STANDARD");
     }
 

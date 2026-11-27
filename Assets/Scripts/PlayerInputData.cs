@@ -101,6 +101,8 @@ public class InputCollector
         Look look = local.GetComponent<Look>();
         if (look != null)
         {
+            // This frame's mouse movement, even if Look hasn't run its Update yet this frame
+            look.SampleLook();
             data.Yaw = look.Yaw;
             data.Pitch = look.Pitch;
         }

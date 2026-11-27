@@ -75,9 +75,15 @@ public class Player : NetworkBehaviour
     private Hitbox[] standingHitboxes = new Hitbox[0];
     private Hitbox[] crouchingHitboxes = new Hitbox[0];
     private float baseFOV;
-    private float sprintFOVModifier = 1.25f;
-    // Field of view while aiming a gun without a scope, as a share of the normal one
-    private const float AimFovMultiplier = 0.6f;
+    // Degrees added to the field of view at full sprinting speed, and while sliding (CAMERA EFFECTS
+    // setting). Added rather than multiplied, so a wide field of view setting doesn't balloon.
+    private const float SprintFovBoost = 5f;
+    private const float SlideFovBoost = 8f;
+    // The widest the view ever gets: the widest setting plus a little for speed
+    private const float MaxCameraFov = GameSettings.MaxFov + 10f;
+    // Field of view while aiming a gun without a scope, as a share of the normal one (Look slows
+    // turning to match)
+    public const float AimFovMultiplier = 0.6f;
 
     private Vector3 weaponParentCurrentPosition;
     private Vector3 weaponParentorigin;
@@ -768,7 +774,7 @@ public class Player : NetworkBehaviour
     // The field of view being eased towards its target, before a shot's punch is added
     private float smoothedFov;
 
-    // Field of view and camera height: wider while sprinting and sliding, lower while crouching
+    // Field of view and camera height: wider at sprinting speed and while sliding, lower while crouching
     private void UpdateCamera(bool isSprinting)
     {
         // Picks up changes made in the settings menu
@@ -788,17 +794,26 @@ public class Player : NetworkBehaviour
             fovSpeed = 15f;
         }
         else if (weapon.isAiming) targetFov = baseFOV * AimFovMultiplier;
-        else if (Sliding) targetFov = baseFOV * sprintFOVModifier * 1.25f;
-        else if (isSprinting) targetFov = baseFOV * sprintFOVModifier;
-        // Eased on its own, so a shot's brief widening (Look.FovKick, on top) doesn't feed back into it
+        else if (GameSettings.ScreenShake)
+        {
+            // A sense of speed, from how fast the body really moves (so it grows as sprinting spools up
+            // and never flickers on a stair), and a little more while sliding. Off with CAMERA EFFECTS.
+            if (Sliding) targetFov = baseFOV + SlideFovBoost;
+            else targetFov = baseFOV + SprintFovBoost * Mathf.InverseLerp(WalkSpeed, SprintSpeed, HorizontalSpeed);
+        }
+        targetFov = Mathf.Min(targetFov, MaxCameraFov);
+        // Eased on its own, so a shot's brief widening (Look.FovKick, on top) doesn't feed back into it.
+        // The same at any frame rate (as it felt at 60 frames a second).
         if (smoothedFov <= 0f) smoothedFov = normalCam.fieldOfView;
-        smoothedFov = Mathf.Lerp(smoothedFov, targetFov, t * fovSpeed);
+        smoothedFov = Mathf.Lerp(smoothedFov, targetFov, LookRules.Ease(fovSpeed, t));
         normalCam.fieldOfView = smoothedFov + (look != null ? look.FovKick : 0f);
 
+        // Shots start from the crouched height straight away (EyePosition), so the view follows quickly
+        // rather than drifting down for half a second with the crosshair above where shots come from
         Vector3 camTarget = origin;
         if (Sliding) camTarget += Vector3.down * slideAmount;
         else if (Crouched) camTarget += Vector3.down * crouchAmount;
-        normalCam.transform.localPosition = Vector3.Lerp(normalCam.transform.localPosition, camTarget, t * 6f);
+        normalCam.transform.localPosition = Vector3.Lerp(normalCam.transform.localPosition, camTarget, 1f - Mathf.Exp(-t / 0.05f));
 
         // Scoped guns also zoom the gun model, so the scope comes up to the eye while aiming
         if (viewmodelCam != null)
@@ -806,7 +821,7 @@ public class Player : NetworkBehaviour
             Gun currentGun = weapon.CurrentGun;
             bool scoped = weapon.isAiming && currentGun != null && currentGun.scopeViewmodelFov > 0f;
             float targetViewmodelFov = scoped ? currentGun.scopeViewmodelFov : viewmodelFov;
-            viewmodelCam.fieldOfView = Mathf.Lerp(viewmodelCam.fieldOfView, targetViewmodelFov, t * 15f);
+            viewmodelCam.fieldOfView = Mathf.Lerp(viewmodelCam.fieldOfView, targetViewmodelFov, LookRules.Ease(15f, t));
         }
     }
 

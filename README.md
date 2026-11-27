@@ -27,7 +27,7 @@ Pick a username, then **Quick play**, create a room, join one from the list, typ
 - **Maps:** Proving Ground, Downtown, Prototype, Office (breakable glass walls around a courtyard garden) and Test Site 07 (a 1950s desert test town). Vote for the next map after each match.
 - **Progression:** XP and levels saved to your profile, kill streaks and multi-kills, match awards and a results screen. 30 hats and 12 drone faces unlock as you level up (**Customize**).
 - **Feedback and presentation:** hit markers, cap shot bursts, kill feed, damage direction, death cam and killer spectating, a directed map camera, ragdolls, and sounds and music generated in code.
-- **Settings:** field of view, sensitivity, volumes, graphics quality, key rebinding, invert Y, screen shake, FPS counter and a colour-blind palette.
+- **Settings:** field of view, sensitivity, volumes, graphics quality, key rebinding, invert Y, camera effects (screen shake and speed FOV), FPS counter and a colour-blind palette.
 - **Input:** keyboard and mouse, gamepads (with light aim assist), and touch controls on phones and tablets. Text chat.
 
 ## Controls
