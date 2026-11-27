@@ -45,7 +45,11 @@ public class Pause : MonoBehaviour
     // so anyone can leave there without waiting for them to finish.
     private void Update()
     {
-        if (paused) RefreshLobbyButtons();
+        if (paused)
+        {
+            RefreshLobbyButtons();
+            RefreshRangeButtons();
+        }
 
         // A controller's B resumes, unless it's closing an option list or the Settings or Customize
         // panel (which take it themselves, whichever runs first this frame)
@@ -202,6 +206,39 @@ public class Pause : MonoBehaviour
         if (startButton != null && startButton.activeSelf != canStart) startButton.SetActive(canStart);
     }
 
+    private int shownDistance;
+    private UnityEngine.UI.Button rangeMatch, rangeMotion, rangeDistance;
+    private UnityEngine.UI.Text motionLabel, distanceLabel;
+
+    private void RefreshRangeButtons()
+    {
+        Manager range = Manager.Instance;
+        if (range == null || !range.InRange) return;
+        if (rangeMatch == null)
+        {
+            Transform buttons = transform.GetChild(0).Find("Buttons");
+            Transform resume = buttons != null ? buttons.Find("Button (1)") : null;
+            if (resume == null) return;
+            resume.GetComponentInChildren<UnityEngine.UI.Text>(true).text = "KEEP SHOOTING";
+            int index = resume.GetSiblingIndex() + 1;
+            rangeMatch = CopyMenuButton(buttons, "Try a match", index++, out var label);
+            label.text = "TRY A MATCH  ·  FIRST TO 10 CAPS";
+            rangeMatch.onClick.AddListener(range.StartRangeMatch);
+            rangeDistance = CopyMenuButton(buttons, "Distance", index++, out distanceLabel);
+            rangeDistance.onClick.AddListener(range.CycleRangeDistance);
+            rangeMotion = CopyMenuButton(buttons, "Motion", index, out motionLabel);
+            rangeMotion.onClick.AddListener(range.ToggleRangeMotion);
+        }
+        rangeDistance.gameObject.SetActive(range.FreeRange);
+        rangeMotion.gameObject.SetActive(range.FreeRange);
+        if (shownDistance != range.TargetDistance)
+        {
+            shownDistance = range.TargetDistance;
+            distanceLabel.text = $"TARGET DISTANCE  ·  {shownDistance} M";
+        }
+        motionLabel.text = range.MovingTarget ? "TARGET  ·  MOVING" : "TARGET  ·  STATIONARY";
+    }
+
     private UnityEngine.UI.Text inviteLabel;
     private void ResetInviteLabel()
     {
@@ -214,7 +251,11 @@ public class Pause : MonoBehaviour
         toggledFrame = Time.frameCount;
 
         paused = !paused;
-        if (paused) RefreshLobbyButtons();
+        if (paused)
+        {
+            RefreshLobbyButtons();
+            RefreshRangeButtons();
+        }
 
         transform.GetChild(0).gameObject.SetActive(paused);
         // Over everything else on the screen, the end screens included
