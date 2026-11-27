@@ -59,6 +59,8 @@ public class Weapon : NetworkBehaviour
     public float morphTime = 0.5f;
 
     private const int MaxGuns = 4;
+    // How faint the crosshair is while the gun changes form
+    private const float LockedCrosshairAlpha = 0.3f;
     // How long after spawning the starting form can still be picked up instantly (room for the
     // first input to arrive on a slow connection)
     private const float StartingFormSeconds = 1f;
@@ -119,6 +121,8 @@ public class Weapon : NetworkBehaviour
     // A semi-automatic click that came a moment before the gun was ready: it fires as soon as it is
     // (see ShotRules.FireBufferSeconds), instead of being lost
     [Networked] private TickTimer FireQueue { get; set; }
+    // The cell swap key pressed while the gun was changing form: the swap starts once it's done
+    [Networked] private NetworkBool ReloadQueued { get; set; }
     [Networked] private TickTimer ReloadTimer { get; set; }
     [Networked] private TickTimer BurstTimer { get; set; }
     [Networked] private int BurstLeft { get; set; }
@@ -129,8 +133,9 @@ public class Weapon : NetworkBehaviour
     [Networked] private NetworkButtons PreviousButtons { get; set; }
     // Counts every shot, so each one gets its own (but on every machine the same) random spread
     [Networked] private int ShotCount { get; set; }
-    // Running for a moment after spawning. A first change of form in that time, before any shot,
-    // is the starting form picked in the settings, and happens instantly.
+    // Running for a moment after spawning. A first change of form in that time, before any shot, that
+    // the player's game marks as the starting form picked in the settings (InputButton.StartingForm)
+    // happens instantly; a change the player picks always transforms.
     [Networked] private TickTimer StartingFormWindow { get; set; }
     [Networked] private NetworkBool HasChangedForm { get; set; }
     // Plasma grenades carried (see PlasmaGrenadeRules.MaxCarried), how many this body has thrown (each
@@ -265,21 +270,30 @@ public class Weapon : NetworkBehaviour
 
         Aiming = input.Buttons.IsSet(InputButton.Aim);
 
-        // Changing form cancels a cell swap or burst in progress, and takes a moment. The starting
-        // form (the first change, before any shot) is picked up instantly instead.
+        // Changing form (GunTransform.Decide): the input carries the form wanted, every tick. It cancels
+        // a cell swap, burst or remembered click in progress and takes morphTime, during which the gun
+        // can't fire or aim; the fire cooldown keeps running, so changing form never skips it. Only the
+        // automatic starting pick, straight after spawning, is taken instantly.
         int slot = input.WeaponSlot - 1;
+        bool startingRequest = input.Buttons.IsSet(InputButton.StartingForm);
         // Gun Game: the ladder decides the form, not the player
         Manager gunGame = Manager.Instance;
-        if (gunGame != null && gunGame.IsGunGame) slot = gunGame.GunGameSlot(player.ActorId, loadout, Equipped);
-        if (slot >= 0 && slot < loadout.Length && slot != Equipped)
+        if (gunGame != null && gunGame.IsGunGame)
         {
-            bool startingForm = !HasChangedForm && ShotCount == 0 && StartingFormWindow.IsRunning && !StartingFormWindow.Expired(Runner);
+            slot = gunGame.GunGameSlot(player.ActorId, loadout, Equipped);
+            startingRequest = false;
+        }
+        bool windowOpen = StartingFormWindow.IsRunning && !StartingFormWindow.Expired(Runner);
+        GunTransform.Change change = GunTransform.Decide(slot, Equipped, loadout.Length, startingRequest, HasChangedForm, ShotCount, windowOpen);
+        if (change != GunTransform.Change.None)
+        {
             HasChangedForm = true;
             Equipped = slot;
             ReloadTimer = TickTimer.None;
+            ReloadQueued = false;
             BurstLeft = 0;
             FireQueue = TickTimer.None;
-            MorphTimer = startingForm ? TickTimer.None : TickTimer.CreateFromSeconds(Runner, morphTime);
+            MorphTimer = change == GunTransform.Change.Instant ? TickTimer.None : TickTimer.CreateFromSeconds(Runner, morphTime);
         }
         if (MorphTimer.Expired(Runner)) MorphTimer = TickTimer.None;
         if (ThrowTimer.Expired(Runner)) ThrowTimer = TickTimer.None;
@@ -338,12 +352,20 @@ public class Weapon : NetworkBehaviour
                 else BurstLeft = 0;
             }
         }
-        else if (!ReloadTimer.IsRunning && !MorphTimer.IsRunning && !ThrowTimer.IsRunning)
+        else if (GunReady)
         {
             if (pressed.IsSet(InputButton.Grenade) && Grenades > 0)
             {
                 StartCooking();
                 return;
+            }
+
+            // The cell swap key was pressed while the gun was changing form: swap now
+            if (ReloadQueued)
+            {
+                ReloadQueued = false;
+                StartReload();
+                if (ReloadTimer.IsRunning) return;
             }
 
             bool fireInput;
@@ -384,7 +406,21 @@ public class Weapon : NetworkBehaviour
                 StartReload();
             }
         }
+        else
+        {
+            // The gun is held up (changing form, swapping the cell or throwing). A semi-automatic click
+            // near the end is remembered and fires the moment it's free, as with the cooldown (a held
+            // automatic trigger just fires then anyway). The cell swap key during a change of form
+            // swaps once it's done.
+            if (gun.burst != 1 && pressed.IsSet(InputButton.Fire) && !ThrowTimer.IsRunning)
+                FireQueue = TickTimer.CreateFromSeconds(Runner, ShotRules.FireBufferSeconds);
+            if (pressed.IsSet(InputButton.Reload) && MorphTimer.IsRunning) ReloadQueued = true;
+        }
     }
+
+    // Nothing holds the gun this tick: not changing form, swapping the cell, throwing or cooking a
+    // grenade (expired timers are cleared earlier in the tick). Every shot checks it (GunTransform.CanFire).
+    bool GunReady => GunTransform.CanFire(MorphTimer.IsRunning, ReloadTimer.IsRunning, ThrowTimer.IsRunning, CookTimer.IsRunning, Equipped, loadout.Length);
 
     // Presentation only: gun model position and aiming
     void Update()
@@ -397,7 +433,9 @@ public class Weapon : NetworkBehaviour
         if (HasInputAuthority && !Pause.paused) Aim(isAiming);
         if (HasInputAuthority)
         {
-            SetCrosshairAlpha(Mathf.MoveTowards(crosshairAlpha, isAiming ? 0f : 1f, Time.deltaTime * 6f));
+            // Gone while aiming (the sights take over), faint while changing form (it can't fire)
+            float crosshairTarget = isAiming ? 0f : MorphProgress >= 0f ? LockedCrosshairAlpha : 1f;
+            SetCrosshairAlpha(Mathf.MoveTowards(crosshairAlpha, crosshairTarget, Time.deltaTime * 6f));
             // The spread ticks round the dot follow the gun's current spread
             HudFeedback.SetSpread(CurrentBloom(), crosshairAlpha);
         }
@@ -421,6 +459,17 @@ public class Weapon : NetworkBehaviour
             if (gun == null) return 0f;
             int ticks = Mathf.Max(0, Runner.Tick.Raw - AimStartTick);
             return ShotRules.AimProgress(ticks * Runner.DeltaTime, gun.adsTime);
+        }
+    }
+
+    // How far through a change of form this gun is, 0 to 1, or -1 when it isn't changing form. The
+    // crosshair fades while it is: the gun can't fire.
+    public float MorphProgress
+    {
+        get
+        {
+            if (Object == null || !Object.IsValid || !MorphTimer.IsRunning || MorphTimer.Expired(Runner)) return -1f;
+            return GunTransform.Progress(MorphTimer.RemainingTime(Runner), morphTime);
         }
     }
 
@@ -492,7 +541,8 @@ public class Weapon : NetworkBehaviour
     void FireBurstShot(Gun gun, PlayerInputData input)
     {
         Fire(input);
-        BurstLeft--;
+        // (Fire stops the burst itself if the gun was held up)
+        BurstLeft = Mathf.Max(0, BurstLeft - 1);
         BurstTimer = BurstLeft > 0 ? TickTimer.CreateFromSeconds(Runner, gun.fireRate) : TickTimer.None;
     }
 
@@ -604,6 +654,12 @@ public class Weapon : NetworkBehaviour
     // a cap shot when at least half of its damage came from pellets that hit the head.
     void Fire(PlayerInputData input)
     {
+        // Never while the gun is held up, whichever way the shot was asked for (a burst included)
+        if (!GunReady)
+        {
+            BurstLeft = 0;
+            return;
+        }
         Gun gun = loadout[Equipped];
 
         Energy = Mathf.Max(0f, Energy - gun.energyPerShot);
@@ -988,13 +1044,17 @@ public class Weapon : NetworkBehaviour
 
     void OnEquippedChanged()
     {
-        // Picking up the starting form doesn't run the morph timer, and isn't animated either
-        ShowGun(Equipped, MorphTimer.IsRunning);
+        // Picking up the starting form doesn't run the morph timer, and isn't animated either. Your own
+        // gun's animation is timed to end exactly as it can fire again; others' play whole.
+        bool morphing = MorphTimer.IsRunning && !MorphTimer.Expired(Runner);
+        float? remaining = morphing ? MorphTimer.RemainingTime(Runner) : null;
+        float seconds = GunTransform.AnimationSeconds(remaining, morphTime, HasInputAuthority);
+        ShowGun(Equipped, morphing && seconds > 0f, seconds);
     }
 
     // Shows the equipped form. A change of form transforms the old model into the new one
     // (GunMorph) when animate is set, and otherwise just swaps it.
-    void ShowGun(int ind, bool animate = false)
+    void ShowGun(int ind, bool animate = false, float seconds = -1f)
     {
         if (ind == shownIndex && currentWeapon != null) return;
 
@@ -1019,7 +1079,7 @@ public class Weapon : NetworkBehaviour
         currentWeapon = newWeapon;
         if (oldWeapon != null)
         {
-            if (animate) GunMorph.Begin(newWeapon, oldWeapon, morphTime);
+            if (animate) GunMorph.Begin(newWeapon, oldWeapon, seconds > 0f ? seconds : morphTime);
             Destroy(oldWeapon);
         }
         // The gun's own line is only a template for the laser beams (see ShotLine)
