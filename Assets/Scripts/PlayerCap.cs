@@ -127,11 +127,11 @@ public class PlayerCap : MonoBehaviour
     {
         if (renderers == null || renderers.Length == 0) return;
         locked = true;
-        Material glass = SurfaceMaterial(Surface.Glass, renderers[0].sharedMaterial);
+        Material previewMaterial = SharedMaterial(renderers[0].sharedMaterial);
         foreach (Renderer r in renderers)
         {
             if (r == null) continue;
-            r.sharedMaterial = glass;
+            r.sharedMaterial = previewMaterial;
             r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         }
         SetColor(LockedGrey);
@@ -366,6 +366,7 @@ public class PlayerCap : MonoBehaviour
         BrimShape brim = new BrimShape { innerX = 0.94f, innerZ = 0.94f, outerX = 1.42f, outerZ = 1.36f, sideCurl = 0.2f, frontCurl = 0.05f, power = 2.2f, thickness = 0.03f };
         Generated("Brim", BrimMesh(brim), Shade.Dark, new Vector3(0f, sit * r, 0f), Vector3.one * r, Vector3.zero, true);
         Generated("Brim Roll", BrimEdge(brim, 0.035f), Shade.Dark, new Vector3(0f, sit * r, 0f), Vector3.one * r, Vector3.zero, false);
+        Primitive("Underside", PrimitiveType.Cylinder, Shade.Dark, Vector3.up * (sit * r), new Vector3(2f * radius * r, 0.008f * r, 2f * radius * r), Vector3.zero, false);
         // The crown flares out a little towards its flat top
         Line(Generated("Crown", Frustum(flare, true), Shade.Main, new Vector3(0f, sit * r, 0f), new Vector3(radius * r, height * r, radius * r), Vector3.zero, true), Frustum(flare, true, true));
         Generated("Top Edge", Torus(0.04f), Shade.Main, new Vector3(0f, (sit + height) * r, 0f), Vector3.one * (radius * flare * 0.99f * r), Vector3.zero, false);
@@ -463,7 +464,7 @@ public class PlayerCap : MonoBehaviour
             if (blade)
             {
                 const float tall = 0.5f, wide = 0.16f, deep = 0.045f, taper = 0.2f;
-                Generated("Point", Frustum(taper, false), Shade.Main, basePoint, new Vector3(wide * r, tall * r, deep * r), tilt.eulerAngles, false);
+                Generated("Point", Frustum(taper, false), Shade.Main, basePoint, new Vector3(wide * r, tall * r, deep * r), tilt.eulerAngles, true);
                 // An oval gem low on the blade's face
                 surface = Surface.Plastic;
                 float faceDepth = deep * (1f - (1f - taper) * 0.3f) * r;
@@ -471,7 +472,7 @@ public class PlayerCap : MonoBehaviour
                 // A three-lobed tip: a tall middle leaf, a smaller one each side, and a gem in its middle
                 surface = Surface.Metal;
                 Vector3 tip = basePoint + up * (tall * r);
-                Primitive("Tip", PrimitiveType.Sphere, Shade.Main, tip + up * (0.07f * r), new Vector3(0.12f * r, 0.2f * r, 0.045f * r), tilt.eulerAngles, false);
+                Primitive("Tip", PrimitiveType.Sphere, Shade.Main, tip + up * (0.07f * r), new Vector3(0.12f * r, 0.2f * r, 0.045f * r), tilt.eulerAngles, true);
                 for (int s = -1; s <= 1; s += 2)
                 {
                     Primitive("Leaf", PrimitiveType.Sphere, Shade.Main, tip + up * (0.03f * r) + sideways * (0.08f * r * s), new Vector3(0.1f * r, 0.07f * r, 0.04f * r), (tilt * Quaternion.Euler(0f, 0f, -30f * s)).eulerAngles, false);
@@ -484,8 +485,8 @@ public class PlayerCap : MonoBehaviour
             else
             {
                 const float tall = 0.64f;
-                Generated("Spike", Frustum(0.3f, false), Shade.Main, basePoint, new Vector3(0.055f * r, tall * r, 0.035f * r), tilt.eulerAngles, false);
-                Primitive("Tip", PrimitiveType.Sphere, Shade.Main, basePoint + up * ((tall + 0.04f) * r), new Vector3(0.07f * r, 0.13f * r, 0.035f * r), tilt.eulerAngles, false);
+                Generated("Spike", Frustum(0.3f, false), Shade.Main, basePoint, new Vector3(0.055f * r, tall * r, 0.035f * r), tilt.eulerAngles, true);
+                Primitive("Tip", PrimitiveType.Sphere, Shade.Main, basePoint + up * ((tall + 0.04f) * r), new Vector3(0.07f * r, 0.13f * r, 0.035f * r), tilt.eulerAngles, true);
             }
         }
     }

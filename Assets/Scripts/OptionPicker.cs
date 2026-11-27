@@ -135,8 +135,11 @@ public class OptionPicker : MonoBehaviour
         // The button went away (its tab or menu closed): so does the list
         if (owner == null || !owner.isActiveAndEnabled) { Close(); return; }
         Keyboard keyboard = Keyboard.current;
-        if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame) { Close(); return; }
-        if (MenuNavigation.TakeBack()) Close();
+        if ((keyboard != null && keyboard.escapeKey.wasPressedThisFrame) || MenuNavigation.TakeBack())
+        {
+            MenuAudio.Pressed(true);
+            Close();
+        }
     }
 
     private void OnDestroy()

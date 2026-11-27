@@ -124,6 +124,12 @@ public partial class Launcher : MonoBehaviour
 
     private System.Collections.IEnumerator Start()
     {
+        if (myProfile.username == "DEFAULT USERNAME")
+        {
+            usernameField.text = "";
+            usernameField.Select();
+            usernameField.ActivateInputField();
+        }
         if (inviteUsed || !Browser.IsBrowser) yield break;
         string code = RoomCodes.FromUrl(Application.absoluteURL);
         inviteUsed = true;
@@ -227,7 +233,12 @@ public partial class Launcher : MonoBehaviour
         if (!maps[currentmap].enabled) currentmap = NextEnabledMap(0);
         Dictionary<string, SessionProperty> properties = RoomProperties();
         if (currentbots == 0) properties["bots"] = QuickPlayBots;
-        LoadingScreen.Show("STARTING PRACTICE", maps[currentmap].name, LoadingScreen.ModeName(currentmode));
+        const int capshotMode = 2;
+        properties["mode"] = capshotMode;
+        properties["botskill"] = BotLogic.Easy;
+        properties["killcount"] = 10;
+        properties["matchlength"] = 0;
+        LoadingScreen.Show("STARTING PRACTICE", maps[currentmap].name, LoadingScreen.ModeName(capshotMode));
         StartGameResult result = await NetworkSession.Practice(properties, maps[currentmap].scene);
         starting = false;
         if (!result.Ok)

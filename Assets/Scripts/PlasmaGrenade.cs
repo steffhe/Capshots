@@ -451,16 +451,18 @@ public class PlasmaBlast : MonoBehaviour
 
         // Bursts out fast, then slows as it fades
         float grow = 1f - Mathf.Pow(1f - t, 3f);
-        bubble.localScale = Vector3.one * Mathf.Lerp(0.3f, PlasmaGrenadeRules.BlastRadius * 0.9f, grow);
+        float collapse = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.32f, 0.75f, t));
+        bubble.localScale = Vector3.one * (Mathf.Lerp(0.3f, PlasmaGrenadeRules.BlastRadius * 0.9f, grow) * collapse);
         float fade = 1f - t;
         bubbleRenderer.GetPropertyBlock(block);
-        Color body = Color.Lerp(Color.white, color, t) * fade;
+        Color body = Color.Lerp(Color.white, color, Mathf.SmoothStep(0f, 1f, t * 3f));
+        body.a = fade * fade;
         block.SetColor("_BaseColor", body);
         block.SetColor("_Color", body);
         block.SetColor("_EmissionColor", Color.Lerp(Color.white, color, Mathf.Min(1f, t * 2f)) * (6f * fade * fade));
         bubbleRenderer.SetPropertyBlock(block);
         // Gone near the end rather than hanging there as a dark ball
-        bubbleRenderer.enabled = t < 0.95f;
+        bubbleRenderer.enabled = collapse > 0.01f;
 
         if (flash != null) flash.intensity = FlashIntensity * Mathf.Pow(fade, 2f);
 
