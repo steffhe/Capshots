@@ -104,6 +104,8 @@ public partial class Manager
         popupObject.name = "XP Popup";
 
         xpPopup = popupObject.GetComponent<Text>();
+        // The Kills text it's copied from isn't drawn on the HUD any more (UITheme.StyleHud)
+        xpPopup.enabled = true;
         // Faded with a CanvasGroup so coloured words (like a team name) fade too
         xpPopupGroup = popupObject.AddComponent<CanvasGroup>();
         xpPopupGroup.interactable = false;

@@ -94,7 +94,7 @@ public partial class Manager
 
     #region Panel
 
-    // Top left, under the kills and deaths: a card with the room code, how many are ready (with a
+    // Top left: a card with the room code, how many are ready (with a
     // bar), a row per person with a READY / NOT READY pill, the countdown, and how to ready up
     private RectTransform lobbyPanel;
     private Text lobbyTitle, lobbyCode, lobbyCount, lobbyBots, lobbyCountdown, lobbyStatus, lobbyKey, lobbyHint, lobbyHostHint;
@@ -125,7 +125,7 @@ public partial class Manager
         lobbyPanel.SetParent(canvas, false);
         // Right above the HUD, like the scoreboard (which goes over it): under the chat, pause menu and results
         if (Hud != null && Hud.transform.parent == canvas) lobbyPanel.SetSiblingIndex(Hud.transform.GetSiblingIndex() + 1);
-        UITheme.Place(lobbyPanel, new Vector2(0f, 1f), new Vector2(28f, -100f), new Vector2(LobbyWidth, 200f));
+        UITheme.Place(lobbyPanel, new Vector2(0f, 1f), new Vector2(28f, -28f), new Vector2(LobbyWidth, 200f));
 
         Image background = UITheme.NewImage("Background", lobbyPanel, UITheme.Panel, 12f);
         UITheme.Stretch(background.rectTransform);

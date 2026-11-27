@@ -112,6 +112,39 @@ public static partial class UITheme
         }
     }
 
+    private static Sprite ring;
+
+    // A white ring (a circle's outline, a tenth of its width thick), smooth-edged. The HUD's kill
+    // confirmation expands one round the crosshair.
+    public static Sprite Ring
+    {
+        get
+        {
+            if (ring != null) return ring;
+            const int size = 64;
+            const float outer = size / 2f - 1f;
+            const float thickness = size / 10f;
+            Texture2D tex = NewTexture("UITheme Ring", size, size);
+            Color32[] pixels = new Color32[size * size];
+            Vector2 centre = new Vector2(size / 2f, size / 2f);
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float d = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), centre);
+                    // Inside the band between outer - thickness and outer, with a pixel of soft edge
+                    float alpha = Mathf.Clamp01(outer - d + 0.5f) * Mathf.Clamp01(d - (outer - thickness) + 0.5f);
+                    pixels[y * size + x] = new Color32(255, 255, 255, (byte)(alpha * 255f));
+                }
+            }
+            tex.SetPixels32(pixels);
+            tex.Apply();
+            ring = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+            ring.name = tex.name;
+            return ring;
+        }
+    }
+
     private static Texture2D NewTexture(string name, int width, int height)
     {
         return new Texture2D(width, height, TextureFormat.RGBA32, false)

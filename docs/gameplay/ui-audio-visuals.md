@@ -19,11 +19,32 @@ When adding UI, follow this pattern and `UITheme` helpers instead of adding new 
 | --- | --- |
 | Main menu | `Launcher.cs` (rooms, create/join, settings fields wired in `Menu.unity`), `Launcher.Home.cs`, `Launcher.Style.cs`, `MainMenu`, `MenuScenery`, `MenuBattle` (cosmetic bots), `RotateTowards` |
 | In-match menus | `Pause.cs`, `SettingsMenu`, `CustomizeMenu`, `Manager.Scoreboard`, `Manager.Voting`, `AwardStage` |
-| HUD and feedback | `UITheme.Hud`, `HudFeedback`, `FeedbackUI` (damage flash, kill feed, killed-by), `Manager.CapArrows`, `Manager.RaceScore`, `Manager.Lobby` (lobby card) |
+| HUD and feedback | `UITheme.Hud` (layout and tokens), `HudFeedback` (health, weapon cluster, crosshair, kill confirmation), `FeedbackUI` (damage flash, kill feed, death screen), `Manager.ScoreStrip`, `Manager.CapArrows`, `Manager.Lobby` (lobby card), `Core/HudRules` |
 | Controller / touch / browser | `MenuNavigation` (controller menus), `TouchControls`, `BrowserGamepad`, `Browser` + `Assets/Plugins/WebGL/Browser.jslib`, `BrowserGraphics` |
 | Cameras | `Look` (player view), `DeathCam`, `MapCamera` (directed spectator/results camera) |
 | Effects | `ShotEffects` (pooled), `BeamFade`, `KillSpark`, `CapshotBurst`, `NeckSparks`, `HoverVisuals` |
 | Settings and saves | `GameSettings` (PlayerPrefs), `Data` (profile JSON; PlayerPrefs on WebGL), `GameInput` (rebinds in PlayerPrefs `input.bindings`) |
+
+## Combat HUD
+
+Laid out by `UITheme.StyleHud` on the map's `HUD` prefab when the map loads (the prefab objects stay where `Player`, `Weapon` and `Manager` look them up by path; only their look and place change), then driven by `HudFeedback`, `FeedbackUI` and `Manager`. Four clusters round a clear centre, canvas units at 1080 high:
+
+| Where | What | Driven by |
+| --- | --- | --- |
+| Bottom left | Health: the number over a slim bar marked in quarters, with a red trail for damage just taken | `Player.RefreshHealthBar` → `HudFeedback.SetHealth` |
+| Bottom right | Weapon: shots left (`HUD/Ammo/Text`), a status line left of it (the form's name, or SWAPPING CELL / TRANSFORMING / NO ENERGY), a segmented energy meter under both, the form strip above (`HUD/Arsenal`) and the plasma grenade above that | `Weapon.RefreshAmmo` → `HudFeedback.SyncWeapon` / `SetGunState`; grenade: `Weapon.RefreshGrenadeIndicator` |
+| Top centre | Match clock with a score plate either side and the goal line under it; stays up while dead | `Manager.RefreshTimerUI`, `Manager.ScoreStrip` |
+| Top right | Kill feed | `FeedbackUI` |
+| Centre | Dot, spread ticks, hit marker, kill ring, cap shot stamp | `Weapon` (dot alpha, hit marker), `HudFeedback` |
+
+- **Colour means one thing each** (tokens in `UITheme.Hud`): white and muted white for information, accent blue for you and the interface, `Capshot` gold only for cap shots, `Danger` red only for being hurt or out of energy, `Warning` amber for running low, `Shield` light blue for spawn protection. Health is white, amber from half and red from a quarter (`HudRules.StateFor`), as steps rather than a blend.
+- **Energy meter:** one segment per shot in a full cell; a form with more than 12 (the machine gun) gets a smooth bar (`HudRules.EnergySegments`). The segment being refilled is drawn faint until that shot is ready. Swapping the cell sweeps an accent bar across the meter.
+- **Form strip:** one slot per form with its number key; the active one is lit and underlined, a change of form fills the underline in under the new one. In Gun Game the forms the ladder hasn't given you are dimmed without keys. Hidden with touch controls (the SWAP button covers it), as is the grenade.
+- **Hit feedback, three tiers:** a hit is a white marker, a head hit a gold one (`Weapon.HitPlayer`); a kill also sends a ring out from the crosshair, white, or gold for a cap shot, and a cap shot kill stamps the cap logo and CAPSHOT just above the crosshair (`HudFeedback.Confirmed`, from `Weapon.RPC_HitConfirm`, so only for hits the host confirmed).
+- **Score strip:** team modes show your team on the left, the other on the right, and "YOU'RE BLUE · FIRST TO 50 KILLS". Free for all and Cap Grab show YOU against the LEADER, or the 2ND while you lead outright (`HudRules.OpponentLabel`). Gun Game shows the form each is on ("2/4") and the kills to the next form. The plates show from the countdown on; the goal line throughout.
+- **Death screen** (`FeedbackUI.ShowDeath`): ELIMINATED BY and the killer's name, the weapon (and CAPSHOT), and a respawn countdown. The countdown starts when the kill feed message arrives and runs `Manager.respawnTime`, so it's an estimate of the host's respawn; at zero it reads RESPAWNING until the body appears. A fall reads YOU FELL, your own grenade SELF-ELIMINATED.
+- **Ultrawide:** the HUD and kill feed keep to a centred area no wider than twice the height (`HudRules.SafeInset`), so on 21:9 and wider the corners don't drift away from the crosshair. Full-screen effects (damage flash, low-health edge) still cover the whole screen.
+- The player's own name and the kills / deaths lines are still in the prefab and still written to, but not drawn (`Text.enabled = false`); the scoreboard and score strip carry that information. The XP popup is copied from the Kills text and turns its copy back on.
 
 ## Player camera and look (`Look`, `Player.UpdateCamera`, local player only)
 

@@ -12,7 +12,7 @@ The match is one `NetworkBehaviour`, `Manager`, split into partial files by topi
 | `Manager.Teams.cs` | Teams, balancing, team score and colours |
 | `Manager.CapGrab.cs`, `Manager.CapArrows.cs`, `CapPickup.cs`, `Core/CapFlight` | Cap Grab and Team Cap Grab |
 | `Manager.GunGame.cs` + `Core/GunGameRules` | Gun Game ladder |
-| `Manager.RaceScore.cs` | "First to N" race line in free-for-all modes |
+| `Manager.ScoreStrip.cs` | Score plates either side of the match clock and the goal line under it (all modes; see [ui-audio-visuals.md](ui-audio-visuals.md#combat-hud)) |
 | `Manager.Bots.cs` | Filling the room with bots (see [bots.md](bots.md)) |
 | `Manager.Grenades.cs` | Plasma grenades (see [weapons.md](weapons.md)) |
 | `Manager.Glass.cs` | Office glass pane state |

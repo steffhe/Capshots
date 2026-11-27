@@ -8,8 +8,8 @@ using Fusion;
 // The match: player list, game state and timer, and the end of the match.
 // A network object in each map scene. The host owns it: it keeps everyone's stats, runs the
 // match timer and spawns players; Fusion syncs that state to everyone else.
-// Other parts of this class are in Manager.Teams.cs, Manager.Scoreboard.cs, Manager.Spawning.cs,
-// Manager.Pickups.cs, Manager.Grenades.cs, Manager.Chat.cs, Manager.Xp.cs and Manager.Lobby.cs.
+// Other parts of this class are in the Manager.*.cs files (teams, scoreboard, score strip, spawning,
+// grenades, chat, XP, lobby and the rest; see docs/gameplay/match-and-modes.md).
 public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 {
     public static Manager Instance { get; private set; }
@@ -46,6 +46,8 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
     private Text myKills;
     private Text myDeaths;
     private Text timer;
+    // The clock and score strip, moved out of the HUD so they stay up while the local player is dead
+    private GameObject clock;
 
     public Transform leaderboard;
     private Transform endgame;
@@ -191,6 +193,8 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         // The HUD goes away for the end of match banner and results
         bool showHud = alive && !matchEnded;
         if (Hud.activeSelf != showHud) Hud.SetActive(showHud);
+        // The clock and score stay up while dead, until the end of match banner
+        if (clock != null && clock.activeSelf == matchEnded) clock.SetActive(!matchEnded);
         UpdateCapArrows();
         UpdateLobby();
 
@@ -259,11 +263,19 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
             leaderboard.SetSiblingIndex(hud.GetSiblingIndex() + 1);
         }
         else leaderboard = hud.parent.Find("Leaderboard");
+        // The clock (and the score strip built round it) out of the HUD too, so the time and score stay
+        // up while waiting to respawn. Right above the HUD, under the scoreboard.
+        clock = timer.transform.parent != null && timer.transform.parent.name == "Timer" ? timer.transform.parent.gameObject : null;
+        if (clock != null && clock.transform.parent == hud)
+        {
+            clock.transform.SetParent(hud.parent, false);
+            clock.transform.SetSiblingIndex(hud.GetSiblingIndex() + 1);
+        }
         endgame = GameObject.Find("Canvas").transform.Find("End Game").transform;
         uiUsername = GameObject.Find("HUD/Username/Text").GetComponent<Text>();
         CreateXpPopup();
         FeedbackUI.Create(GameObject.Find("Canvas").transform, myKills.font);
-        CreateTeamScore();
+        CreateScoreStrip();
         ChatUI.Create(GameObject.Find("Canvas").transform, myKills.font, this);
         TouchControls.Create(myKills.font);
         CreateLobbyPanel(canvas);
@@ -338,7 +350,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
             myDeaths.text = "0 DEATHS";
         }
 
-        RefreshTeamScore();
+        RefreshScoreStrip();
         RefreshLobbyPanel();
         if (leaderboard.gameObject.activeSelf) Leaderboard(leaderboard);
     }
@@ -747,6 +759,8 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
     private void OnStateChanged(GameState previousState)
     {
         RefreshTimerUI();
+        // The score plates show once the match is starting
+        RefreshScoreStrip();
 
         switch (state)
         {

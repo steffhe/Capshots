@@ -71,7 +71,12 @@ public partial class Manager
         {
             if (counts) Summary.Died();
             FeedbackUI.Died();
-            FeedbackUI.ShowDeath(GetPlayerName(killer), weapon, headshot, respawnTime);
+            // Killed by someone else: their name. A fall or your own grenade says so instead of
+            // naming you as your own killer.
+            bool byOther = killer >= 0 && killer != victim;
+            bool fell = weapon == "Fell";
+            string headline = byOther ? null : fell ? "YOU FELL" : killer == victim ? "SELF-ELIMINATED" : null;
+            FeedbackUI.ShowDeath(byOther ? GetPlayerName(killer) : null, fell ? null : weapon, headshot, respawnTime, headline);
             // Watch whoever it was until respawning (not after a fall or your own grenade)
             DeathCam.SetKiller(killer >= 0 && killer != me ? killer : -1, GetPlayerName(killer));
             if (endedStreak >= KillStreaks.ShutdownStreak) FeedbackUI.AddKillFeedNote($"YOUR STREAK OF {endedStreak} IS OVER");

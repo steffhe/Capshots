@@ -4,7 +4,7 @@ using UnityEngine;
 using UnityEngine.UI;
 
 // Combat feedback for the local player: damage flash, damage direction, kill feed,
-// "killed by" screen and short feedback sounds. Everything is built at runtime,
+// death screen ("ELIMINATED BY", how, and a respawn countdown) and short feedback sounds. Everything is built at runtime,
 // so no scene or prefab changes are needed. The Manager creates it when a map loads.
 public class FeedbackUI : MonoBehaviour
 {
@@ -46,6 +46,8 @@ public class FeedbackUI : MonoBehaviour
     private Transform viewer;
 
     private Text deathText;
+    // Under the weapon line: "RESPAWN IN 3"
+    private Text respawnText;
     // The death screen's second line: the weapon, and on a cap shot the cap logo and CAPSHOT
     private Text deathWeapon;
     private Image deathIcon;
@@ -124,13 +126,17 @@ public class FeedbackUI : MonoBehaviour
         deathIcon.preserveAspect = true;
         Center(deathIcon.rectTransform, new Vector2(DeathIconSize, DeathIconSize));
         deathIcon.gameObject.SetActive(false);
+        respawnText = NewText("Respawn", deathText.transform, 18, TextAnchor.MiddleCenter);
+        Center(respawnText.rectTransform, new Vector2(900f, 26f));
+        respawnText.rectTransform.anchoredPosition = new Vector2(0f, -70f);
+        respawnText.color = UITheme.HudMuted;
         deathText.gameObject.SetActive(false);
 
         // Spawn protection countdown under the crosshair
         protectionText = NewText("Spawn Protection Text", root, 22, TextAnchor.MiddleCenter);
         Center(protectionText.rectTransform, new Vector2(600f, 40f));
         protectionText.rectTransform.anchoredPosition = new Vector2(0f, -90f);
-        protectionText.color = new Color(0.55f, 0.85f, 1f);
+        protectionText.color = UITheme.Shield;
         protectionText.gameObject.SetActive(false);
 
         // Kill feed in the top right corner
@@ -290,12 +296,17 @@ public class FeedbackUI : MonoBehaviour
         Instance.Play(Instance.deathClip, 0.3f);
     }
 
-    public static void ShowDeath(string killerName, string weaponName, bool headshot, float duration)
+    // The death screen until respawning. killerName is null when nobody else got the kill; then
+    // 'headline' says what happened instead (a fall, your own grenade), or ELIMINATED. duration is the
+    // time to the respawn, counted down under it.
+    public static void ShowDeath(string killerName, string weaponName, bool headshot, float duration, string headline = null)
     {
         if (Instance == null) return;
         FeedbackUI ui = Instance;
 
-        string text = string.IsNullOrEmpty(killerName) ? "YOU DIED" : "KILLED BY <color=#ff5a4a>" + killerName + "</color>";
+        string text = !string.IsNullOrEmpty(killerName)
+            ? $"ELIMINATED BY <color={UITheme.Hex(UITheme.Danger)}>{ChatUI.Escape(killerName)}</color>"
+            : string.IsNullOrEmpty(headline) ? "ELIMINATED" : headline;
         string weapon = string.IsNullOrEmpty(weaponName) ? "" : weaponName.ToUpper();
         // A cap shot: "(cap logo) SNIPER · CAPSHOT", the CAPSHOT in the logo's gold
         if (headshot) weapon = (weapon.Length > 0 ? weapon + "  ·  " : "") + $"<color={CapshotColor}>CAPSHOT</color>";
@@ -473,8 +484,22 @@ public class FeedbackUI : MonoBehaviour
 
     #region Update
 
+    private float killFeedInset = -1f;
+
     private void Update()
     {
+        // On a very wide screen the kill feed keeps to the HUD's centred area (HudRules.SafeInset)
+        RectTransform canvasRect = root.parent as RectTransform;
+        if (canvasRect != null)
+        {
+            float inset = HudRules.SafeInset(canvasRect.rect.width, canvasRect.rect.height);
+            if (!Mathf.Approximately(inset, killFeedInset))
+            {
+                killFeedInset = inset;
+                killFeed.anchoredPosition = new Vector2(-20f - inset, -20f);
+            }
+        }
+
         // Damage flash
         if (flashAlpha > 0f)
         {
@@ -538,11 +563,29 @@ public class FeedbackUI : MonoBehaviour
         calloutRoutine = null;
     }
 
+    // The death screen, with the respawn counting down under it. The host respawns the player
+    // respawnTime after the death, so counted from here (when the kill feed arrived) it's a close
+    // estimate; at zero it says RESPAWNING until the body appears.
     private IEnumerator DeathText(string text, float duration)
     {
         deathText.text = text;
         deathText.gameObject.SetActive(true);
-        yield return new WaitForSeconds(duration);
+        int shown = -1;
+        for (float left = duration; left > 0f; left -= Time.deltaTime)
+        {
+            // Back early (the respawn came sooner than counted): the screen goes with the new body
+            if (left < duration - 1f && Player.Local != null) break;
+            int seconds = HudRules.CountdownSeconds(left);
+            if (seconds != shown)
+            {
+                shown = seconds;
+                respawnText.text = "RESPAWN IN " + seconds;
+            }
+            yield return null;
+        }
+        if (Player.Local == null) respawnText.text = "RESPAWNING";
+        // Gone once the body is back (or after a moment, if something holds the respawn up)
+        for (float wait = 0f; wait < 3f && Player.Local == null; wait += Time.deltaTime) yield return null;
         deathText.gameObject.SetActive(false);
         deathRoutine = null;
     }
