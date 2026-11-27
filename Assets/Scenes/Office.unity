@@ -20,9 +20,9 @@ RenderSettings:
   m_FogDensity: 0.005
   m_LinearFogStart: 0
   m_LinearFogEnd: 300
-  m_AmbientSkyColor: {r: 0.62, g: 0.66, b: 0.74, a: 1}
-  m_AmbientEquatorColor: {r: 0.5, g: 0.47, b: 0.44, a: 1}
-  m_AmbientGroundColor: {r: 0.55, g: 0.53, b: 0.5, a: 1}
+  m_AmbientSkyColor: {r: 0.78, g: 0.82, b: 0.9, a: 1}
+  m_AmbientEquatorColor: {r: 0.68, g: 0.65, b: 0.61, a: 1}
+  m_AmbientGroundColor: {r: 0.66, g: 0.63, b: 0.59, a: 1}
   m_AmbientIntensity: 1
   m_AmbientMode: 1
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
@@ -449,7 +449,7 @@ MonoBehaviour:
   manager: {fileID: 1324542648}
   baked: {fileID: 2046238755}
   tonemapping: 2
-  exposure: -0.1
+  exposure: 0.35
 --- !u!1 &1324542646
 GameObject:
   m_ObjectHideFlags: 0
@@ -601,7 +601,7 @@ Light:
   serializedVersion: 13
   m_Type: 1
   m_Color: {r: 0.98742133, g: 0.9240026, b: 0.7980103, a: 1}
-  m_Intensity: 0.6
+  m_Intensity: 1.1
   m_Range: 10
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208

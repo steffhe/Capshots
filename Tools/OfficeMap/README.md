@@ -47,6 +47,9 @@ Taken from photos of the real offices:
   below (you see feet and heads). Each room's number or letter is in copper over its door, its name
   on a small plate beside the door.
 - Oak floors in the corridors, grey check carpet in the offices, dark carpet in meeting rooms.
+- Solid walls are white in offices (and the other rooms) and grey in meeting rooms; a room against
+  a closed block (stairs, lift, WC) gets a lining in its own colour. In the corridors the closed
+  blocks are half white, half grey. No plants stand in the corridors.
 - Lounges with black ring lamps over the sofas, and black wingback chairs on a round rug by
   meeting room K.
 - White desks with black legs and grey felt screens.
@@ -56,8 +59,26 @@ Taken from photos of the real offices:
   middle, the weathered wooden garden house with a glass roof, open at both ends so you can run
   through it. Round it the terracotta facade rises three more floors, with dark window frames,
   louvres and lit rooms.
-- Outside: the terracotta facade on the floors below and above, the street with hedges and bare
-  trees two floors down.
+- The building: terracotta facade on the two floors below and two above, a dark roof with rows of
+  solar panels and plant rooms.
+- Round it, two floors down, after the satellite view of the real place: the street with red cycle
+  lanes along the north side and one along the west, a park with an artificial pitch and the
+  stadium beyond the street, the harbour with its marina to the north-west, apartment towers to the
+  west, the railway to the east, a park with a playground in the corner of the L, a car park and
+  woods to the south. None of it has a collider.
+- Brighter than before: the sun (1.1), the ambient light and the exposure (+0.35) in
+  `Office.unity`, and the glow of the ceiling panels (`OfficeMap.GlowStrength`), which light the
+  rooms once lighting is baked.
+
+## Performance
+
+`OfficeMap` merges the boxes into one mesh per material per 32 m square (far scenery, flagged `f`,
+per 160 m square), so there are about 500 meshes rather than one per box, and frustum and occlusion
+culling still leave out what's out of sight. The generator flags bottom and top faces that lie
+against a floor or the ceiling (`b`, `t`) and the builder leaves them out: about 3,400 faces that
+can never be seen. A face is only left out when the floor or ceiling reaches at least 2 cm past it
+all round, since where edges meet exactly it fills hairline cracks along the seam; renders with and
+without them are identical. The meshes have no tangents (no normal maps).
 
 ## Glass
 

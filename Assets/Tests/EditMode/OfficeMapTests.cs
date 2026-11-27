@@ -27,6 +27,7 @@ public class OfficeMapTests
             "b glass 0 1.5 0 2 3 0.03 gs\n" +
             "b - 0 0.4 0 1 0.8 1 o\n" +
             "b wood 0 1 0 1 1 1 n\n" +
+            "b wood 5 0.5 5 1 1 1 btf\n" +
             "p 2 1.54 5 1.4 2.92 0.03 1.35 0.8\n" +
             "s 1.5 1.2 -2 90\n" +
             "s 3 1.2 4 180 1\n" +
@@ -36,7 +37,9 @@ public class OfficeMapTests
 
         Assert.AreEqual(2, d.materials.Count);
         Assert.AreEqual(OfficeMapData.MaterialKind.Glass, d.materials[1].kind);
-        Assert.AreEqual(4, d.boxes.Count);
+        Assert.AreEqual(5, d.boxes.Count);
+        Assert.IsTrue(d.boxes[0].drawBottom && d.boxes[0].drawTop && !d.boxes[0].far);
+        Assert.IsTrue(!d.boxes[4].drawBottom && !d.boxes[4].drawTop && d.boxes[4].far && d.boxes[4].collider);
         Assert.AreEqual(new Vector3(10f, 0.4f, 8f), d.boxes[0].size);
         Assert.IsTrue(d.boxes[0].collider && d.boxes[0].castShadows && !d.boxes[0].glass);
         Assert.IsTrue(d.boxes[1].glass && d.boxes[1].collider && !d.boxes[1].castShadows);
@@ -128,6 +131,22 @@ public class OfficeMapTests
         // panes standing on the floor, far more of them than the rooms' glass over doors
         var tall = Data.panes.Where(p => p.Bounds.min.y < 0.2f && p.Bounds.max.y > 2.9f && p.frostHeight == 0f).ToList();
         Assert.Greater(tall.Count, 40);
+    }
+
+    [Test]
+    public void GeneratedMap_LeavesOutOnlyFacesThatCantBeSeen()
+    {
+        // Every face left out lies against a floor or ceiling that reaches past it all round
+        foreach (OfficeMapData.Box box in Data.boxes)
+        {
+            if (box.drawBottom && box.drawTop) continue;
+            Bounds b = box.Bounds;
+            bool Covers(OfficeMapData.Box s, float y, bool below) =>
+                s.material >= 0 && s.Bounds.min.x < b.min.x && s.Bounds.max.x > b.max.x && s.Bounds.min.z < b.min.z && s.Bounds.max.z > b.max.z
+                && (below ? Mathf.Abs(s.Bounds.max.y - y) <= 0.021f : Mathf.Abs(s.Bounds.min.y - y) <= 0.021f);
+            if (!box.drawBottom) Assert.IsTrue(Data.boxes.Any(s => Covers(s, b.min.y, true)), "nothing under the box at " + box.center);
+            if (!box.drawTop) Assert.IsTrue(Data.boxes.Any(s => Covers(s, b.max.y, false)), "nothing over the box at " + box.center);
+        }
     }
 
     private static bool Contains2D(Bounds b, Vector3 p, float pad)
