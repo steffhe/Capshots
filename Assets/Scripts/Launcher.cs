@@ -225,7 +225,9 @@ public partial class Launcher : MonoBehaviour
 
     // Practice: an offline match against bots, with the create tab's settings (and 5 bots unless a
     // number was picked there). Nothing to connect to, so it starts at once and works with nobody online.
-    public async void Practice()
+    public void Practice() => StartPractice(false);
+
+    private async void StartPractice(bool range)
     {
         if (starting) return;
         starting = true;
@@ -238,7 +240,15 @@ public partial class Launcher : MonoBehaviour
         properties["botskill"] = BotLogic.Easy;
         properties["killcount"] = 10;
         properties["matchlength"] = 0;
-        LoadingScreen.Show("STARTING PRACTICE", maps[currentmap].name, LoadingScreen.ModeName(capshotMode));
+        if (range)
+        {
+            properties["range"] = 1;
+            properties["practicebots"] = currentbots == 0 ? QuickPlayBots : currentbots;
+            properties["bots"] = 1;
+            properties["mode"] = (int)MatchMode.FreeForAll;
+            LoadingScreen.Show("SHOOTING RANGE", "FIRST CAP", "");
+        }
+        else LoadingScreen.Show("STARTING PRACTICE", maps[currentmap].name, LoadingScreen.ModeName(capshotMode));
         StartGameResult result = await NetworkSession.Practice(properties, maps[currentmap].scene);
         starting = false;
         if (!result.Ok)

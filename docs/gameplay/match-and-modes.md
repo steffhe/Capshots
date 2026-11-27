@@ -46,6 +46,13 @@ Values are sent in room properties and read by older builds: **never renumber**.
 
 Set in `Launcher` and read by `Manager` on spawn (e.g. `map`, `mapname`, mode, bots, bot skill, win condition). Quick play joins any open room regardless of properties. Practice uses the same properties offline.
 
+### Shooting range
+
+The home menu opens a single-player firing lane with the player's equipped starting form and normal weapon controls. The first drill uses a stationary crown, then a moving target with a different hat. A body hit gives a hint during the first drill. A capshot knocks the hat loose and advances the lane counter. Completing both targets saves the drill on the profile. Return visits open directly in free practice.
+
+Pause to keep shooting or start an Easy Cap Grab match, first to ten collected caps. Free practice also offers stationary or moving targets at marks 8, 13 and 18 metres from the firing line. Range capshots use the normal weapon hitboxes and pellet rules. They do not award match XP or advance a multiplayer score.
+
+
 ## XP and progression
 
 `Manager.Xp` awards XP on the player's own game (amounts are `xp*` fields on `Manager`: kill, cap shot bonus, cap grab, deny, match complete, win); `ProfileData` stores level/XP and is saved by `Data`. Hats (`Core/Hats`, 30) and faces (`Core/Faces`, 12) unlock by level and are identified by list index, which is saved and sent over the network, so new entries go at the end.

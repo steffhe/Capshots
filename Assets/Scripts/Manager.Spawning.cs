@@ -31,7 +31,7 @@ public partial class Manager
     private void ScheduleSpawn(PlayerRef player, bool afterDeath = false)
     {
         if (!HasStateAuthority || State == GameState.Ending) return;
-        pendingSpawns[player] = TickTimer.CreateFromSeconds(Runner, afterDeath ? respawnTime : joinSpawnTime);
+        pendingSpawns[player] = TickTimer.CreateFromSeconds(Runner, InRange ? 0.75f : afterDeath ? respawnTime : joinSpawnTime);
     }
 
     private void SpawnWaitingPlayers()
@@ -68,7 +68,7 @@ public partial class Manager
             return;
         }
 
-        Transform spawn = ChooseSpawnPoint(player);
+        Transform spawn = InRange ? RangeSpawn(IsBot(player)) : ChooseSpawnPoint(player);
         if (IsBot(player)) SpawnBot(player, spawn);
         else Runner.Spawn(playerPrefabObject, spawn.position, spawn.rotation, player);
     }

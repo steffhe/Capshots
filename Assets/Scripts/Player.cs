@@ -319,7 +319,8 @@ public class Player : NetworkBehaviour
             if (!IsBot) Runner.SetPlayerObject(Object.InputAuthority, Object);
             SetHitboxes(false);
 
-            if (IsBot)
+            if (IsBot && manager != null && manager.InRange) ProtectionTimer = TickTimer.None;
+            else if (IsBot)
             {
                 brain = GetComponent<BotBrain>();
                 if (brain == null) brain = gameObject.AddComponent<BotBrain>();
@@ -411,6 +412,11 @@ public class Player : NetworkBehaviour
     {
         if (BotId.IsRealPlayer)
         {
+            if (manager != null && manager.InRange)
+            {
+                input = manager.RangeTargetInput(transform.position);
+                return true;
+            }
             if (brain != null && HasStateAuthority)
             {
                 input = brain.InputForTick(Runner.Tick, Runner.DeltaTime);
@@ -1056,6 +1062,15 @@ public class Player : NetworkBehaviour
     {
         if (!HasStateAuthority || Dead || IsProtected) return false;
 
+        if (IsBot && manager != null && manager.InRange && attacker == Runner.LocalPlayer)
+        {
+            if (!headshot)
+            {
+                manager.RangeBodyHit();
+                return false;
+            }
+            damage = maxHealth;
+        }
         RegenDelayTimer = TickTimer.CreateFromSeconds(Runner, regenDelay);
         RegenBuffer = 0f;
         Health = Mathf.Max(0, Health - damage);

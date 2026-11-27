@@ -11,6 +11,7 @@ public class ProfileData
     public int hat;
     // The face picked for the drone's screen (see Faces). Shown only while unlocked, otherwise the classic.
     public int face;
+    public bool completedRangeDrill;
 
     public ProfileData()
     {

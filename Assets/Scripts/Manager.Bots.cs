@@ -49,7 +49,7 @@ public partial class Manager
             if (!AddBot()) break;
         }
 
-        if (wanted > 0) BotNavigation.Build(spawnPoints);
+        if (wanted > 0 && !InRange) BotNavigation.Build(spawnPoints);
     }
 
     private bool AddBot()

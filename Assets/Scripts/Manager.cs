@@ -111,6 +111,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         else RestoreXp(migrated);
         ReadMatchSettings();
 
+        if (NetworkSession.IsPractice(Runner) && NetworkSession.MatchProperties(Runner).ContainsKey("range")) BuildRange();
         InitializeUI();
         // The map view directs itself around the map (see MapCamera)
         if (mapcam != null)
@@ -151,7 +152,8 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         ready = true;
 
         // The map is in: lift the loading screen and introduce the map
-        PlayIntro();
+        if (InRange) LoadingScreen.Hide(0.3f);
+        else PlayIntro();
     }
 
     public override void Despawned(NetworkRunner runner, bool hasState)
@@ -194,7 +196,9 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         bool showHud = alive && !matchEnded;
         if (Hud.activeSelf != showHud) Hud.SetActive(showHud);
         // The clock and score stay up while dead, until the end of match banner
-        if (clock != null && clock.activeSelf == matchEnded) clock.SetActive(!matchEnded);
+        bool showClock = !matchEnded && !InRange;
+        if (clock != null && clock.activeSelf != showClock) clock.SetActive(showClock);
+        if (InRange) UpdateRangeHud();
         UpdateCapArrows();
         UpdateLobby();
 
@@ -420,6 +424,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
     // The hat a player wears (see Hats); the cap for anyone not on the list
     public int GetPlayerHat(int actor)
     {
+        if (InRange && IsBotActor(actor)) return RangeHat;
         int index = FindPlayerIndex(actor);
         return index >= 0 && Hats.IsValid(playerInfo[index].hat) ? playerInfo[index].hat : Hats.Cap;
     }
@@ -547,7 +552,7 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         if (Heartbeat.ExpiredOrNotRunning(Runner))
         {
             Heartbeat = TickTimer.CreateFromSeconds(Runner, 1f);
-            TimerStep();
+            if (!InRange) TimerStep();
             UpdatePings();
         }
 
@@ -637,6 +642,13 @@ public partial class Manager : NetworkBehaviour, IPlayerJoined, IPlayerLeft
     public void PlayerKilled(PlayerRef victim, PlayerRef killer, string weaponName, bool headshot)
     {
         if (!HasStateAuthority) return;
+
+        if (InRange)
+        {
+            if (IsBot(victim) && headshot && killer == Runner.LocalPlayer) CountRangeCap();
+            ScheduleSpawn(victim);
+            return;
+        }
 
         // Kills and deaths during warmup and the countdown don't count
         int multiKill = 0, streak = 0, endedStreak = 0;

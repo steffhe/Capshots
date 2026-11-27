@@ -78,9 +78,10 @@ public partial class Launcher
 
         if (practice != null)
         {
-            practice.transform.SetSiblingIndex(index++);
-            ((RectTransform)practice.transform).sizeDelta = new Vector2(ColumnWidth, PracticeHeight);
-            TwoLineLabel(practice, "PRACTICE VS BOTS", "OFFLINE  ·  TRY THE GUNS AND YOUR AIM", 22);
+            RectTransform row = ColumnBlock(tabMain, "Practice", index++, PracticeHeight);
+            Button range = CopyButton(template, row, "Shooting Range", () => StartPractice(true));
+            HalfOf(practice, row, 0f, 0.5f, "PRACTICE VS BOTS");
+            HalfOf(range, row, 0.5f, 1f, "SHOOTING RANGE");
         }
 
         if (customize != null) BuildCustomizeButton(customize);
