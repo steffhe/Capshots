@@ -121,4 +121,37 @@ public class ShotRulesTests
         for (int p = 0; p < 8; p++)
             Assert.LessOrEqual(ShotRules.PelletOffset(p, 8, 0.4f, big).magnitude, 1f + 1e-4f, "pellet " + p);
     }
+
+    [Test]
+    public void PelletDirection_IsTheSameForTheSameShot()
+    {
+        // The host, the shooter and everyone drawing the shot from its message must agree
+        UnityEngine.Quaternion view = UnityEngine.Quaternion.Euler(-12f, 200f, 0f);
+        for (int p = 0; p < 8; p++)
+            Assert.AreEqual(ShotRules.PelletDirection(view, 78f, 123456, p, 8), ShotRules.PelletDirection(view, 78f, 123456, p, 8));
+        Assert.AreNotEqual(ShotRules.PelletDirection(view, 30f, 1, 0, 1), ShotRules.PelletDirection(view, 30f, 2, 0, 1), "different shots differ");
+    }
+
+    [Test]
+    public void PelletDirection_StaysWithinTheSpread()
+    {
+        UnityEngine.Quaternion view = UnityEngine.Quaternion.Euler(20f, 45f, 0f);
+        UnityEngine.Vector3 forward = view * UnityEngine.Vector3.forward;
+        float limit = UnityEngine.Mathf.Atan(30f / 1000f) * UnityEngine.Mathf.Rad2Deg + 1e-3f;
+        for (int shot = 0; shot < 200; shot++)
+            Assert.LessOrEqual(UnityEngine.Vector3.Angle(forward, ShotRules.PelletDirection(view, 30f, shot * 7919, 0, 1)), limit);
+        // No spread: dead ahead
+        Assert.Less(UnityEngine.Vector3.Angle(forward, ShotRules.PelletDirection(view, 0f, 5, 0, 1)), 1e-3f);
+    }
+
+    [Test]
+    public void Seeded_StaysInRange()
+    {
+        for (int seed = -1000; seed < 1000; seed += 7)
+        {
+            float v = ShotRules.Seeded(seed);
+            Assert.GreaterOrEqual(v, -1f);
+            Assert.LessOrEqual(v, 1f);
+        }
+    }
 }

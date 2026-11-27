@@ -149,6 +149,10 @@ public class Player : NetworkBehaviour
     [Networked] private float RegenBuffer { get; set; }
     [Networked] private NetworkButtons PreviousButtons { get; set; }
     [Networked] private NetworkBool Dead { get; set; }
+    // The tick this body was killed in. It's removed (and the kill counted) on the next tick, so a
+    // player killed in the same tick as they fire still gets their shot: trades both count, whichever
+    // player the host happens to simulate first.
+    [Networked] private int DeathTick { get; set; }
     // Set when this body is a bot: the bot's own id, standing in for the player that would control
     // it. Bots have no input authority (nobody's game sends their input); the host runs them.
     [Networked] public PlayerRef BotId { get; set; }
@@ -167,6 +171,8 @@ public class Player : NetworkBehaviour
     public bool IsCrouched => Object != null && Object.IsValid && Crouched;
     public bool IsProtected => Object != null && Object.IsValid && ProtectionTimer.IsRunning;
     public bool IsDead => Object != null && Object.IsValid && Dead;
+    // Killed during the tick being simulated: its gun still fires this tick (a trade), nothing after
+    public bool DiedThisTick => IsDead && Runner != null && DeathTick == Runner.Tick.Raw;
 
     // Updated every tick, used by Weapon for accuracy
     public bool IsGrounded => Object == null || !Object.IsValid || Grounded;
@@ -368,12 +374,21 @@ public class Player : NetworkBehaviour
             input = default;
             return false;
         }
-        return GetInput(out input);
+        if (!GetInput(out input)) return false;
+        // A player's input is checked before anything simulates it (InputRules): the host's copy of the
+        // body and every shot use these numbers
+        InputRules.Sanitize(ref input.Move, ref input.Yaw, ref input.Pitch, look != null ? look.maxAngle : 90f);
+        return true;
     }
 
     public override void FixedUpdateNetwork()
     {
-        if (Dead) return;
+        if (Dead)
+        {
+            // Killed last tick: now the body goes and the kill counts (see TakeDamage)
+            if (HasStateAuthority && Runner.Tick.Raw > DeathTick) FinishDeath();
+            return;
+        }
 
         bool hasInput = ReadInput(out PlayerInputData input);
         if (!hasInput)
@@ -774,7 +789,11 @@ public class Player : NetworkBehaviour
 
         if (Health > 0) return false;
 
+        // Dead from now (no more damage, no more moving), but the body is only removed, and the kill
+        // counted, on the next tick (FinishDeath), so a shot this player fires in this same tick still
+        // happens: a trade, whichever of the two the host simulated first
         Dead = true;
+        DeathTick = Runner.Tick.Raw;
 
         // Thrown along the killing bullet's path, from the spot it hit. Without a bullet: away from the
         // killer, or backwards for a fall or a suicide.
@@ -792,18 +811,44 @@ public class Player : NetworkBehaviour
         // Harder hits throw the body further: about 3 m/s for a machine gun bullet, 6 m/s for a sniper round
         float knockback = 2f + 4f * Mathf.Clamp01(damage / 800f);
 
+        death = new PendingDeath
+        {
+            attacker = attacker, weaponName = weaponName, headshot = headshot,
+            direction = hitDirection, offset = hitOffset, knockback = knockback,
+        };
+        return true;
+    }
+
+    // How a body was killed, kept on the host for the tick between the kill and its removal
+    private struct PendingDeath
+    {
+        public PlayerRef attacker;
+        public string weaponName;
+        public bool headshot;
+        public Vector3 direction, offset;
+        public float knockback;
+    }
+    private PendingDeath death;
+    private bool deathFinished;
+
+    // Host only, the tick after the kill: the ragdoll, the dropped cap, the kill feed and score, and the
+    // body removed. The body hasn't moved since (a dead body isn't simulated).
+    private void FinishDeath()
+    {
+        if (deathFinished) return;
+        deathFinished = true;
+
         if (manager != null)
         {
             Vector3 ground = GroundPosition();
             // In Cap Grab the cap leaves the body: knocked flying on a cap shot, gone otherwise
             bool capDrops = manager.CapDrops(ground);
-            manager.SpawnRagdoll(transform.position, transform.rotation, Velocity, hitDirection.normalized, hitOffset, knockback, headshot, ActorId, capDrops);
-            if (capDrops) manager.DropCap(ground, ActorId, headshot, transform.position + Vector3.up * HeadHeight, hitDirection);
-            manager.PlayerKilled(Owner, attacker, weaponName, headshot);
+            manager.SpawnRagdoll(transform.position, transform.rotation, Velocity, death.direction.normalized, death.offset, death.knockback, death.headshot, ActorId, capDrops);
+            if (capDrops) manager.DropCap(ground, ActorId, death.headshot, transform.position + Vector3.up * HeadHeight, death.direction);
+            manager.PlayerKilled(Owner, death.attacker, death.weaponName, death.headshot);
         }
 
         Runner.Despawn(Object);
-        return true;
     }
 
     // On the victim's own game: screen flash, direction to the attacker and a small flinch

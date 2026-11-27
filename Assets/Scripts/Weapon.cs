@@ -253,7 +253,8 @@ public class Weapon : NetworkBehaviour
 
     public override void FixedUpdateNetwork()
     {
-        if (player.IsDead) return;
+        // Killed earlier in this same tick, the gun still fires its shot: a trade (Player.TakeDamage)
+        if (player.IsDead && !player.DiedThisTick) return;
         if (!player.ReadInput(out PlayerInputData input)) return;
 
         // The match is over: guns go quiet
@@ -692,18 +693,9 @@ public class Weapon : NetworkBehaviour
         // The same random spread on every machine, from the shot and pellet number. A shotgun's ring of
         // pellets is turned differently every blast.
         int shotSeed = ShotCount * 7919 + (int)Object.Id.Raw * 104729;
-        float ringTurn = Unit(shotSeed + 997) * Mathf.PI * 2f;
         for (int p = 0; p < pellets; p++)
         {
-            int seed = shotSeed + p * 2;
-            Vector2 random = ShotRules.DiskPoint(Unit(seed), Unit(seed + 1));
-            // Round spread for a single shot; the shotgun's pattern (a centre pellet and a ring, each
-            // nudged a little) for pellets
-            Vector2 offset = pellets > 1 ? ShotRules.PelletOffset(p, pellets, ringTurn, random * ShotRules.PelletJitter) : random;
-            Vector3 bloom = view * Vector3.forward * 1000f;
-            bloom += offset.y * spread * (view * Vector3.up);
-            bloom += offset.x * spread * (view * Vector3.right);
-            bloom.Normalize();
+            Vector3 bloom = PelletDirection(view, spread, shotSeed, p, pellets);
 
             Vector3 endPoint = origin + bloom * 1000f;
             Vector3 hitNormal = Vector3.zero;
@@ -740,14 +732,11 @@ public class Weapon : NetworkBehaviour
             // Shots go through glass (it isn't in canBeShot), but crack or shatter the panes on the way
             if (dealDamage) OfficeGlass.Shoot(origin, bloom, hitDistance);
 
-            if (Runner.IsForward)
-            {
-                // Sound, muzzle flash and gun kick once per shot; a tracer for every pellet
-                bool first = p == 0;
-                if (HasInputAuthority) PlayShotEffects(endPoint, hitNormal, hitWorld, first);
-                if (HasStateAuthority) RPC_ShotEffects(endPoint, hitNormal, hitWorld, first);
-            }
+            // Sound, muzzle flash and gun kick once per shot; a tracer for every pellet. The shooter's
+            // own game draws its prediction, the host its real result; everyone else gets RPC_Shot.
+            if (HasInputAuthority || HasStateAuthority) PlayShotEffects(endPoint, hitNormal, hitWorld, p == 0, gun);
         }
+        if (HasStateAuthority) RPC_Shot((byte)Equipped, shotSeed, input.Pitch, input.Yaw, spread);
 
         foreach (PelletHit h in pelletHits)
         {
@@ -844,21 +833,9 @@ public class Weapon : NetworkBehaviour
         pelletHits.Add(new PelletHit { target = target, damage = damage, headDamage = headshot ? damage : 0, direction = direction, point = point });
     }
 
-    // A number from 0 to 1 that only depends on the seed
-    static float Unit(int seed) => (Spread(seed) + 1f) * 0.5f;
-
-    // A number from -1 to 1 that only depends on the seed
-    static float Spread(int seed)
-    {
-        unchecked
-        {
-            uint h = (uint)seed * 2654435761u;
-            h ^= h >> 13;
-            h *= 0x5bd1e995u;
-            h ^= h >> 15;
-            return h / (float)uint.MaxValue * 2f - 1f;
-        }
-    }
+    // The direction of a pellet: the same on every machine for the same shot (ShotRules.PelletDirection)
+    static Vector3 PelletDirection(Quaternion view, float spread, int shotSeed, int pellet, int pellets)
+        => ShotRules.PelletDirection(view, spread, shotSeed, pellet, pellets);
 
     // The head hitbox sits on (or under) the object tagged Head
     static bool IsHead(Transform hitbox)
@@ -875,12 +852,59 @@ public class Weapon : NetworkBehaviour
 
     #region RPCs
 
-    // The shooter's own game hears and sees its shots straight away, so skip them here
-    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
-    private void RPC_ShotEffects(Vector3 endPoint, Vector3 hitNormal, NetworkBool hitWorld, NetworkBool first)
+    // Everyone else's game draws a shot from this one small message: the form that fired, the shot's
+    // seed, aim and spread. It works out the same pellets (PelletDirection) and traces them through its
+    // own view of the world, where it sees the players, so a shotgun blast is one message instead of
+    // eight, and the sound, beams and flash are always the form that fired, even if it has changed
+    // since. Looks only (the host has already decided every hit), so unreliable: a lost one loses a
+    // beam. The shooter's own game and the host draw their own (Fire).
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All, Channel = RpcChannel.Unreliable)]
+    private void RPC_Shot(byte form, int shotSeed, float pitch, float yaw, float spread)
     {
-        if (HasInputAuthority) return;
-        PlayShotEffects(endPoint, hitNormal, hitWorld, first);
+        if (HasInputAuthority || HasStateAuthority) return;
+        if (loadout == null || form >= loadout.Length || player == null) return;
+
+        Gun gun = loadout[form];
+        Vector3 origin = player.EyePosition;
+        Quaternion view = Quaternion.Euler(-pitch, yaw, 0f);
+        int pellets = Mathf.Max(1, gun.pellets);
+        // The world and players' bodies (this machine's own player's too, who may be the one shot)
+        int mask = canBeShot.value | (1 << Layers.LocalPlayer) | (1 << Layers.RemotePlayer);
+        for (int p = 0; p < pellets; p++)
+        {
+            Vector3 direction = PelletDirection(view, spread, shotSeed, p, pellets);
+            Vector3 endPoint = origin + direction * 1000f;
+            Vector3 normal = Vector3.zero;
+            bool hitWorld = false;
+            if (NearestEffectHit(origin, direction, mask, out RaycastHit hit))
+            {
+                endPoint = hit.point;
+                normal = hit.normal;
+                int layer = hit.collider.gameObject.layer;
+                hitWorld = layer != Layers.LocalPlayer && layer != Layers.RemotePlayer;
+            }
+            PlayShotEffects(endPoint, normal, hitWorld, p == 0, gun);
+        }
+    }
+
+    static readonly RaycastHit[] effectHits = new RaycastHit[16];
+
+    // The nearest thing along a shot drawn from RPC_Shot, other than the shooter's own body (which this
+    // machine shows a moment behind, so the shot can start just behind it)
+    bool NearestEffectHit(Vector3 origin, Vector3 direction, int mask, out RaycastHit nearest)
+    {
+        nearest = default;
+        bool found = false;
+        int count = Physics.RaycastNonAlloc(origin, direction, effectHits, 1000f, mask, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < count; i++)
+        {
+            RaycastHit h = effectHits[i];
+            if (h.collider == null || h.collider.transform.IsChildOf(transform)) continue;
+            if (found && h.distance >= nearest.distance) continue;
+            nearest = h;
+            found = true;
+        }
+        return found;
     }
 
     [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
@@ -1234,9 +1258,9 @@ public class Weapon : NetworkBehaviour
 
     // Sound, laser beam, scorch mark and gun kick for a shot. first is false for a shotgun's extra
     // pellets, which only add a beam and a mark.
-    void PlayShotEffects(Vector3 endPoint, Vector3 hitNormal, bool hitWorld, bool first)
+    // 'gun' is the form that fired the shot, which may no longer be the one held
+    void PlayShotEffects(Vector3 endPoint, Vector3 hitNormal, bool hitWorld, bool first, Gun gun)
     {
-        Gun gun = loadout[EquippedIndex];
         ShotLine(endPoint, gun);
 
         // A force field ripples where it's hit instead of getting a scorch mark
@@ -1264,8 +1288,8 @@ public class Weapon : NetworkBehaviour
         //gun fx
         if (currentWeapon != null)
         {
-            currentWeapon.transform.Rotate(-loadout[EquippedIndex].recoil, 0, 0);
-            currentWeapon.transform.position -= currentWeapon.transform.forward * loadout[EquippedIndex].kickback;
+            currentWeapon.transform.Rotate(-gun.recoil, 0, 0);
+            currentWeapon.transform.position -= currentWeapon.transform.forward * gun.kickback;
         }
     }
 

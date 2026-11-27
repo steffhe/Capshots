@@ -75,4 +75,41 @@ public static class ShotRules
         float a = rotation + Mathf.PI * 2f * (pellet - 1) / (pellets - 1);
         return new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * PelletRing + nudge;
     }
+
+    // A number from -1 to 1 that only depends on the seed, the same on every machine
+    public static float Seeded(int seed)
+    {
+        unchecked
+        {
+            uint h = (uint)seed * 2654435761u;
+            h ^= h >> 13;
+            h *= 0x5bd1e995u;
+            h ^= h >> 15;
+            return h / (float)uint.MaxValue * 2f - 1f;
+        }
+    }
+
+    // The same, from 0 to 1
+    public static float SeededUnit(int seed) => (Seeded(seed) + 1f) * 0.5f;
+
+    // The direction of pellet 'pellet' of a shot of 'pellets', aimed along 'view' with 'spread'
+    // (thousandths of the distance): the same on every machine for the same shot seed, so the host,
+    // the shooter's own game and everyone drawing the shot from its message (Weapon.RPC_Shot) agree.
+    // Round spread for a single shot; the shotgun's pattern (a centre pellet and a ring, each nudged a
+    // little, the ring turned per blast) for pellets.
+    public static Vector3 PelletDirection(Quaternion view, float spread, int shotSeed, int pellet, int pellets)
+    {
+        int seed = shotSeed + pellet * 2;
+        Vector2 random = DiskPoint(SeededUnit(seed), SeededUnit(seed + 1));
+        Vector2 offset = random;
+        if (pellets > 1)
+        {
+            float ringTurn = SeededUnit(shotSeed + 997) * Mathf.PI * 2f;
+            offset = PelletOffset(pellet, pellets, ringTurn, random * PelletJitter);
+        }
+        Vector3 direction = view * Vector3.forward * 1000f;
+        direction += offset.y * spread * (view * Vector3.up);
+        direction += offset.x * spread * (view * Vector3.right);
+        return direction.normalized;
+    }
 }
