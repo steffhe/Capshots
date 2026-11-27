@@ -72,6 +72,7 @@ public class AwardStage : MonoBehaviour
     private bool myCrouched;
     private const float JumpSpeed = 4.6f, JumpGravity = 15f, CrouchDrop = 0.13f;
     private Gun[] forms;
+    private Gun startingGun;
 
     // Builds the stage (nothing shows until Play). template: the camera whose look (post-processing,
     // anti-aliasing) to copy, e.g. the map camera.
@@ -282,6 +283,7 @@ public class AwardStage : MonoBehaviour
         GameObject prefab = Resources.Load<GameObject>("Player");
         Weapon weapon = prefab != null ? prefab.GetComponent<Weapon>() : null;
         if (weapon == null || weapon.loadout == null) return;
+        if (weapon.loadout.Length > 0) startingGun = weapon.loadout[weapon.PreferredStartingSlot];
         List<Gun> usable = new List<Gun>();
         foreach (Gun g in weapon.loadout) if (g != null && g.prefab != null) usable.Add(g);
         forms = usable.ToArray();
@@ -372,7 +374,7 @@ public class AwardStage : MonoBehaviour
         else if (dressed != null) dressed.Celebrate(float.PositiveInfinity);
         PlayerCap.Attach(head, entry.color, false, entry.hat);
 
-        Gun form = FormFor(entry.titles.Count > 0 ? entry.titles[0] : "");
+        Gun form = entry.mine && startingGun != null && startingGun.prefab != null ? startingGun : FormFor(entry.titles.Count > 0 ? entry.titles[0] : "");
         if (form != null)
         {
             Transform holder = new GameObject("Weapon").transform;
