@@ -12,8 +12,16 @@ public class RotateTowards : MonoBehaviour
     // How quickly it turns to a newly selected button (the mouse is followed at once)
     private const float GamepadTurnSpeed = 10f;
 
+    private Quaternion restingRotation;
+    private void Awake() => restingRotation = transform.localRotation;
+
     void Update()
     {
+        if (MenuScenery.Turnable)
+        {
+            transform.localRotation = restingRotation;
+            return;
+        }
         if (Camera.main == null || plane == null) return;
 
         Vector2 screenPoint;
