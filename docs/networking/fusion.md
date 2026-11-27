@@ -48,7 +48,7 @@ Adding a control means: a `GameInput` action → latch in `InputCollector` → f
 
 - The owner's client predicts its own `Player` and `Weapon`; the host's state corrects it and Fusion resimulates.
 - Anything that must happen **once** (raycasts for hits, damage, sounds, effects, stat counting) is gated with `Runner.IsForward`. Example: `Weapon` updates cooldown/energy/`ShotCount` on every run of a tick but skips the raycasts on resimulation. The host never resimulates.
-- Player movement (`Player.Move`, `Core/MovementRules`) only reads `Velocity`, `Grounded`, the input and the scenery, so a resimulated tick gives the same result. Players don't collide with each other (`Player.LetPlayersPassThrough`): a client sees other bodies slightly in the past, so body blocking would mispredict.
+- Player movement (`Player.Move`, `Core/MovementRules`) only reads `Velocity`, `Grounded`, the input and the scenery, so a resimulated tick gives the same result. Before the first tick of each batch `Player` calls `Physics.SyncTransforms()`, because `NetworkTransform` restores bodies but the `CharacterController` doesn't see transform changes with `Physics.autoSyncTransforms` off (Fusion's `NetworkCharacterController` handles the same thing). Players don't collide with each other (`Player.LetPlayersPassThrough`): a client sees other bodies slightly in the past, so body blocking would mispredict.
 - State that resimulation restores must be `[Networked]` (timers are `TickTimer`). `Player` re-applies the capsule shape when `Runner.IsResimulation` because `Crouched` is rolled back.
 
 ## Lag compensation and hits

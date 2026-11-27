@@ -1,7 +1,7 @@
 using System.Collections;
 using UnityEngine;
 
-// Hover, landing and reload sounds for a player. Added by Player at runtime, so no prefab changes are needed.
+// Hover, take-off, landing and reload sounds for a player. Added by Player at runtime, so no prefab changes are needed.
 // The characters float rather than walk, so moving plays a continuous UFO-like hum and woosh that rises in
 // pitch and volume with speed, instead of footsteps.
 // Runs on every client: the hover sound for remote players is worked out from how they move on this machine,
@@ -14,6 +14,8 @@ public class PlayerSounds : MonoBehaviour
     // hover while sprinting about -18, while walking about -22. UI sounds in FeedbackUI sit at -8 to -10.
     public float hoverVolume = 0.04f;
     public float landingVolume = 0.06f;
+    // A jump's thrust. Set by ear just under the landing, not yet measured like the levels above.
+    public float thrustVolume = 0.045f;
     public float reloadVolume = 0.027f;
     // Gunshots: this is the sniper rifle, the loudest sound in the game. The other guns are scaled from it.
     // Low, because the sustained energy zaps sound much louder than their peak level suggests.
@@ -29,18 +31,24 @@ public class PlayerSounds : MonoBehaviour
     private const float SpeedSmoothing = 0.12f;
     // Falling faster than this (m/s) plays a landing sound when touching the ground
     private const float MinLandingSpeed = 3f;
+    // Landing faster than this (m/s) plays the landing sound at its loudest
+    private const float HardLandingSpeed = 15f;
+    // Leaving the ground going up faster than this (m/s) is a jump: the thrusters fire
+    private const float MinThrustSpeed = 5f;
 
     private Player player;
     private AudioSource movementSource, hoverSource, reloadSource, morphSource;
 
     private Vector3 lastPosition;
     private float verticalSpeed;
+    // The fastest fall (m/s, negative) since leaving the ground: how hard the landing is
+    private float fallSpeed;
     private bool wasGrounded = true;
     private float hoverIntensity, hoverPitch = HoverPitchSlow, hoverLoudness, smoothedSpeed;
     private Coroutine reloadRoutine;
 
     private static AudioClip hoverClip;
-    private static AudioClip landingClip, magOutClip, magInClip, boltClip, lockClip;
+    private static AudioClip thrustClip, landingClip, magOutClip, magInClip, boltClip, lockClip;
     private static AudioClip[] pistolShots, machineGunShots, sniperShots, shotgunShots;
     private AudioSource shotSource;
 
@@ -90,7 +98,8 @@ public class PlayerSounds : MonoBehaviour
         lastPosition = transform.position;
     }
 
-    private void Update()
+    // After Fusion has placed the body for this frame, so the measured movement is this frame's
+    private void LateUpdate()
     {
         if (Time.deltaTime <= 0f) return;
 
@@ -107,10 +116,19 @@ public class PlayerSounds : MonoBehaviour
 
         bool grounded = IsGrounded();
 
-        if (grounded && !wasGrounded && verticalSpeed < -MinLandingSpeed)
+        if (!grounded) fallSpeed = Mathf.Min(fallSpeed, verticalSpeed);
+        if (grounded && !wasGrounded && fallSpeed < -MinLandingSpeed)
         {
-            Play(movementSource, landingClip, landingVolume, 0.95f, 1.05f);
+            // Harder landings are louder: a hop is soft, a drop off a roof thumps
+            float hardness = Mathf.InverseLerp(MinLandingSpeed, HardLandingSpeed, -fallSpeed);
+            Play(movementSource, landingClip, landingVolume * Mathf.Lerp(0.7f, 1.3f, hardness), 1.05f - 0.1f * hardness, 1.1f - 0.1f * hardness);
         }
+        if (!grounded && wasGrounded && verticalSpeed > MinThrustSpeed)
+        {
+            // Jumping: the hover thrusters push off, heard by everyone nearby
+            Play(movementSource, thrustClip, thrustVolume, 0.95f, 1.05f);
+        }
+        if (grounded) fallSpeed = 0f;
         wasGrounded = grounded;
 
         UpdateHover(player.HorizontalSpeed);
@@ -197,7 +215,8 @@ public class PlayerSounds : MonoBehaviour
     private bool IsGrounded()
     {
         Transform origin = player.groundDetector != null ? player.groundDetector : transform;
-        return Physics.Raycast(origin.position + Vector3.up * 0.1f, Vector3.down, 0.35f, player.ground, QueryTriggerInteraction.Ignore);
+        // Any scenery, like the simulation (Player.OnGround), so landing on a crate sounds like landing on a floor
+        return Physics.Raycast(origin.position + Vector3.up * 0.1f, Vector3.down, 0.35f, player.ground | Player.WorldMask, QueryTriggerInteraction.Ignore);
     }
 
     // Called on every client when this player starts reloading
@@ -367,6 +386,21 @@ public class PlayerSounds : MonoBehaviour
                 float puff = lowpass2 * 6f * Mathf.Min(1f, t / 0.015f) * Decay(t, 11f);
                 float whomp = Tone(t, 55f + 40f * Decay(t, 20f)) * Mathf.Min(1f, t / 0.01f) * Decay(t, 14f) * 0.6f;
                 return puff + whomp;
+            });
+        }
+
+        // Jumping: the thrusters kick, a short rush of air over a low tone that rises as the body lifts
+        {
+            System.Random rng = new System.Random(11);
+            float lowpass = 0f, lowpass2 = 0f;
+            thrustClip = MakeClip("Thrust", 0.3f, t =>
+            {
+                float noise = (float)rng.NextDouble() * 2f - 1f;
+                lowpass += (noise - lowpass) * 0.22f;
+                lowpass2 += (lowpass - lowpass2) * 0.22f;
+                float rush = lowpass2 * 4f * Mathf.Min(1f, t / 0.01f) * Decay(t, 10f);
+                float lift = Tone(t, 80f + 140f * (1f - Decay(t, 9f))) * Mathf.Min(1f, t / 0.008f) * Decay(t, 12f) * 0.5f;
+                return rush + lift;
             });
         }
 

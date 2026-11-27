@@ -440,6 +440,7 @@ public class Player : NetworkBehaviour
         // too; the capsule has to match it
         if (Runner.IsResimulation) SetControllerShape(Crouched);
 
+        SyncPhysicsBeforeFirstTick();
         Move(input, pressed);
 
         if (HasStateAuthority)
@@ -467,8 +468,7 @@ public class Player : NetworkBehaviour
         bool slide = pressed.IsSet(InputButton.Slide);
 
         //States
-        bool isgrounded = controller.isGrounded || Physics.Raycast(groundDetector.position, Vector3.down, 0.15f, ground, QueryTriggerInteraction.Ignore);
-        Grounded = isgrounded;
+        bool isgrounded = OnGround();
         bool isJumping = jump && isgrounded;
         bool isSprinting = sprint && vmove > 0 && !isJumping && isgrounded;
         bool isCrouching = crouch && !isJumping && !isSprinting && isgrounded;
@@ -575,6 +575,9 @@ public class Player : NetworkBehaviour
         if (isgrounded && !isJumping && velocity.y <= 0f && !controller.isGrounded) SnapToGround();
 
         if (controller.isGrounded && velocity.y < 0f) velocity.y = -2f;
+        // Where the body ended up this tick, so the gun's spread and the HUD follow this tick's landing
+        // or take-off rather than the last one
+        Grounded = OnGround();
         // Hitting a ceiling stops the jump
         if ((flags & CollisionFlags.Above) != 0 && velocity.y > 0f) velocity.y = 0f;
         // Pushing into a wall doesn't store speed: only what the body actually managed counts
@@ -586,6 +589,30 @@ public class Player : NetworkBehaviour
         }
 
         Velocity = velocity;
+    }
+
+    // Standing on something: the controller touched ground on its last move, or there's ground just
+    // below the feet (any scenery, not only the Ground layer, so every floor counts the same)
+    private bool OnGround()
+    {
+        return controller.isGrounded || Physics.Raycast(groundDetector.position, Vector3.down, 0.15f, ground | WorldMask, QueryTriggerInteraction.Ignore);
+    }
+
+    // The tick batch the physics scene was last brought up to date in
+    private static int syncedFrame = -1, syncedTick = -1;
+
+    // Fusion's NetworkTransform puts the body back where the simulation had it before each batch of
+    // ticks (after drawing it at an in-between position, or to re-run ticks from a correction), but
+    // with Physics.autoSyncTransforms off the CharacterController doesn't see that and would move from
+    // its stale position. Fusion's own NetworkCharacterController handles this the same way, by
+    // telling physics before the first tick. Once per batch for all bodies; nearly free after the first.
+    private void SyncPhysicsBeforeFirstTick()
+    {
+        if (!Runner.IsFirstTick) return;
+        if (syncedFrame == Time.frameCount && syncedTick == Runner.Tick.Raw) return;
+        syncedFrame = Time.frameCount;
+        syncedTick = Runner.Tick.Raw;
+        Physics.SyncTransforms();
     }
 
     // This body's movement tuning, from the Inspector fields
@@ -604,8 +631,9 @@ public class Player : NetworkBehaviour
         };
     }
 
-    // What the body can stand on: everything but players, guns and hitboxes
-    private static readonly int SnapMask = Physics.DefaultRaycastLayers & ~((1 << Layers.LocalPlayer) | (1 << Layers.RemotePlayer) | (1 << Layers.Gun) | (1 << Layers.LocalGun) | (1 << Layers.Hitbox));
+    // What the body can stand on: everything but players, guns and hitboxes. Also used by HoverVisuals
+    // and PlayerSounds, so the look and sound of landing match the simulation.
+    public static readonly int WorldMask = Physics.DefaultRaycastLayers & ~((1 << Layers.LocalPlayer) | (1 << Layers.RemotePlayer) | (1 << Layers.Gun) | (1 << Layers.LocalGun) | (1 << Layers.Hitbox));
 
     // Moves the body down onto the ground if there is ground within groundSnapDistance below it.
     // Same scenery and maths on every machine, so the predicted and the host's body agree.
@@ -617,7 +645,7 @@ public class Player : NetworkBehaviour
         Vector3 center = transform.TransformPoint(controller.center);
         Vector3 bottom = center + Vector3.down * Mathf.Max(0f, controller.height * 0.5f - controller.radius);
         float reach = groundSnapDistance + controller.skinWidth;
-        if (!Physics.SphereCast(bottom, radius, Vector3.down, out RaycastHit hit, reach, SnapMask, QueryTriggerInteraction.Ignore)) return;
+        if (!Physics.SphereCast(bottom, radius, Vector3.down, out RaycastHit hit, reach, WorldMask, QueryTriggerInteraction.Ignore)) return;
         // The controller stops when it touches the ground, so moving the full distance is safe
         controller.Move(Vector3.down * (hit.distance + controller.skinWidth));
     }
@@ -831,7 +859,10 @@ public class Player : NetworkBehaviour
         // Moving forward pulls the gun back and slightly down; strafing slides it the other way
         Vector3 trail = new Vector3(-weaponTrail.x, -Mathf.Abs(weaponTrail.y) * 0.4f, -weaponTrail.y);
 
-        Vector3 target = weaponParentCurrentPosition + (drift + trail) * aimAdjust;
+        // The gun rides the drone's hover cushion: it dips on landing and settles (the camera doesn't
+        // move, so aiming is unaffected)
+        float cushion = hoverVisuals != null ? hoverVisuals.Suspension * 0.6f : 0f;
+        Vector3 target = weaponParentCurrentPosition + (drift + trail) * aimAdjust + Vector3.up * cushion;
         weaponParent.localPosition = Vector3.Lerp(weaponParent.localPosition, target, dt * 8f);
         weaponParent.localRotation = Quaternion.Slerp(weaponParent.localRotation, Quaternion.Euler(0f, 0f, -hmove * 3f * aimAdjust), dt * 6f);
     }

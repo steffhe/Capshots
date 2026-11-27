@@ -11,7 +11,7 @@ Main script: `Assets/Scripts/Player.cs` (`NetworkBehaviour`, `[RequireComponent(
 - How far the move input is pushed scales the speed (a half-pushed stick walks at half speed). Keyboard input is always full; touch reaches full speed at 70% of the stick (`TouchControls.MoveStick`).
 - When the match is `Ending`, input is zeroed (the body brakes to a stop) but gravity still applies.
 - Crouching swaps the capsule (`standingHeight`/`crouchingHeight`) and the active hitbox set.
-- Players hover visually (`HoverVisuals`, added at runtime, local only). Movement sounds: `PlayerSounds` (the hover sound's pitch follows `WalkSpeed`/`SprintSpeed`).
+- Players hover visually only (see *Hover look and sound* below); the simulated body is the capsule.
 
 ### Acceleration, braking and air control (`Core/MovementRules`)
 
@@ -33,7 +33,17 @@ Horizontal speed is not set directly from input; each tick it moves towards what
 - **Ground snapping:** a body that was grounded, isn't jumping and ends a move off the ground is moved down onto ground found within `groundSnapDistance` (0.5 m) by a sphere cast (`Player.SnapToGround`), so running down stairs and ramps stays grounded.
 - **Players don't collide with each other.** `Player.LetPlayersPassThrough` turns off collisions between the `LocalPlayer` and `RemotePlayer` layers at runtime (`Physics.IgnoreLayerCollision`). Shots are unaffected (hitboxes). Ragdolls (`DeadPlayer`, layer 0) still block players.
 
+- **Ground check** (`Player.OnGround`): the controller touched ground on its last move, or a 0.15 m ray from `groundDetector` hits any scenery (`Player.WorldMask`: everything but players, guns and hitboxes; the `ground` mask is included but no longer limits it). It runs before the move (can jump, can sprint, ground or air rules) and after it; `[Networked] Grounded` holds the after-move result, so the gun's airborne spread and the HUD follow this tick.
+- **Physics sync:** before the first tick of each batch, `Player.SyncPhysicsBeforeFirstTick` calls `Physics.SyncTransforms()` once (for all bodies). `NetworkTransform` puts bodies back where the simulation had them before ticks run, and with `Physics.autoSyncTransforms` off the `CharacterController` would otherwise move from a stale position.
+
 Tests: `MovementRulesTests` (rates, air rules, and that the prefab's jump reaches the Prototype decks but not its crates).
+
+### Hover look and sound (local, every client)
+
+Measured in `LateUpdate` from how the body moved on this machine (after Fusion places it), so it needs no network traffic.
+
+- `HoverVisuals` (added at runtime): the body model floats `lift` (5 cm) up and bobs `bobHeight` (3 cm), less while moving (`movingBob`). It leans into its movement (`leanPerSpeed`, `maxLean` 8°) on a spring (`leanFrequency`, `leanDamping`), so it tips into a start and rocks back a little when braking. A hover cushion (`Suspension`) sinks the body on landing and as it lifts off (about 3.5 cm for a full jump, at most `cushionDown` 7 cm) and springs back; the local player's gun rides it (`Player.UpdateWeaponHover`), the camera doesn't. The glow and its light are placed on the ground below by a ray (`Player.WorldMask`), fading out and widening up to `glowFadeHeight` (4 m), so a player in the air shows where they are over. Hitboxes don't move with any of this, so it's kept small.
+- `PlayerSounds`: the hover loop's pitch and loudness follow speed (`Player.WalkSpeed`/`SprintSpeed`); a thrust sound when leaving the ground upwards faster than 5 m/s (a jump); a landing sound whose loudness and pitch follow the fastest fall since leaving the ground. Ground for sounds is any scenery, like the simulation.
 
 ## Health, damage and death
 
