@@ -32,6 +32,20 @@ public class Look : MonoBehaviour
 
     private Vector2 recoilTarget;   // x = pitch up, y = yaw right, in degrees
     private Vector2 recoilCurrent;
+    // How fast the view settles back after the last kick: the gun form's own (Gun.kickRecovery), or
+    // recoilRecovery for kicks that don't say
+    private float currentRecovery = -1f;
+
+    [Header("Firing shake")]
+    // Each shot's shake of the view (Gun.shake) and widening of the field of view (Gun.fovPunch): short
+    // and separate from the kill punch, so firing never cuts a kill's shake short. Camera only.
+    public float fireShakeTime = 0.16f;
+    public float fovKickRecovery = 14f;
+    private float fireShakeStrength;
+    private float fireShakeAge = 1f;
+    private float fireShakeSeed;
+    // Degrees added to the field of view right now (Player adds it), dying away after each shot
+    public float FovKick { get; private set; }
 
     [Header("Kill punch")]
     // A short shake of the view on a kill. Only the camera moves: where you aim (Yaw, Pitch) doesn't.
@@ -65,6 +79,9 @@ public class Look : MonoBehaviour
         Yaw = yaw;
         Pitch = 0f;
         recoilTarget = recoilCurrent = Vector2.zero;
+        currentRecovery = -1f;
+        fireShakeAge = fireShakeTime;
+        FovKick = 0f;
         initialized = true;
     }
 
@@ -72,6 +89,9 @@ public class Look : MonoBehaviour
     void Update()
     {
         if (!initialized || owner == null || !owner.IsLocal) return;
+
+        // The firing punch dies away even while paused, so it never sticks
+        FovKick = Mathf.Lerp(FovKick, 0f, 1f - Mathf.Exp(-Time.deltaTime * fovKickRecovery));
 
         if (Pause.paused) return;
 
@@ -161,7 +181,7 @@ public class Look : MonoBehaviour
     void ApplyView()
     {
         player.rotation = Quaternion.Euler(0f, Yaw, 0f);
-        cam.localRotation = camCenter * Quaternion.AngleAxis(Pitch, -Vector3.right) * KillPunch();
+        cam.localRotation = camCenter * Quaternion.AngleAxis(Pitch, -Vector3.right) * KillPunch() * FireShake();
         weapon.rotation = cam.rotation;
     }
 
@@ -173,6 +193,36 @@ public class Look : MonoBehaviour
         punchStrength = strength;
         punchAge = 0f;
         punchSeed = Random.Range(0f, 100f);
+    }
+
+    // A shot's shake of the view (degrees for the first swing) and widening of the field of view
+    // (degrees). Off in the settings for players who get motion sick, like the kill punch.
+    public void FireKick(float shake, float fovPunch)
+    {
+        if (!GameSettings.ScreenShake) return;
+        if (shake > 0f)
+        {
+            // A new shot restarts the shake, never weaker than what's still ringing from the last one
+            float left = fireShakeAge < fireShakeTime ? fireShakeStrength * (1f - fireShakeAge / fireShakeTime) : 0f;
+            fireShakeStrength = Mathf.Max(shake, left);
+            fireShakeAge = 0f;
+            fireShakeSeed = Random.Range(0f, 100f);
+        }
+        if (fovPunch > 0f) FovKick = Mathf.Max(FovKick, fovPunch);
+    }
+
+    // This frame's firing shake: a fast, tight shudder (quicker than the kill punch) that's gone in
+    // fireShakeTime
+    Quaternion FireShake()
+    {
+        if (fireShakeAge >= fireShakeTime) return Quaternion.identity;
+        fireShakeAge += Time.deltaTime;
+        float t = fireShakeAge;
+        float fade = Mathf.Exp(-t * 18f) * Mathf.Clamp01(1f - t / fireShakeTime);
+        float up = Mathf.Sin(t * 90f + fireShakeSeed) * fireShakeStrength * fade;
+        float side = Mathf.Sin(t * 70f + fireShakeSeed * 1.3f) * fireShakeStrength * 0.5f * fade;
+        float roll = Mathf.Sin(t * 60f + fireShakeSeed * 0.7f) * fireShakeStrength * 0.9f * fade;
+        return Quaternion.Euler(-up, side, roll);
     }
 
     // This frame's shake: a quick wobble up and sideways that dies away over punchTime
@@ -219,13 +269,22 @@ public class Look : MonoBehaviour
     public void AddRecoil(float pitch, float yaw)
     {
         recoilTarget += new Vector2(pitch, yaw);
+        currentRecovery = -1f;
+    }
+
+    // The same, settling back at 'recovery' a second (a gun form's own pace) instead of recoilRecovery
+    public void AddRecoil(float pitch, float yaw, float recovery)
+    {
+        recoilTarget += new Vector2(pitch, yaw);
+        currentRecovery = recovery;
     }
 
     void ApplyRecoil()
     {
         Vector2 previous = recoilCurrent;
+        float recovery = currentRecovery > 0f ? currentRecovery : recoilRecovery;
         recoilCurrent = Vector2.Lerp(recoilCurrent, recoilTarget, Time.deltaTime * recoilSnappiness);
-        recoilTarget = Vector2.Lerp(recoilTarget, Vector2.zero, Time.deltaTime * recoilRecovery);
+        recoilTarget = Vector2.Lerp(recoilTarget, Vector2.zero, Time.deltaTime * recovery);
 
         Vector2 delta = recoilCurrent - previous;
         Pitch = Mathf.Clamp(Pitch + delta.x, -maxAngle, maxAngle);

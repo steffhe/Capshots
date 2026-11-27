@@ -33,4 +33,14 @@ public static class ShotRules
         if (headDamage <= 0 || totalDamage <= 0) return false;
         return headDamage * 2 >= totalDamage;
     }
+
+    // The sideways kick of shot number 'shot' in a burst (0 = the first), -1 (left) to 1 (right), the
+    // same in every burst so it can be learnt: the first shots go nearly straight up, then the kick
+    // sways right and back left about once every 11 shots.
+    public static float RecoilPattern(int shot)
+    {
+        if (shot <= 0) return 0f;
+        float rampIn = Mathf.Clamp01(shot / 4f);
+        return Mathf.Sin(shot * 0.55f + 0.4f) * rampIn;
+    }
 }

@@ -48,6 +48,25 @@ public class Gun : ScriptableObject
     // a scope up to the eye so you aim through it. 0 = keep the normal viewmodel field of view.
     public float scopeViewmodelFov = 0f;
 
+    [Header("Feel")]
+    // (recoil, above, is how far the gun model tips up with each shot, in degrees, and kickback how far
+    // it's pushed back)
+    // Camera recoil per shot, in degrees, halved while aiming (Weapon.aimingRecoilMultiplier). It moves
+    // where you aim, then settles back at kickRecovery a second. -1 = the old rule: recoil times
+    // Weapon.cameraRecoilScale up, and up to 35% of that sideways at random.
+    public float kickUp = -1f;
+    public float kickSide = -1f;
+    public float kickRecovery = 7f;
+    // The sideways kick follows the same path in every burst (ShotRules.RecoilPattern), so it can be
+    // learnt and pulled against, instead of being random
+    public bool patternedRecoil = false;
+    // A shake of the view (degrees; the camera only, not where you aim) and a brief widening of the
+    // field of view (degrees) with each shot. Both are off with Screen shake off in the settings.
+    public float shake = 0f;
+    public float fovPunch = 0f;
+    // How far (HUD pixels) the spread ticks round the crosshair jump out with each shot
+    public float crosshairKick = 5f;
+
     [Header("Movement")]
     // Movement speed multiplier while this gun is equipped, and while aiming with it
     public float moveSpeedMultiplier = 1f;

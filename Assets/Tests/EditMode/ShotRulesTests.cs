@@ -50,4 +50,29 @@ public class ShotRulesTests
     {
         Assert.IsFalse(ShotRules.IsCapshot(0, 0));
     }
+
+    [Test]
+    public void RecoilPattern_StartsStraightUpAndStaysInRange()
+    {
+        Assert.AreEqual(0f, ShotRules.RecoilPattern(0), 1e-5f);
+        Assert.Less(UnityEngine.Mathf.Abs(ShotRules.RecoilPattern(1)), 0.3f);
+        for (int shot = 0; shot < 60; shot++)
+        {
+            float side = ShotRules.RecoilPattern(shot);
+            Assert.LessOrEqual(UnityEngine.Mathf.Abs(side), 1f, "shot " + shot);
+        }
+    }
+
+    [Test]
+    public void RecoilPattern_IsTheSameEveryBurstAndSwaysBothWays()
+    {
+        bool left = false, right = false;
+        for (int shot = 0; shot < 30; shot++)
+        {
+            Assert.AreEqual(ShotRules.RecoilPattern(shot), ShotRules.RecoilPattern(shot));
+            if (ShotRules.RecoilPattern(shot) > 0.5f) right = true;
+            if (ShotRules.RecoilPattern(shot) < -0.5f) left = true;
+        }
+        Assert.IsTrue(left && right, "a full machine gun cell's burst should sway right and left");
+    }
 }

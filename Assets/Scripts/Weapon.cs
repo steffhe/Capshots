@@ -691,12 +691,34 @@ public class Weapon : NetworkBehaviour
         }
         pelletHits.Clear();
 
-        // Kick the view up and slightly sideways. Look recovers it over the next moments.
-        if (Runner.IsForward && HasInputAuthority && look != null)
-        {
-            float kick = gun.recoil * cameraRecoilScale * (Aiming ? aimingRecoilMultiplier : 1f);
-            look.AddRecoil(kick, Random.Range(-kick, kick) * 0.35f);
-        }
+        // The shooter's own view: recoil, shake and punch
+        if (Runner.IsForward && HasInputAuthority && look != null) KickView(gun);
+    }
+
+    // Shots fired close together, for the machine gun's recoil pattern (the shooter's own game only)
+    private int recoilStreak;
+    private float lastKickTime = -10f;
+
+    // Kicks the view up and sideways (this moves where the player aims, so later shots follow it; Look
+    // settles it back at the form's own pace), and shakes and punches the camera (looks only). Each form
+    // feels different: see the Feel settings on the Gun assets.
+    void KickView(Gun gun)
+    {
+        bool aimed = isAiming;
+        float scale = aimed ? aimingRecoilMultiplier : 1f;
+        float up = (gun.kickUp >= 0f ? gun.kickUp : gun.recoil * cameraRecoilScale) * scale;
+        float side = gun.kickSide >= 0f ? gun.kickSide * scale : up * 0.35f;
+
+        // Shots within about two fire intervals of each other are one burst
+        float now = Time.time;
+        recoilStreak = now - lastKickTime <= gun.fireRate * 2f + 0.1f ? recoilStreak + 1 : 0;
+        lastKickTime = now;
+        float sideways = gun.patternedRecoil ? ShotRules.RecoilPattern(recoilStreak) * side : Random.Range(-side, side);
+        look.AddRecoil(up, sideways, gun.kickRecovery);
+
+        // Through a scope the view is zoomed in, so the same shake would look several times bigger
+        float zoom = aimed && gun.scopeFov > 0f && GameSettings.Fov > 0f ? Mathf.Clamp01(gun.scopeFov / GameSettings.Fov) : 1f;
+        look.FireKick(gun.shake * zoom, gun.fovPunch * zoom);
     }
 
     // A bot's shot, on the host. Bots have no input authority, so the usual "skip the shooter's own
@@ -1139,7 +1161,7 @@ public class Weapon : NetworkBehaviour
         if (sounds != null) sounds.PlayShot(gun);
         MuzzleFlash();
         LastShotTime = Time.time;
-        if (HasInputAuthority) HudFeedback.Fired();
+        if (HasInputAuthority) HudFeedback.Fired(gun.crosshairKick);
 
         //gun fx
         if (currentWeapon != null)

@@ -613,6 +613,9 @@ public class Player : NetworkBehaviour
         weapon.RefreshAmmo(uiAmmo);
     }
 
+    // The field of view being eased towards its target, before a shot's punch is added
+    private float smoothedFov;
+
     // Field of view and camera height: wider while sprinting and sliding, lower while crouching
     private void UpdateCamera(bool isSprinting)
     {
@@ -635,7 +638,10 @@ public class Player : NetworkBehaviour
         else if (weapon.isAiming) targetFov = baseFOV * AimFovMultiplier;
         else if (Sliding) targetFov = baseFOV * sprintFOVModifier * 1.25f;
         else if (isSprinting) targetFov = baseFOV * sprintFOVModifier;
-        normalCam.fieldOfView = Mathf.Lerp(normalCam.fieldOfView, targetFov, t * fovSpeed);
+        // Eased on its own, so a shot's brief widening (Look.FovKick, on top) doesn't feed back into it
+        if (smoothedFov <= 0f) smoothedFov = normalCam.fieldOfView;
+        smoothedFov = Mathf.Lerp(smoothedFov, targetFov, t * fovSpeed);
+        normalCam.fieldOfView = smoothedFov + (look != null ? look.FovKick : 0f);
 
         Vector3 camTarget = origin;
         if (Sliding) camTarget += Vector3.down * slideAmount;

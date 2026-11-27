@@ -132,10 +132,13 @@ public class HudFeedback : MonoBehaviour
     }
 
     // The local player fired
-    public static void Fired()
+    public static void Fired() => Fired(5f);
+
+    // ...with the ticks jumping out 'amount' pixels (each gun form's Gun.crosshairKick)
+    public static void Fired(float amount)
     {
         if (Instance == null) return;
-        Instance.kick = Mathf.Min(Instance.kick + 5f, 14f);
+        Instance.kick = Mathf.Min(Instance.kick + amount, Mathf.Max(14f, amount));
     }
 
     #endregion
