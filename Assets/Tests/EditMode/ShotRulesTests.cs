@@ -75,4 +75,15 @@ public class ShotRulesTests
         }
         Assert.IsTrue(left && right, "a full machine gun cell's burst should sway right and left");
     }
+
+    [Test]
+    public void HitWeightByte_IsTheShareOfHealth()
+    {
+        Assert.AreEqual(0, ShotRules.HitWeightByte(0, 1000));
+        Assert.AreEqual(51, ShotRules.HitWeightByte(200, 1000));
+        Assert.AreEqual(204, ShotRules.HitWeightByte(800, 1000));
+        Assert.AreEqual(255, ShotRules.HitWeightByte(1600, 1000));
+        // Even a scratch shows
+        Assert.AreEqual(1, ShotRules.HitWeightByte(1, 1000));
+    }
 }

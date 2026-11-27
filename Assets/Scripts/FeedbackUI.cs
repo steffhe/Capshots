@@ -215,10 +215,15 @@ public class FeedbackUI : MonoBehaviour
     }
 
     // Local player hit someone else
-    public static void Hit(bool headshot)
+    public static void Hit(bool headshot) => Hit(headshot, 0.5f);
+
+    // ...louder the harder it landed (strength 0 to 1, its share of the target's health), so a stream
+    // of machine gun hits ticks softly and a shotgun blast or sniper round lands with weight
+    public static void Hit(bool headshot, float strength)
     {
         if (Instance == null) return;
-        Instance.Play(headshot ? Instance.headshotClip : Instance.hitClip, headshot ? 0.142f : 0.136f);
+        float level = Mathf.Lerp(0.8f, 1.2f, Mathf.Clamp01(strength));
+        Instance.Play(headshot ? Instance.headshotClip : Instance.hitClip, (headshot ? 0.142f : 0.136f) * level);
     }
 
     // Local player's shot hit someone under spawn protection: it did nothing

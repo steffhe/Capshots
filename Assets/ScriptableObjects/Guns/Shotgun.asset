@@ -45,5 +45,6 @@ MonoBehaviour:
   flashSize: 0.22
   beamWidth: 0.55
   beamTime: 0.2
+  impactSparks: 3
   moveSpeedMultiplier: 1
   aimMoveSpeedMultiplier: 0.8

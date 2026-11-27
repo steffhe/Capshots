@@ -434,7 +434,8 @@ public class Weapon : NetworkBehaviour
     public void ConfirmHit(bool killed)
     {
         if (Object == null || !Object.IsValid) return;
-        RPC_HitConfirm(false, killed);
+        // A grenade blast lands hard
+        RPC_HitConfirm(false, killed, 200);
     }
 
     public void RefreshAmmo(Text text)
@@ -688,7 +689,8 @@ public class Weapon : NetworkBehaviour
             // did nothing, so it doesn't look like a miss.
             if (player.IsBot) continue;
             if (wasProtected) RPC_ShieldHit();
-            else RPC_HitConfirm(capshot, killed);
+            // How hard the hit landed (its share of the target's health), for the marker and sound
+            else RPC_HitConfirm(capshot, killed, ShotRules.HitWeightByte(h.damage, h.target.maxHealth));
         }
         pelletHits.Clear();
 
@@ -816,11 +818,12 @@ public class Weapon : NetworkBehaviour
 
     // The host confirms a hit to the shooter: hit marker and sound
     [Rpc(RpcSources.StateAuthority, RpcTargets.InputAuthority)]
-    private void RPC_HitConfirm(NetworkBool headshot, NetworkBool killed)
+    private void RPC_HitConfirm(NetworkBool headshot, NetworkBool killed, byte weight)
     {
+        float strength = weight / 255f;
         if (hitmarkRoutine != null) StopCoroutine(hitmarkRoutine);
-        hitmarkRoutine = StartCoroutine(HitPlayer(headshot, killed));
-        FeedbackUI.Hit(headshot);
+        hitmarkRoutine = StartCoroutine(HitPlayer(headshot, killed, strength));
+        FeedbackUI.Hit(headshot, strength);
         if (Manager.Instance != null && Manager.Instance.CountsForSummary) Manager.Summary.Hit();
         // A kill shakes the view a little, a cap shot more
         if (killed && look != null) look.Punch(headshot ? 2.2f : 1.3f);
@@ -873,7 +876,9 @@ public class Weapon : NetworkBehaviour
     // Every hit pops in and fades fast, so a stream of hits reads as separate ticks. A cap shot is
     // gold and bigger; a kill pops out big and holds a moment, red, or gold and bigger still for a
     // cap shot kill.
-    IEnumerator HitPlayer(bool headshot, bool targetIsDead)
+    // strength is how hard the hit landed, 0 to 1 (its share of the target's health): a machine gun
+    // bullet makes a small quick tick, a full shotgun blast or a sniper round a big one that holds
+    IEnumerator HitPlayer(bool headshot, bool targetIsDead, float strength)
     {
         if (hitmark == null) yield break;
 
@@ -892,6 +897,9 @@ public class Weapon : NetworkBehaviour
         {
             pop = 0.07f; hold = headshot ? 0.16f : 0.1f; fadeOut = 0.15f;
             from = headshot ? 1.5f : 1.25f; to = headshot ? 1.1f : 0.9f;
+            float size = Mathf.Lerp(0.85f, 1.3f, strength);
+            from *= size; to *= size;
+            hold *= Mathf.Lerp(0.8f, 1.6f, strength);
         }
 
         for (float t = 0f; t < pop + hold + fadeOut; t += Time.deltaTime)
@@ -1153,8 +1161,14 @@ public class Weapon : NetworkBehaviour
         if (hitWorld && !BoundaryField.Ripple(endPoint))
         {
             ShotEffects.Mark(bulletholePrefab, endPoint, hitNormal);
-            // Fewer for each shotgun pellet, so a blast isn't a fountain
-            ShotEffects.Sparks(endPoint, hitNormal, ShotColor(), gun.pellets > 1 ? 2 : 5);
+            // Each form's own spray (a few per shotgun pellet, so a blast isn't a fountain)
+            ShotEffects.Sparks(endPoint, hitNormal, ShotColor(), gun.impactSparks);
+        }
+        // A shot that ended on a player (a hit has a surface normal; a miss doesn't): a few sparks off
+        // the drone where the beam ends. Only a look: the host's hit marker says whether it counted.
+        else if (!hitWorld && hitNormal != Vector3.zero)
+        {
+            ShotEffects.Sparks(endPoint, hitNormal, ShotColor(), Mathf.Max(1, gun.impactSparks / 2));
         }
 
         if (!first) return;

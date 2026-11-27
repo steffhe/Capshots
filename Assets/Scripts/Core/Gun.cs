@@ -78,6 +78,8 @@ public class Gun : ScriptableObject
     // The laser beam to where each shot (or pellet) landed: width, times the gun's line, and fade time
     public float beamWidth = 1f;
     public float beamTime = 0.3f;
+    // Sparks thrown off a wall where each shot (each pellet) lands
+    public int impactSparks = 5;
 
     [Header("Movement")]
     // Movement speed multiplier while this gun is equipped, and while aiming with it

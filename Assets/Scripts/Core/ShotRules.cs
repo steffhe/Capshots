@@ -43,4 +43,12 @@ public static class ShotRules
         float rampIn = Mathf.Clamp01(shot / 4f);
         return Mathf.Sin(shot * 0.55f + 0.4f) * rampIn;
     }
+
+    // How hard a hit landed, as a byte for the network (0 = nothing, 255 = all of the target's health
+    // or more): the hit marker and sound grow with it
+    public static byte HitWeightByte(int damage, int maxHealth)
+    {
+        if (damage <= 0 || maxHealth <= 0) return 0;
+        return (byte)Mathf.Clamp(Mathf.RoundToInt(255f * damage / maxHealth), 1, 255);
+    }
 }
