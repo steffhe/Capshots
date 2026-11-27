@@ -81,7 +81,7 @@ public partial class Launcher
             RectTransform row = ColumnBlock(tabMain, "Practice", index++, PracticeHeight);
             Button range = CopyButton(template, row, "Shooting Range", () => StartPractice(true));
             HalfOf(practice, row, 0f, 0.5f, "PRACTICE VS BOTS");
-            HalfOf(range, row, 0.5f, 1f, "SHOOTING RANGE");
+            HalfOf(range, row, 0.5f, 1f, myProfile.completedRangeDrill ? "SHOOTING RANGE" : "RANGE TUTORIAL");
         }
 
         if (customize != null) BuildCustomizeButton(customize);

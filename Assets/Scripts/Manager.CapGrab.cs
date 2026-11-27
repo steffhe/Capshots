@@ -33,13 +33,13 @@ public partial class Manager
     // Host only: a player died here; in Cap Grab their cap drops for everyone. On an ordinary kill it
     // just appears on the ground where they fell (the body has none). On a cap shot it's knocked off
     // their head: it flies up from head (along the shot's direction, a little) and lands as the pickup.
-    public void DropCap(Vector3 position, int ownerActor, bool capshot = false, Vector3 head = default, Vector3 shotDirection = default)
+    public void DropCap(Vector3 position, int ownerActor, bool capshot = false, Vector3 head = default, Vector3 shotDirection = default, bool lessonCap = false)
     {
-        if (!CapDrops(position)) return;
+        if (!HasStateAuthority || !(CapDrops(position) || (lessonCap && NeedsTutorialPickup))) return;
         if (capshot) position = CapLanding(position, shotDirection);
         int id = ++capCounter;
         // A flying cap can't be taken until it lands, and its time on the ground starts then
-        capExpiry[id] = Runner.SimulationTime + CapLifetime + (capshot ? CapPickup.FlightTime : 0f);
+        capExpiry[id] = lessonCap ? float.PositiveInfinity : Runner.SimulationTime + CapLifetime + (capshot ? CapPickup.FlightTime : 0f);
         RPC_SpawnCap(id, position, ownerActor, (byte)GetPlayerHat(ownerActor), capshot, head);
     }
 
@@ -69,7 +69,7 @@ public partial class Manager
         if (caps.ContainsKey(id)) return;
         // Yours (or, in teams, a teammate's): one to get back before the other side does
         bool ours = ownerActor == LocalActor || SameTeam(ownerActor, LocalActor);
-        CapPickup cap = CapPickup.Create(id, position, ownerActor, hat, PlayerCap.ColorFor(ownerActor), CapLifetime, ours, flies ? from : (Vector3?)null);
+        CapPickup cap = CapPickup.Create(id, position, ownerActor, hat, PlayerCap.ColorFor(ownerActor), InRange ? float.PositiveInfinity : CapLifetime, ours, flies ? from : (Vector3?)null);
         caps[id] = cap;
         // Your own cap shot off: the death camera watches the cap fly instead of the head
         if (flies && ownerActor == LocalActor) DeathCam.Follow(cap.Pivot);
@@ -110,6 +110,7 @@ public partial class Manager
                 if (done == null) done = new List<int>();
                 done.Add(id);
                 RPC_CapTaken(id, p.ActorId, cap.OwnerActor, denied);
+                if (InRange && !freeRange && !denied && p.IsLocal) FinishRangeTutorial();
                 break;
             }
         }

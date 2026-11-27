@@ -1140,9 +1140,10 @@ public class Player : NetworkBehaviour
         {
             Vector3 ground = GroundPosition();
             // In Cap Grab the cap leaves the body: knocked flying on a cap shot, gone otherwise
-            bool capDrops = manager.CapDrops(ground);
+            bool lessonCap = manager.NeedsTutorialPickup && IsBot && death.headshot && death.attacker == Runner.LocalPlayer;
+            bool capDrops = lessonCap || manager.CapDrops(ground);
             manager.SpawnRagdoll(transform.position, transform.rotation, Velocity, death.direction.normalized, death.offset, death.knockback, death.headshot, ActorId, capDrops);
-            if (capDrops) manager.DropCap(ground, ActorId, death.headshot, transform.position + Vector3.up * HeadHeight, death.direction);
+            if (capDrops) manager.DropCap(ground, ActorId, death.headshot, transform.position + Vector3.up * HeadHeight, death.direction, lessonCap);
             manager.PlayerKilled(Owner, death.attacker, death.weaponName, death.headshot);
         }
 
