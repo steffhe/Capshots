@@ -862,9 +862,13 @@ public class Weapon : NetworkBehaviour
         hitmarkRoutine = null;
     }
 
+    // This player's sounds, looked up once (Player adds them at runtime, so not yet in Awake)
+    PlayerSounds soundsCache;
+    PlayerSounds Sounds => soundsCache != null ? soundsCache : (soundsCache = GetComponent<PlayerSounds>());
+
     void PlayReloadSound(float reloadTime)
     {
-        PlayerSounds sounds = GetComponent<PlayerSounds>();
+        PlayerSounds sounds = Sounds;
         if (sounds != null) sounds.PlayReload(reloadTime);
     }
 
@@ -981,8 +985,8 @@ public class Weapon : NetworkBehaviour
         {
             // Also stops the cell swap sound everyone else hears. A hit marker still showing stays:
             // changing form right after a (cap shot) kill shouldn't hide it.
-            PlayerSounds sounds = GetComponent<PlayerSounds>();
-            if (sounds != null) sounds.StopReload();
+            PlayerSounds sounds = Sounds;
+            if (sounds != null) { sounds.StopReload(); sounds.StopCycle(); }
         }
         shownIndex = ind;
         GameObject newWeapon = Instantiate(loadout[ind].prefab, weaponParent.position, weaponParent.rotation, weaponParent) as GameObject;
@@ -1173,7 +1177,7 @@ public class Weapon : NetworkBehaviour
 
         if (!first) return;
 
-        PlayerSounds sounds = GetComponent<PlayerSounds>();
+        PlayerSounds sounds = Sounds;
         if (sounds != null) sounds.PlayShot(gun);
         MuzzleFlash(gun);
         LastShotTime = Time.time;

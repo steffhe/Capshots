@@ -44,6 +44,20 @@ public class PlayerSounds : MonoBehaviour
     private static AudioClip[] pistolShots, machineGunShots, sniperShots, shotgunShots;
     private AudioSource shotSource;
 
+    // Each form's mechanism, heard after (or with) its shots: the shotgun's pump, the sniper rifle's
+    // capacitor recharging until it can fire again, the pistol's slide snapping, and the machine
+    // gun's rotary barrel whirring up with sustained fire (rotorClip, looped)
+    private static AudioClip pumpClip, rechargeClip, snapClip, rotorClip;
+    private AudioSource cycleSource, rotorSource;
+    private Coroutine cycleRoutine;
+    // How fast the machine gun's barrel is spinning, 0 to 1: up with each shot, winding down after
+    private float rotorLevel;
+    // The machine gun's shots take turns, so the rhythm stays even and no clip plays twice in a row
+    private int nextMachineGunShot;
+    // Mechanical sounds against the shot itself (they sit well under it)
+    public float pumpVolume = 0.5f, rechargeVolume = 0.22f, snapVolume = 0.32f, rotorVolume = 0.16f;
+    private const float RotorPerShot = 0.12f, RotorWindDown = 1.8f;
+
     private void Awake()
     {
         player = GetComponent<Player>();
@@ -66,6 +80,12 @@ public class PlayerSounds : MonoBehaviour
         shotSource.rolloffMode = AudioRolloffMode.Linear;
         shotSource.minDistance = 2f;
         shotSource.maxDistance = 150f;
+        // Mechanical sounds are quieter and fade out sooner, like the reload
+        cycleSource = MakeSource();
+        rotorSource = MakeSource();
+        rotorSource.clip = rotorClip;
+        rotorSource.loop = true;
+        rotorSource.volume = 0f;
 
         lastPosition = transform.position;
     }
@@ -73,6 +93,8 @@ public class PlayerSounds : MonoBehaviour
     private void Update()
     {
         if (Time.deltaTime <= 0f) return;
+
+        UpdateRotor();
 
         Vector3 position = transform.position;
         Vector3 delta = position - lastPosition;
@@ -218,31 +240,112 @@ public class PlayerSounds : MonoBehaviour
         Play(morphSource, lockClip, reloadVolume * 1.1f, 0.95f, 1.05f);
     }
 
+    private enum ShotKind { Pistol, MachineGun, Shotgun, Sniper }
+
+    private static ShotKind KindOf(Gun gun)
+    {
+        string gunName = (gun.gunName ?? "").ToLowerInvariant();
+        if (gunName.Contains("sniper")) return ShotKind.Sniper;
+        if (gunName.Contains("shotgun") || gun.pellets > 1) return ShotKind.Shotgun;
+        if (gunName.Contains("machine") || gun.burst == 1) return ShotKind.MachineGun;
+        return ShotKind.Pistol;
+    }
+
     // Called on every client for each shot this player fires
     public void PlayShot(Gun gun)
     {
         if (gun == null) return;
+        ShotKind kind = KindOf(gun);
 
         // A clip assigned on the gun asset still wins, so real recordings can be dropped in later
         if (gun.shootingSound != null)
         {
             shotSource.pitch = 1f;
             shotSource.PlayOneShot(gun.shootingSound, shotVolume);
-            return;
+        }
+        else
+        {
+            // Each gun's volume evens out how loud its clip sounds (measured, A-weighted) to its place in the mix
+            AudioClip clip;
+            float volume = shotVolume;
+            switch (kind)
+            {
+                case ShotKind.Sniper: clip = sniperShots[Random.Range(0, sniperShots.Length)]; break;
+                case ShotKind.Shotgun: clip = shotgunShots[Random.Range(0, shotgunShots.Length)]; volume *= 1.3f; break;
+                case ShotKind.MachineGun:
+                    clip = machineGunShots[nextMachineGunShot];
+                    nextMachineGunShot = (nextMachineGunShot + 1) % machineGunShots.Length;
+                    volume *= 0.77f;
+                    break;
+                default: clip = pistolShots[Random.Range(0, pistolShots.Length)]; volume *= 0.71f; break;
+            }
+
+            // Pitch stays at 1: changing it would bend the tails of earlier shots still ringing out
+            shotSource.pitch = 1f;
+            shotSource.PlayOneShot(clip, volume);
         }
 
-        // Each gun's volume evens out how loud its clip sounds (measured, A-weighted) to its place in the mix
-        AudioClip[] clips;
-        float volume = shotVolume;
-        string gunName = (gun.gunName ?? "").ToLowerInvariant();
-        if (gunName.Contains("sniper")) { clips = sniperShots; }
-        else if (gunName.Contains("shotgun") || gun.pellets > 1) { clips = shotgunShots; volume *= 1.3f; }
-        else if (gunName.Contains("machine") || gun.burst == 1) { clips = machineGunShots; volume *= 0.77f; }
-        else { clips = pistolShots; volume *= 0.71f; }
+        PlayMechanism(kind, gun);
+    }
 
-        // Pitch stays at 1: changing it would bend the tails of earlier shots still ringing out
-        shotSource.pitch = 1f;
-        shotSource.PlayOneShot(clips[Random.Range(0, clips.Length)], volume);
+    // The form's mechanism after the shot
+    private void PlayMechanism(ShotKind kind, Gun gun)
+    {
+        switch (kind)
+        {
+            case ShotKind.Shotgun:
+                // In time with the pump plates racking back and forward (GunSatelliteLayout.Pump)
+                PlayCycle(pumpClip, 0.13f, shotVolume * pumpVolume);
+                break;
+            case ShotKind.Sniper:
+                // Finishes with its ready ping just as the rifle can fire again
+                PlayCycle(rechargeClip, Mathf.Max(0.05f, gun.fireRate - rechargeClip.length), shotVolume * rechargeVolume);
+                break;
+            case ShotKind.Pistol:
+                Play(cycleSource, snapClip, shotVolume * snapVolume, 0.96f, 1.04f);
+                break;
+            case ShotKind.MachineGun:
+                rotorLevel = Mathf.Min(1f, rotorLevel + RotorPerShot);
+                break;
+        }
+    }
+
+    private void PlayCycle(AudioClip clip, float delay, float volume)
+    {
+        StopCycle();
+        cycleRoutine = StartCoroutine(CycleAfter(clip, delay, volume));
+    }
+
+    private IEnumerator CycleAfter(AudioClip clip, float delay, float volume)
+    {
+        yield return new WaitForSeconds(delay);
+        Play(cycleSource, clip, volume, 0.98f, 1.02f);
+        cycleRoutine = null;
+    }
+
+    // Cuts a pump or recharge still to come or playing, e.g. on a change of form
+    public void StopCycle()
+    {
+        if (cycleRoutine != null) StopCoroutine(cycleRoutine);
+        cycleRoutine = null;
+        if (cycleSource != null) cycleSource.Stop();
+    }
+
+    // The machine gun's rotary barrel: spins up with each shot and winds down after, rising in pitch
+    // as it speeds up. Paused while still, so idle players cost no audio voice.
+    private void UpdateRotor()
+    {
+        if (rotorSource == null) return;
+        rotorLevel = Mathf.MoveTowards(rotorLevel, 0f, Time.deltaTime * RotorWindDown * Mathf.Max(0.35f, rotorLevel));
+        if (rotorLevel <= 0.005f)
+        {
+            if (rotorSource.isPlaying) rotorSource.Pause();
+            return;
+        }
+        if (!rotorSource.isPlaying) rotorSource.Play();
+        float level = Mathf.SmoothStep(0f, 1f, rotorLevel);
+        rotorSource.volume = shotVolume * rotorVolume * level;
+        rotorSource.pitch = Mathf.Lerp(0.7f, 1.25f, level);
     }
 
     #region Synthesized clips
@@ -324,6 +427,8 @@ public class PlayerSounds : MonoBehaviour
         for (int i = 0; i < shotgunShots.Length; i++)
             // Plasma blast: several detuned, gritty zaps at once over a heavy thump and a hissing tail
             shotgunShots[i] = MakeLaser("Shotgun Shot " + i, 500 + i, 0.6f, 2000f, 180f, 22f, 8f, 0.7f, 70f, 10f, 40f, 0.7f, 6f, 3, 0.03f, 1f + i * 0.05f);
+
+        BuildMechanismClips();
     }
 
     // An energy weapon shot: a zap sweeping down from startFreq to endFreq (buzz adds a gritty, squarer
@@ -465,7 +570,80 @@ public class PlayerSounds : MonoBehaviour
         return clip;
     }
 
-    private static AudioClip MakeClip(string name, float length, System.Func<float, float> wave)
+    // Each form's mechanism (see PlayMechanism)
+    private static void BuildMechanismClips()
+    {
+        // Shotgun pump: a heavy "chk" as the plates rack back, then a sharper "clack" as they slam
+        // forward, each a burst of metal over a low knock
+        {
+            System.Random rng = new System.Random(41);
+            float[] at = { 0f, 0.3f };
+            float[] level = { 0.8f, 1f };
+            float[] knock = { 95f, 130f };
+            float[] ring = { 1900f, 2600f };
+            pumpClip = MakeClip("Pump", 0.5f, t =>
+            {
+                float v = 0f;
+                for (int i = 0; i < 2; i++)
+                {
+                    if (t < at[i]) continue;
+                    float c = t - at[i];
+                    float noise = (float)rng.NextDouble() * 2f - 1f;
+                    v += level[i] * (noise * Decay(c, 140f) * 0.6f
+                        + Tone(c, ring[i]) * Decay(c, 45f) * 0.25f
+                        + Tone(c, knock[i]) * Mathf.Min(1f, c / 0.002f) * Decay(c, 28f) * 0.7f);
+                }
+                return v * 0.85f;
+            });
+        }
+
+        // Sniper capacitor: a thin whine rising as it charges, with a slight shimmer, ending in a
+        // clean two-note "ready" ping
+        {
+            const float length = 0.8f, chargeEnd = 0.68f;
+            float phase = 0f;
+            rechargeClip = MakeClip("Recharge", length, t =>
+            {
+                float v = 0f;
+                if (t < chargeEnd)
+                {
+                    float x = t / chargeEnd;
+                    float freq = Mathf.Lerp(600f, 2400f, x * x);
+                    phase += 2f * Mathf.PI * freq / 44100f;
+                    float swell = Mathf.Min(1f, t / 0.05f) * Mathf.Lerp(0.25f, 0.6f, x) * Mathf.Min(1f, (chargeEnd - t) / 0.02f);
+                    v += Mathf.Sin(phase) * swell * (0.85f + 0.15f * Tone(t, 31f));
+                }
+                if (t >= chargeEnd)
+                {
+                    float c = t - chargeEnd;
+                    v += (Tone(c, 2640f) * Decay(c, 30f) + (c > 0.045f ? Tone(c, 3520f) * Decay(c - 0.045f, 26f) : 0f)) * 0.7f;
+                }
+                return v;
+            });
+        }
+
+        // Pistol slide: one tight, bright metallic snap
+        {
+            System.Random rng = new System.Random(53);
+            snapClip = MakeClip("Snap", 0.09f, t =>
+            {
+                float noise = (float)rng.NextDouble() * 2f - 1f;
+                return noise * Decay(t, 320f) * 0.7f + Tone(t, 3400f) * Decay(t, 90f) * 0.35f + Tone(t, 180f) * Decay(t, 60f) * 0.4f;
+            });
+        }
+
+        // Machine gun rotor: a whirring hum chopped by the spinning slats. Half a second whose tones all
+        // fit whole cycles into it, so it loops without a click.
+        rotorClip = MakeClip("Rotor", 0.5f, t =>
+        {
+            float hum = Tone(t, 110f) * 0.45f + Tone(t, 220f) * 0.3f + Tone(t, 440f) * 0.12f + Tone(t, 1320f) * 0.05f;
+            float chop = 0.6f + 0.4f * Tone(t, 26f);
+            return hum * chop * 0.9f;
+        }, edges: false);
+    }
+
+    // edges: a tiny fade in and out to avoid clicks (off for a seamless loop)
+    private static AudioClip MakeClip(string name, float length, System.Func<float, float> wave, bool edges = true)
     {
         const int rate = 44100;
         int samples = Mathf.CeilToInt(length * rate);
@@ -473,8 +651,7 @@ public class PlayerSounds : MonoBehaviour
         for (int i = 0; i < samples; i++)
         {
             float t = (float)i / rate;
-            // Tiny fade in and out to avoid clicks
-            float edge = Mathf.Clamp01(i / 32f) * Mathf.Clamp01((samples - i) / 256f);
+            float edge = edges ? Mathf.Clamp01(i / 32f) * Mathf.Clamp01((samples - i) / 256f) : 1f;
             data[i] = Mathf.Clamp(wave(t), -1f, 1f) * edge;
         }
         AudioClip clip = AudioClip.Create(name, samples, 1, rate, false);
