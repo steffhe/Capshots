@@ -128,7 +128,7 @@ public partial class Manager
         popups.Clear();
         if (xpPopup != null) xpPopup.gameObject.SetActive(false);
         leaderboard.gameObject.SetActive(false);
-        GameObject intro = GameObject.Find("Canvas/Map Intro");
+        GameObject intro = GameObject.Find(HudPaths.MapIntro);
         if (intro != null) Destroy(intro);
         // The end music is made while everyone is frozen on the banner, ready for the awards
         MatchMusic.Prepare();
@@ -156,7 +156,7 @@ public partial class Manager
         yield return new WaitForSecondsRealtime(BannerTime - 0.45f);
 
         // 2. Fade to black and cut to the map camera
-        Image black = UITheme.NewImage("End Fade", GameObject.Find("Canvas").transform, Color.clear, 0f);
+        Image black = UITheme.NewImage("End Fade", MatchCanvas, Color.clear, 0f);
         UITheme.Stretch(black.rectTransform);
         black.raycastTarget = true;
         yield return FadeImage(black, 0f, 1f, CutFadeTime);
@@ -185,7 +185,7 @@ public partial class Manager
             while ((awards == null || awards.Count == 0) && Time.unscaledTime < slotEnd - CutFadeTime - 1f) yield return null;
             if (awards != null && awards.Count > 0)
             {
-                AwardStage stage = AwardStage.Create(AwardEntries(), mapcam.GetComponentInChildren<Camera>(), GameObject.Find("Canvas").transform);
+                AwardStage stage = AwardStage.Create(AwardEntries(), mapcam.GetComponentInChildren<Camera>(), MatchCanvas);
                 black.transform.SetAsLastSibling();
                 MatchMusic.PlayVictory();
                 yield return FadeImage(black, 1f, 0f, fadeIn);
@@ -558,7 +558,7 @@ public partial class Manager
     {
         GameObject go = new GameObject(name, typeof(RectTransform));
         RectTransform rect = (RectTransform)go.transform;
-        rect.SetParent(parent != null ? parent : GameObject.Find("Canvas").transform, false);
+        rect.SetParent(parent != null ? parent : MatchCanvas, false);
         UITheme.Place(rect, anchor, Vector2.zero, size);
         rect.SetAsLastSibling();
         return rect;

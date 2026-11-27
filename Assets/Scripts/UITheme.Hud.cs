@@ -221,6 +221,15 @@ public static partial class UITheme
 
         StyleLeaderboard(hud.Find("Leaderboard"));
 
+        // The parts that change often get canvases of their own, so a change re-batches only them
+        // and not the whole match canvas (HUD, scoreboard, menus): the crosshair moves every frame,
+        // the shots left change with every shot, health with every hit, the clock every second
+        IsolateCanvas(hud.Find("Crosshair"));
+        IsolateCanvas(ammo);
+        IsolateCanvas(health);
+        IsolateCanvas(arsenal);
+        IsolateCanvas(timer);
+
         HudFeedback.Attach(hud, health != null ? health.Find("Bar") as RectTransform : null, healthTrack, healthValue,
             weaponLabel, hud.Find("Crosshair"), ammo, ammoText, arsenal);
     }
@@ -230,6 +239,15 @@ public static partial class UITheme
     public const float FormStripY = 76f;
     public const float FormSlotHeight = 44f;
     public const float GrenadeRowY = FormStripY + FormSlotHeight + HudGap;
+
+    // Gives a part of the UI a canvas of its own, nested in its canvas: drawn in the same place and
+    // order, but rebuilt on its own when something in it changes. Only for parts nobody clicks (a
+    // nested canvas needs its own GraphicRaycaster to take clicks).
+    public static void IsolateCanvas(Transform part)
+    {
+        if (part == null || part.GetComponent<Canvas>() != null) return;
+        part.gameObject.AddComponent<Canvas>();
+    }
 
     public static readonly Vector2 TimerSize = new Vector2(168f, 46f);
     public static readonly Color TimerBackdrop = new Color(0f, 0f, 0f, 0.6f);

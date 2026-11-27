@@ -560,8 +560,10 @@ public class HudFeedback : MonoBehaviour
         weaponPop = Mathf.Max(0f, weaponPop - dt / 0.35f);
         float p = weaponPop * weaponPop;
         Color baseColor = shownStatus == null ? UITheme.AccentText : shownStatus == "NO ENERGY" ? UITheme.Danger : UITheme.HudText;
-        weaponName.rectTransform.localScale = Vector3.one * (1f + 0.2f * p);
-        weaponName.color = Color.Lerp(baseColor, Color.white, p);
+        // Written only when they change: an idle label leaves the canvas alone
+        Vector3 scale = Vector3.one * (1f + 0.2f * p);
+        if (weaponName.rectTransform.localScale != scale) weaponName.rectTransform.localScale = scale;
+        SetColor(weaponName, Color.Lerp(baseColor, Color.white, p));
 
         // The touch controls cover the bottom right: there the SWAP button takes the strip's place
         if (strip != null)

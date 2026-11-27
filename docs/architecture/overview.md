@@ -49,7 +49,7 @@ Only three classes are `NetworkBehaviour`s: `Player`, `Weapon` and `Manager`. Ev
 ## Scene and prefab relationships
 
 - `Menu.unity` (build index 0) holds the `Launcher`, whose `maps` array (Inspector) maps each map name to a **build index**. Reordering or adding enabled scenes in Build Settings shifts those indices.
-- Each map scene contains a `Manager` GameObject with a `NetworkObject`, plus `spawnPoints` and HUD objects that `Manager` finds by path (e.g. `GameObject.Find("HUD/Stats/Kills")`).
+- Each map scene contains a `Manager` GameObject with a `NetworkObject`, plus `spawnPoints` and HUD objects that `Manager`, `Player` and `Weapon` find by path (the paths are in `HudPaths`, e.g. `HudPaths.Kills` = `HUD/Stats/Kills`).
 - `Resources/Player.prefab` carries `NetworkObject`, `NetworkTransform`, `CharacterController`, `HitboxRoot` + `Hitbox`es, `Player`, `Weapon`, `Look`. `Capshots → Set Up Fusion` (`Assets/Editor/FusionSetup.cs`) created this wiring.
 - Gun-form prefabs (`Resources/Shotgun`, `Machine Gun`, `Pistol`, `Sniper Rifle`) are referenced from the `Gun` assets; `GunModel` rebuilds their visible body in code.
 - Much UI, all procedural visuals (drone, hats, gun details) and all sounds are **built at runtime in code** so scenes and prefabs rarely need editing. Prefer extending this pattern over adding scene objects.

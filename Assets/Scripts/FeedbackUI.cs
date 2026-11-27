@@ -87,7 +87,6 @@ public class FeedbackUI : MonoBehaviour
     private Coroutine deathRoutine;
 
     private RectTransform killFeed;
-    private readonly List<GameObject> killFeedEntries = new List<GameObject>();
 
     private AudioSource audioSource;
     private AudioClip hitClip, headshotClip, killClip, capshotKillClip, hurtClip, pickupClip, deathClip, shieldClip, calloutClip, levelUpClip;
@@ -106,6 +105,10 @@ public class FeedbackUI : MonoBehaviour
         go.transform.SetParent(canvas, false);
         // First child: drawn over the world but under the HUD, scoreboard and pause menu
         go.transform.SetAsFirstSibling();
+
+        // Its own canvas: the flashes, arcs, markers and kill feed animate often, and with one of their
+        // own only they are re-batched, not the whole match canvas. Nothing in it takes clicks.
+        UITheme.IsolateCanvas(go.transform);
 
         FeedbackUI ui = go.AddComponent<FeedbackUI>();
         ui.font = font;
@@ -428,7 +431,7 @@ public class FeedbackUI : MonoBehaviour
         bool show = secondsLeft > 0f;
         if (text.gameObject.activeSelf != show) text.gameObject.SetActive(show);
         // Rebuilt only when the tenth of a second shown changes (it's called every frame)
-        int tenths = Mathf.CeilToInt(secondsLeft * 10f);
+        int tenths = Mathf.RoundToInt(secondsLeft * 10f);
         if (show && tenths != Instance.protectionTenths)
         {
             Instance.protectionTenths = tenths;
@@ -462,48 +465,40 @@ public class FeedbackUI : MonoBehaviour
     {
         if (Instance == null) return;
         FeedbackUI ui = Instance;
-
-        RectTransform rect = ui.NewKillFeedEntry("Kill Feed Entry", involvesMe);
-        GameObject entry = rect.gameObject;
+        FeedRow row = ui.TakeFeedRow(involvesMe, 20, Color.white);
 
         if (killerColor == null) killerColor = "#ffffff";
         if (victimColor == null) victimColor = "#ffffff";
         string weaponName = string.IsNullOrEmpty(weapon) ? "" : weapon.ToUpperInvariant();
-        string killerPart = killer != null ? $"<color={killerColor}>{ChatUI.Escape(killer)}</color>" : "";
+        string killerPart = killer != null ? $"<color={killerColor}>{TextRules.Escape(killer)}</color>" : "";
         string weaponPart = headshot ? $"<color={CapshotColor}>[{weaponName} · CAPSHOT]</color>" : $"<color={UITheme.Hex(UITheme.HudMuted)}>[{weaponName}]</color>";
-        string victimPart = $"<color={victimColor}>{ChatUI.Escape(victim)}</color>";
+        string victimPart = $"<color={victimColor}>{TextRules.Escape(victim)}</color>";
 
         Sprite iconSprite = headshot ? CapshotIcon : null;
         if (iconSprite == null)
         {
-            Text line = ui.NewText("Text", rect, 20, TextAnchor.MiddleRight);
-            FeedInset(line.rectTransform, 0f);
-            line.text = (killer != null ? killerPart + "  " : "") + weaponPart + "  " + victimPart;
-            FitKillFeedEntry(rect, line.preferredWidth);
+            FeedInset(row.text.rectTransform, 0f);
+            row.text.text = (killer != null ? killerPart + "  " : "") + weaponPart + "  " + victimPart;
+            FitKillFeedEntry(row, row.text.preferredWidth);
         }
         else
         {
             // Right to left: weapon and victim, the cap logo, then the killer
-            Text right = ui.NewText("Text", rect, 20, TextAnchor.MiddleRight);
-            FeedInset(right.rectTransform, 0f);
-            right.text = weaponPart + "  " + victimPart;
-            float iconRight = right.preferredWidth + IconGap;
+            FeedInset(row.text.rectTransform, 0f);
+            row.text.text = weaponPart + "  " + victimPart;
+            float iconRight = row.text.preferredWidth + IconGap;
 
-            Image icon = ui.NewImage("Capshot Icon", rect, Color.white);
-            icon.sprite = iconSprite;
-            icon.preserveAspect = true;
-            RectTransform iconRect = icon.rectTransform;
-            iconRect.anchorMin = iconRect.anchorMax = iconRect.pivot = new Vector2(1f, 0.5f);
-            iconRect.anchoredPosition = new Vector2(-(FeedPadding + iconRight), 0f);
-            iconRect.sizeDelta = new Vector2(CapshotIconSize, CapshotIconSize);
+            row.icon.sprite = iconSprite;
+            row.icon.enabled = true;
+            row.icon.rectTransform.anchoredPosition = new Vector2(-(FeedPadding + iconRight), 0f);
 
-            Text left = ui.NewText("Killer", rect, 20, TextAnchor.MiddleRight);
-            FeedInset(left.rectTransform, iconRight + CapshotIconSize + IconGap);
-            left.text = killerPart;
-            FitKillFeedEntry(rect, iconRight + CapshotIconSize + IconGap + left.preferredWidth);
+            row.killer.enabled = true;
+            FeedInset(row.killer.rectTransform, iconRight + CapshotIconSize + IconGap);
+            row.killer.text = killerPart;
+            FitKillFeedEntry(row, iconRight + CapshotIconSize + IconGap + row.killer.preferredWidth);
         }
 
-        ui.AddKillFeedEntry(entry);
+        ui.ShowFeedRow(row);
     }
 
     // A line of its own in the kill feed, like "VOLT IS ON A KILLING SPREE", in light grey. The text is
@@ -512,51 +507,91 @@ public class FeedbackUI : MonoBehaviour
     {
         if (Instance == null) return;
         FeedbackUI ui = Instance;
-        RectTransform rect = ui.NewKillFeedEntry("Kill Feed Note", false);
-        Text line = ui.NewText("Text", rect, 18, TextAnchor.MiddleRight);
-        FeedInset(line.rectTransform, 0f);
-        line.color = new Color(0.85f, 0.85f, 0.85f);
-        line.text = text;
-        FitKillFeedEntry(rect, line.preferredWidth);
-        ui.AddKillFeedEntry(rect.gameObject);
+        FeedRow row = ui.TakeFeedRow(false, 18, new Color(0.85f, 0.85f, 0.85f));
+        FeedInset(row.text.rectTransform, 0f);
+        row.text.text = text;
+        FitKillFeedEntry(row, row.text.preferredWidth);
+        ui.ShowFeedRow(row);
     }
 
     // Kill feed rows: each on its own dark, see-through plate sized to its text, so the names stay
-    // readable over a bright sky. Your own kills and deaths get a gold stripe on the plate's left.
+    // readable over a bright sky. Your own kills and deaths get an accent stripe on the plate's left.
+    // Rows are made once and reused (feedPool): a busy match adds one every second or so.
     private const float FeedRowHeight = 30f;
     private const float FeedRowGap = 5f;
     private const float FeedPadding = 12f;
+    private const float FeedSlideTime = 0.15f;
+    private const float FeedFadeTime = 0.5f;
     private static readonly Color FeedPlate = new Color(0.02f, 0.03f, 0.06f, 0.55f);
     // Your own rows: the accent, which means "you" across the HUD (gold is kept for cap shots)
     private static readonly Color FeedStripe = UITheme.AccentText;
 
-    private RectTransform NewKillFeedEntry(string name, bool involvesMe)
+    private class FeedRow
     {
-        GameObject entry = new GameObject(name, typeof(RectTransform));
-        RectTransform rect = (RectTransform)entry.transform;
-        rect.SetParent(killFeed, false);
-        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(1f, 1f);
-        rect.sizeDelta = new Vector2(600f, FeedRowHeight);
-        // Faded with a CanvasGroup (slides in, fades out), so coloured names fade too
-        CanvasGroup group = entry.AddComponent<CanvasGroup>();
-        group.interactable = group.blocksRaycasts = false;
+        public RectTransform rect, plate;
+        public CanvasGroup group;
+        public Image stripe, icon;
+        public Text text, killer;
+        // Seconds shown (scaled, for how long it stays) and since it appeared (unscaled, for the slide in)
+        public float age, slide;
+    }
 
-        Image plate = UITheme.NewImage("Plate", rect, FeedPlate, 6f);
-        RectTransform plateRect = plate.rectTransform;
-        plateRect.anchorMin = plateRect.anchorMax = plateRect.pivot = new Vector2(1f, 0.5f);
-        plateRect.anchoredPosition = Vector2.zero;
-        plateRect.sizeDelta = new Vector2(0f, FeedRowHeight);
-        if (involvesMe)
-        {
-            Image stripe = UITheme.NewImage("Stripe", plateRect, FeedStripe, 1.5f);
-            RectTransform stripeRect = stripe.rectTransform;
-            stripeRect.anchorMin = new Vector2(0f, 0f);
-            stripeRect.anchorMax = new Vector2(0f, 1f);
-            stripeRect.pivot = new Vector2(0f, 0.5f);
-            stripeRect.offsetMin = new Vector2(0f, 4f);
-            stripeRect.offsetMax = new Vector2(3f, -4f);
-        }
-        return rect;
+    // Showing, newest first; and put away for reuse
+    private readonly List<FeedRow> feedRows = new List<FeedRow>();
+    private readonly Stack<FeedRow> feedPool = new Stack<FeedRow>();
+
+    private FeedRow BuildFeedRow()
+    {
+        FeedRow row = new FeedRow();
+        GameObject entry = new GameObject("Kill Feed Row", typeof(RectTransform));
+        row.rect = (RectTransform)entry.transform;
+        row.rect.SetParent(killFeed, false);
+        row.rect.anchorMin = row.rect.anchorMax = row.rect.pivot = new Vector2(1f, 1f);
+        row.rect.sizeDelta = new Vector2(600f, FeedRowHeight);
+        // Faded with a CanvasGroup (slides in, fades out), so coloured names fade too
+        row.group = entry.AddComponent<CanvasGroup>();
+        row.group.interactable = row.group.blocksRaycasts = false;
+
+        Image plate = UITheme.NewImage("Plate", row.rect, FeedPlate, 6f);
+        row.plate = plate.rectTransform;
+        row.plate.anchorMin = row.plate.anchorMax = row.plate.pivot = new Vector2(1f, 0.5f);
+        row.plate.anchoredPosition = Vector2.zero;
+        row.plate.sizeDelta = new Vector2(0f, FeedRowHeight);
+
+        row.stripe = UITheme.NewImage("Stripe", row.plate, FeedStripe, 1.5f);
+        RectTransform stripeRect = row.stripe.rectTransform;
+        stripeRect.anchorMin = new Vector2(0f, 0f);
+        stripeRect.anchorMax = new Vector2(0f, 1f);
+        stripeRect.pivot = new Vector2(0f, 0.5f);
+        stripeRect.offsetMin = new Vector2(0f, 4f);
+        stripeRect.offsetMax = new Vector2(3f, -4f);
+
+        row.text = NewText("Text", row.rect, 20, TextAnchor.MiddleRight);
+
+        row.icon = NewImage("Capshot Icon", row.rect, Color.white);
+        row.icon.preserveAspect = true;
+        RectTransform iconRect = row.icon.rectTransform;
+        iconRect.anchorMin = iconRect.anchorMax = iconRect.pivot = new Vector2(1f, 0.5f);
+        iconRect.sizeDelta = new Vector2(CapshotIconSize, CapshotIconSize);
+
+        row.killer = NewText("Killer", row.rect, 20, TextAnchor.MiddleRight);
+        return row;
+    }
+
+    // A row ready to fill in: from the pool or new, with only its main text showing
+    private FeedRow TakeFeedRow(bool involvesMe, int fontSize, Color textColor)
+    {
+        FeedRow row = feedPool.Count > 0 ? feedPool.Pop() : BuildFeedRow();
+        row.rect.SetAsLastSibling();
+        row.stripe.enabled = involvesMe;
+        row.text.fontSize = fontSize;
+        row.text.color = textColor;
+        row.icon.enabled = false;
+        row.killer.enabled = false;
+        row.killer.text = "";
+        row.age = row.slide = 0f;
+        row.group.alpha = 0f;
+        return row;
     }
 
     // The row's text: the full row, minus the padding and 'right' more on the right
@@ -566,42 +601,58 @@ public class FeedbackUI : MonoBehaviour
         rect.offsetMax = new Vector2(-(FeedPadding + right), 0f);
     }
 
-    private static void FitKillFeedEntry(RectTransform entry, float contentWidth)
+    private static void FitKillFeedEntry(FeedRow row, float contentWidth)
     {
-        RectTransform plate = entry.Find("Plate") as RectTransform;
-        if (plate != null) plate.sizeDelta = new Vector2(contentWidth + FeedPadding * 2f, FeedRowHeight);
+        row.plate.sizeDelta = new Vector2(contentWidth + FeedPadding * 2f, FeedRowHeight);
     }
 
-    private void AddKillFeedEntry(GameObject entry)
+    private void ShowFeedRow(FeedRow row)
     {
-        killFeedEntries.Insert(0, entry);
-        while (killFeedEntries.Count > maxKillFeedEntries)
-        {
-            Destroy(killFeedEntries[killFeedEntries.Count - 1]);
-            killFeedEntries.RemoveAt(killFeedEntries.Count - 1);
-        }
+        row.rect.gameObject.SetActive(true);
+        feedRows.Insert(0, row);
+        while (feedRows.Count > maxKillFeedEntries) ReleaseFeedRow(feedRows[feedRows.Count - 1]);
         LayoutKillFeed();
-        StartCoroutine(SlideInKillFeedEntry(entry));
-        StartCoroutine(ExpireKillFeedEntry(entry));
     }
 
-    // A new row slides in a little from the right and fades up, so a new kill catches the eye. Only the
-    // row's x moves; LayoutKillFeed owns its y.
-    private IEnumerator SlideInKillFeedEntry(GameObject entry)
+    private void ReleaseFeedRow(FeedRow row)
     {
-        const float time = 0.15f;
-        RectTransform rect = entry != null ? (RectTransform)entry.transform : null;
-        CanvasGroup group = entry != null ? entry.GetComponent<CanvasGroup>() : null;
-        for (float t = 0f; t < time && entry != null; t += Time.unscaledDeltaTime)
+        feedRows.Remove(row);
+        row.rect.gameObject.SetActive(false);
+        feedPool.Push(row);
+    }
+
+    // Each row slides in a little from the right and fades up, so a new kill catches the eye, stays
+    // killFeedTime seconds, then fades out. Only the row's x moves here; LayoutKillFeed owns its y.
+    private void UpdateKillFeed()
+    {
+        bool removed = false;
+        for (int i = feedRows.Count - 1; i >= 0; i--)
         {
-            float k = 1f - (1f - t / time) * (1f - t / time);
-            if (group != null) group.alpha = k;
-            rect.anchoredPosition = new Vector2(24f * (1f - k), rect.anchoredPosition.y);
-            yield return null;
+            FeedRow row = feedRows[i];
+            row.age += Time.deltaTime;
+            float alpha = 1f;
+            if (row.slide < FeedSlideTime)
+            {
+                row.slide += Time.unscaledDeltaTime;
+                float k = Mathf.Clamp01(row.slide / FeedSlideTime);
+                k = 1f - (1f - k) * (1f - k);
+                alpha = k;
+                row.rect.anchoredPosition = new Vector2(24f * (1f - k), row.rect.anchoredPosition.y);
+            }
+            if (row.age > killFeedTime)
+            {
+                float fade = (row.age - killFeedTime) / FeedFadeTime;
+                if (fade >= 1f)
+                {
+                    ReleaseFeedRow(row);
+                    removed = true;
+                    continue;
+                }
+                alpha = Mathf.Min(alpha, 1f - fade);
+            }
+            if (row.group.alpha != alpha) row.group.alpha = alpha;
         }
-        if (entry == null) yield break;
-        if (group != null) group.alpha = 1f;
-        rect.anchoredPosition = new Vector2(0f, rect.anchoredPosition.y);
+        if (removed) LayoutKillFeed();
     }
 
     #endregion
@@ -653,6 +704,7 @@ public class FeedbackUI : MonoBehaviour
 
         UpdateDamageArcs();
         UpdateEliminated();
+        UpdateKillFeed();
     }
 
     // Where a source is, in degrees clockwise from where the local player faces (seen from above)
@@ -798,30 +850,12 @@ public class FeedbackUI : MonoBehaviour
         deathRoutine = null;
     }
 
-    private IEnumerator ExpireKillFeedEntry(GameObject entry)
-    {
-        yield return new WaitForSeconds(killFeedTime);
-
-        // Fade the whole entry, coloured names (and the cap shot logo) included
-        const float fade = 0.5f;
-        CanvasGroup group = entry != null ? entry.GetComponent<CanvasGroup>() : null;
-        for (float t = 0f; t < fade && entry != null; t += Time.deltaTime)
-        {
-            group.alpha = 1f - t / fade;
-            yield return null;
-        }
-
-        if (entry == null) yield break;
-        killFeedEntries.Remove(entry);
-        Destroy(entry);
-        LayoutKillFeed();
-    }
-
     private void LayoutKillFeed()
     {
-        for (int i = 0; i < killFeedEntries.Count; i++)
+        for (int i = 0; i < feedRows.Count; i++)
         {
-            ((RectTransform)killFeedEntries[i].transform).anchoredPosition = new Vector2(0f, -i * (FeedRowHeight + FeedRowGap));
+            RectTransform rect = feedRows[i].rect;
+            rect.anchoredPosition = new Vector2(rect.anchoredPosition.x, -i * (FeedRowHeight + FeedRowGap));
         }
     }
 

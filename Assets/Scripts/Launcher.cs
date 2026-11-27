@@ -602,14 +602,30 @@ public partial class Launcher : MonoBehaviour
         RefreshWinBy();
     }
 
+    // The room list's rows, made once and reused: the list is refilled every time the lobby updates,
+    // every few seconds while the menu is open. roomRowsUsed of them show the current list.
+    private readonly List<GameObject> roomRows = new List<GameObject>();
+    private int roomRowsUsed;
+    // Each row's current Join action, taken off when the row is reused (its other listeners, like the
+    // menu's click sound, MenuSoundHook, stay)
+    private readonly Dictionary<GameObject, UnityEngine.Events.UnityAction> roomJoins = new Dictionary<GameObject, UnityEngine.Events.UnityAction>();
+
     private void ClearRoomList()
     {
-        // Hidden at once (Destroy waits for the end of the frame), so the list's height counts only the new rows
-        foreach (Transform a in RoomListContent) { a.gameObject.SetActive(false); Destroy(a.gameObject); }
+        // Our rows are hidden for reuse; anything else (the scene's template rows) goes. Hidden at once,
+        // so the list's height counts only the rows shown next.
+        foreach (Transform a in RoomListContent)
+        {
+            a.gameObject.SetActive(false);
+            if (!roomRows.Contains(a.gameObject)) Destroy(a.gameObject);
+        }
+        roomRowsUsed = 0;
     }
 
-    // The room list's scroll content (found by component, since the menu layout is rearranged at runtime)
-    private Transform RoomListContent => tabRooms.GetComponentInChildren<ScrollRect>(true).content;
+    // The room list's scroll content (found by component, since the menu layout is rearranged at
+    // runtime), looked up once
+    private Transform roomListContent;
+    private Transform RoomListContent => roomListContent != null ? roomListContent : (roomListContent = tabRooms.GetComponentInChildren<ScrollRect>(true).content);
     private void VerifyUsername()
     {
 
@@ -646,8 +662,8 @@ public partial class Launcher : MonoBehaviour
             title = TextRules.Escape(title);
             if (RoomCodes.IsValid(a.Name) && title != a.Name) title += $"  <color={UITheme.Hex(UITheme.MutedText)}>{a.Name}</color>";
             string sessionName = a.Name;
-            GameObject newRoomButton = CreateRoomRow(title, a.PlayerCount + " / " + a.MaxPlayers, roomMap);
-            newRoomButton.GetComponent<Button>().onClick.AddListener(delegate { JoinSession(sessionName, title); });
+            string rowTitle = title;
+            CreateRoomRow(title, a.PlayerCount + " / " + a.MaxPlayers, roomMap, () => JoinSession(sessionName, rowTitle));
             shown++;
         }
         ShowRoomsEmptyState(shown == 0);
@@ -666,15 +682,26 @@ public partial class Launcher : MonoBehaviour
     }
 
     // One row of the room list: its title (with its room code), players and map
-    private GameObject CreateRoomRow(string roomName, string players, string map)
+    private GameObject CreateRoomRow(string roomName, string players, string map, UnityEngine.Events.UnityAction onJoin)
     {
-        GameObject row = Instantiate(buttontRooms, RoomListContent);
+        // A row from before, or a new one (styled once, when it's made)
+        bool reused = roomRowsUsed < roomRows.Count;
+        GameObject row = reused ? roomRows[roomRowsUsed] : Instantiate(buttontRooms, RoomListContent);
+        if (!reused) roomRows.Add(row);
+        roomRowsUsed++;
+        row.SetActive(true);
+        row.transform.SetAsLastSibling();
+        // Its old room's Join goes, this room's comes
+        Button button = row.GetComponent<Button>();
+        if (roomJoins.TryGetValue(row, out UnityEngine.Events.UnityAction oldJoin)) button.onClick.RemoveListener(oldJoin);
+        button.onClick.AddListener(onJoin);
+        roomJoins[row] = onJoin;
         Text nameText = row.transform.Find("Name").GetComponent<Text>();
         nameText.supportRichText = true;
         nameText.text = roomName;
         row.transform.Find("Players").GetComponent<Text>().text = players;
         row.transform.Find("Map/Name").GetComponent<Text>().text = map;
-        StyleRoomRow(row);
+        if (!reused) StyleRoomRow(row);
         return row;
     }
 

@@ -64,11 +64,22 @@ public partial class Manager
         }
     }
 
+    // The arrows' own layer over the whole HUD, with a canvas of its own: they move every frame while
+    // a cap is out of view, and would otherwise re-batch the whole match canvas each time
+    private RectTransform capArrowLayer;
+
     private Image CapArrow(int index, RectTransform hud)
     {
+        if (capArrowLayer == null)
+        {
+            capArrowLayer = new GameObject("Cap Arrows", typeof(RectTransform)).GetComponent<RectTransform>();
+            capArrowLayer.SetParent(hud, false);
+            UITheme.Stretch(capArrowLayer);
+            UITheme.IsolateCanvas(capArrowLayer);
+        }
         while (capArrows.Count <= index)
         {
-            Image image = UITheme.NewImage("Cap Arrow", hud, Color.white, 0f);
+            Image image = UITheme.NewImage("Cap Arrow", capArrowLayer, Color.white, 0f);
             image.sprite = ArrowSprite();
             image.raycastTarget = false;
             RectTransform rect = image.rectTransform;

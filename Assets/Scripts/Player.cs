@@ -354,10 +354,10 @@ public class Player : NetworkBehaviour
             normalCam.cullingMask &= ~(1 << playerLayer);
             CreateViewmodelCamera();
 
-            uiHealthBar = GameObject.Find("HUD/Health/Bar").transform;
+            uiHealthBar = GameObject.Find(HudPaths.HealthBar).transform;
             uiHealthBarImage = uiHealthBar.GetComponent<Image>();
-            uiAmmo = GameObject.Find("HUD/Ammo/Text").GetComponent<Text>();
-            uiUsername = GameObject.Find("HUD/Username/Text").GetComponent<Text>();
+            uiAmmo = GameObject.Find(HudPaths.AmmoText).GetComponent<Text>();
+            uiUsername = GameObject.Find(HudPaths.UsernameText).GetComponent<Text>();
             RefreshHealthBar();
 
             uiUsername.text = Manager.UsernameWithLevel(Launcher.myProfile);
@@ -1020,13 +1020,19 @@ public class Player : NetworkBehaviour
         if (IsLocal) FeedbackUI.LowHealth(fraction);
     }
 
+    private int shownBarHealth = int.MinValue;
+
     void RefreshHealthBar()
     {
         if (uiHealthBar == null) return;
+        // Called every frame: the bar is only touched when the health changes, since moving or
+        // recolouring a UI element makes its canvas rebuild
+        HudFeedback.SetHealth(Health, maxHealth);
+        if (Health == shownBarHealth) return;
+        shownBarHealth = Health;
         float healthRatio = (float)Health / (float)maxHealth;
         uiHealthBar.localScale = new Vector3(healthRatio, 1, 1);
         if (uiHealthBarImage != null) uiHealthBarImage.color = UITheme.HealthColor(healthRatio);
-        HudFeedback.SetHealth(Health, maxHealth);
     }
 
     #endregion

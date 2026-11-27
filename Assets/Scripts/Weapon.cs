@@ -172,9 +172,9 @@ public class Weapon : NetworkBehaviour
             // The HUD is hidden while the local player has no body, and GameObject.Find can't see hidden objects
             if (Manager.Instance != null && Manager.Instance.Hud != null) Manager.Instance.Hud.SetActive(true);
 
-            hitmark = GameObject.Find("HUD/Crosshair/Hitmark");
+            hitmark = GameObject.Find(HudPaths.Hitmark);
             HideHitmark();
-            GameObject dot = GameObject.Find("HUD/Crosshair/Dot");
+            GameObject dot = GameObject.Find(HudPaths.CrosshairDot);
             crosshairDot = dot != null ? dot.GetComponent<Graphic>() : null;
             SetCrosshairAlpha(1f);
             BuildGrenadeIndicator();
@@ -1046,7 +1046,7 @@ public class Weapon : NetworkBehaviour
 
     void BuildGrenadeIndicator()
     {
-        GameObject ammo = GameObject.Find("HUD/Ammo");
+        GameObject ammo = GameObject.Find(HudPaths.AmmoRoot);
         if (ammo == null) return;
 
         Transform existing = ammo.transform.Find("Grenade");
@@ -1094,9 +1094,14 @@ public class Weapon : NetworkBehaviour
             if (grenadeLabel != null)
             {
                 grenadeLabel.color = Color.Lerp(Color.white, new Color(1f, 0.35f, 0.3f), cook);
-                grenadeLabel.text = ((1f - cook) * PlasmaGrenadeRules.FreeFuse).ToString("0.0");
-                // The label shows the fuse now: rewrite it once the grenade has gone
-                grenadeLabelSeconds = -1;
+                // The fuse in tenths, rewritten only when the tenth shown changes. Stored negative, so
+                // the "PLASMA n" label below (whole seconds, 0 and up) is rewritten after the throw.
+                int tenths = Mathf.RoundToInt((1f - cook) * PlasmaGrenadeRules.FreeFuse * 10f);
+                if (-1 - tenths != grenadeLabelSeconds)
+                {
+                    grenadeLabelSeconds = -1 - tenths;
+                    grenadeLabel.text = (tenths / 10f).ToString("0.0");
+                }
             }
             return;
         }

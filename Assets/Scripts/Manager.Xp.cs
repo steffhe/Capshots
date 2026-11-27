@@ -103,7 +103,7 @@ public partial class Manager
     private void CreateXpPopup()
     {
         // Built at runtime from the existing Kills text so it matches the HUD font and style
-        GameObject popupObject = Instantiate(myKills.gameObject, GameObject.Find("Canvas").transform);
+        GameObject popupObject = Instantiate(myKills.gameObject, MatchCanvas);
         popupObject.name = "XP Popup";
 
         xpPopup = popupObject.GetComponent<Text>();

@@ -5,6 +5,49 @@ using UnityEngine;
 // crosshair, sprint mode and camera effects).
 public static class GameSettings
 {
+    #region Cached saved values
+
+    // Settings are read every frame (field of view, invert Y, sensitivities, camera effects, colour
+    // blind colours for every player), so each saved value is read from PlayerPrefs once and kept here;
+    // setting one writes both. Every settings key is only ever written through these. (Graphics
+    // quality, whose default is the live quality level, still reads PlayerPrefs directly.)
+    private static readonly System.Collections.Generic.Dictionary<string, float> savedFloats = new System.Collections.Generic.Dictionary<string, float>();
+    private static readonly System.Collections.Generic.Dictionary<string, int> savedInts = new System.Collections.Generic.Dictionary<string, int>();
+
+    private static float GetFloat(string key, float fallback)
+    {
+        if (!savedFloats.TryGetValue(key, out float value))
+        {
+            value = PlayerPrefs.GetFloat(key, fallback);
+            savedFloats[key] = value;
+        }
+        return value;
+    }
+
+    private static void SetFloat(string key, float value)
+    {
+        PlayerPrefs.SetFloat(key, value);
+        savedFloats[key] = value;
+    }
+
+    private static int GetInt(string key, int fallback)
+    {
+        if (!savedInts.TryGetValue(key, out int value))
+        {
+            value = PlayerPrefs.GetInt(key, fallback);
+            savedInts[key] = value;
+        }
+        return value;
+    }
+
+    private static void SetInt(string key, int value)
+    {
+        PlayerPrefs.SetInt(key, value);
+        savedInts[key] = value;
+    }
+
+    #endregion
+
     public const float MinSensitivity = 10f;
     public const float MaxSensitivity = 500f;
 
@@ -40,15 +83,15 @@ public static class GameSettings
 
     public static float Fov
     {
-        get => PlayerPrefs.GetFloat(FovKey, DefaultFov);
-        set { PlayerPrefs.SetFloat(FovKey, Mathf.Clamp(value, MinFov, MaxFov)); PlayerPrefs.Save(); }
+        get => GetFloat(FovKey, DefaultFov);
+        set { SetFloat(FovKey, Mathf.Clamp(value, MinFov, MaxFov)); PlayerPrefs.Save(); }
     }
 
     // Look sensitivity is multiplied by this while aiming down sights
     public static float AdsSensitivity
     {
-        get => PlayerPrefs.GetFloat(AdsSensitivityKey, 1f);
-        set { PlayerPrefs.SetFloat(AdsSensitivityKey, Mathf.Clamp(value, 0.1f, 2f)); PlayerPrefs.Save(); }
+        get => GetFloat(AdsSensitivityKey, 1f);
+        set { SetFloat(AdsSensitivityKey, Mathf.Clamp(value, 0.1f, 2f)); PlayerPrefs.Save(); }
     }
 
     // The gun form to spawn holding, by its gunName; empty for the game's default (Weapon.defaultStartingGun)
@@ -106,8 +149,8 @@ public static class GameSettings
     private const string HatsSeenLevelKey = "hats.seenLevel";
     public static int HatsSeenLevel
     {
-        get => PlayerPrefs.GetInt(HatsSeenLevelKey, 0);
-        set { PlayerPrefs.SetInt(HatsSeenLevelKey, value); PlayerPrefs.Save(); }
+        get => GetInt(HatsSeenLevelKey, 0);
+        set { SetInt(HatsSeenLevelKey, value); PlayerPrefs.Save(); }
     }
 
     // (Faces unlock with levels too, so a new face counts as well)
@@ -116,10 +159,10 @@ public static class GameSettings
     // The master volume, over both the sound effects and the music
     public static float Volume
     {
-        get => PlayerPrefs.GetFloat(VolumeKey, 1f);
+        get => GetFloat(VolumeKey, 1f);
         set
         {
-            PlayerPrefs.SetFloat(VolumeKey, Mathf.Clamp01(value));
+            SetFloat(VolumeKey, Mathf.Clamp01(value));
             PlayerPrefs.Save();
             ApplyVolume();
         }
@@ -129,10 +172,10 @@ public static class GameSettings
     // volume is master x effects, and the music's sources ignore it and use MusicOutput instead.
     public static float EffectsVolume
     {
-        get => PlayerPrefs.GetFloat(EffectsVolumeKey, 1f);
+        get => GetFloat(EffectsVolumeKey, 1f);
         set
         {
-            PlayerPrefs.SetFloat(EffectsVolumeKey, Mathf.Clamp01(value));
+            SetFloat(EffectsVolumeKey, Mathf.Clamp01(value));
             PlayerPrefs.Save();
             ApplyVolume();
         }
@@ -147,10 +190,10 @@ public static class GameSettings
     // The menu's music and the end of a match's (MatchMusic), under the master volume
     public static float MusicVolume
     {
-        get => PlayerPrefs.GetFloat(MusicVolumeKey, 0.7f);
+        get => GetFloat(MusicVolumeKey, 0.7f);
         set
         {
-            PlayerPrefs.SetFloat(MusicVolumeKey, Mathf.Clamp01(value));
+            SetFloat(MusicVolumeKey, Mathf.Clamp01(value));
             PlayerPrefs.Save();
         }
     }
@@ -172,11 +215,11 @@ public static class GameSettings
     private const string ColourblindKey = "settings.colourblind";
     public static bool Colourblind
     {
-        get => PlayerPrefs.GetInt(ColourblindKey, 0) == 1;
+        get => GetInt(ColourblindKey, 0) == 1;
         set
         {
             if (value == Colourblind) return;
-            PlayerPrefs.SetInt(ColourblindKey, value ? 1 : 0);
+            SetInt(ColourblindKey, value ? 1 : 0);
             PlayerPrefs.Save();
             ColoursChanged?.Invoke();
         }
@@ -189,11 +232,11 @@ public static class GameSettings
     private const string ShowFpsKey = "settings.showFps";
     public static bool ShowFps
     {
-        get => PlayerPrefs.GetInt(ShowFpsKey, 0) == 1;
+        get => GetInt(ShowFpsKey, 0) == 1;
         set
         {
             if (value == ShowFps) return;
-            PlayerPrefs.SetInt(ShowFpsKey, value ? 1 : 0);
+            SetInt(ShowFpsKey, value ? 1 : 0);
             PlayerPrefs.Save();
             ShowFpsChanged?.Invoke();
         }
@@ -206,21 +249,21 @@ public static class GameSettings
     // from the mouse sensitivity, which means mouse distance per turn.
     public static float StickSensitivity
     {
-        get => Mathf.Clamp(PlayerPrefs.GetFloat(StickSensitivityKey, 1f), MinStickSensitivity, MaxStickSensitivity);
-        set { PlayerPrefs.SetFloat(StickSensitivityKey, Mathf.Clamp(value, MinStickSensitivity, MaxStickSensitivity)); PlayerPrefs.Save(); }
+        get => Mathf.Clamp(GetFloat(StickSensitivityKey, 1f), MinStickSensitivity, MaxStickSensitivity);
+        set { SetFloat(StickSensitivityKey, Mathf.Clamp(value, MinStickSensitivity, MaxStickSensitivity)); PlayerPrefs.Save(); }
     }
 
     // Sprint by pressing once instead of holding (GameInput.SprintWanted); off by default
     public static bool ToggleSprint
     {
-        get => PlayerPrefs.GetInt(ToggleSprintKey, 0) == 1;
-        set { PlayerPrefs.SetInt(ToggleSprintKey, value ? 1 : 0); PlayerPrefs.Save(); }
+        get => GetInt(ToggleSprintKey, 0) == 1;
+        set { SetInt(ToggleSprintKey, value ? 1 : 0); PlayerPrefs.Save(); }
     }
 
     public static bool InvertY
     {
-        get => PlayerPrefs.GetInt(InvertYKey, 0) == 1;
-        set { PlayerPrefs.SetInt(InvertYKey, value ? 1 : 0); PlayerPrefs.Save(); }
+        get => GetInt(InvertYKey, 0) == 1;
+        set { SetInt(InvertYKey, value ? 1 : 0); PlayerPrefs.Save(); }
     }
 
     // Camera effects, shown as CAMERA EFFECTS in the settings: the view's shake when firing, on a kill
@@ -229,8 +272,8 @@ public static class GameSettings
     // that's part of how the guns handle. (Saved under its old name, screen shake.)
     public static bool ScreenShake
     {
-        get => PlayerPrefs.GetInt(ScreenShakeKey, 1) == 1;
-        set { PlayerPrefs.SetInt(ScreenShakeKey, value ? 1 : 0); PlayerPrefs.Save(); }
+        get => GetInt(ScreenShakeKey, 1) == 1;
+        set { SetInt(ScreenShakeKey, value ? 1 : 0); PlayerPrefs.Save(); }
     }
 
     #region Crosshair
@@ -252,28 +295,28 @@ public static class GameSettings
 
     public static int CrosshairColourIndex
     {
-        get => Mathf.Clamp(PlayerPrefs.GetInt(CrosshairColourKey, 0), 0, CrosshairColours.Length - 1);
-        set { PlayerPrefs.SetInt(CrosshairColourKey, Mathf.Clamp(value, 0, CrosshairColours.Length - 1)); PlayerPrefs.Save(); CrosshairChanged?.Invoke(); }
+        get => Mathf.Clamp(GetInt(CrosshairColourKey, 0), 0, CrosshairColours.Length - 1);
+        set { SetInt(CrosshairColourKey, Mathf.Clamp(value, 0, CrosshairColours.Length - 1)); PlayerPrefs.Save(); CrosshairChanged?.Invoke(); }
     }
 
     public static Color CrosshairColour => CrosshairColours[CrosshairColourIndex];
 
     public static bool CrosshairDot
     {
-        get => PlayerPrefs.GetInt(CrosshairDotKey, 1) == 1;
-        set { PlayerPrefs.SetInt(CrosshairDotKey, value ? 1 : 0); PlayerPrefs.Save(); CrosshairChanged?.Invoke(); }
+        get => GetInt(CrosshairDotKey, 1) == 1;
+        set { SetInt(CrosshairDotKey, value ? 1 : 0); PlayerPrefs.Save(); CrosshairChanged?.Invoke(); }
     }
 
     public static bool CrosshairTicks
     {
-        get => PlayerPrefs.GetInt(CrosshairTicksKey, 1) == 1;
-        set { PlayerPrefs.SetInt(CrosshairTicksKey, value ? 1 : 0); PlayerPrefs.Save(); CrosshairChanged?.Invoke(); }
+        get => GetInt(CrosshairTicksKey, 1) == 1;
+        set { SetInt(CrosshairTicksKey, value ? 1 : 0); PlayerPrefs.Save(); CrosshairChanged?.Invoke(); }
     }
 
     public static float CrosshairSize
     {
-        get => Mathf.Clamp(PlayerPrefs.GetFloat(CrosshairSizeKey, 1f), MinCrosshairSize, MaxCrosshairSize);
-        set { PlayerPrefs.SetFloat(CrosshairSizeKey, Mathf.Clamp(value, MinCrosshairSize, MaxCrosshairSize)); PlayerPrefs.Save(); CrosshairChanged?.Invoke(); }
+        get => Mathf.Clamp(GetFloat(CrosshairSizeKey, 1f), MinCrosshairSize, MaxCrosshairSize);
+        set { SetFloat(CrosshairSizeKey, Mathf.Clamp(value, MinCrosshairSize, MaxCrosshairSize)); PlayerPrefs.Save(); CrosshairChanged?.Invoke(); }
     }
 
     public static event System.Action CrosshairChanged;
