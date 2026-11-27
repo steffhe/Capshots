@@ -126,7 +126,7 @@ public class MenuAudio : MonoBehaviour
     {
         if (instance == null) return;
         instance.lastClickAt = Time.unscaledTime;
-        instance.uiSource.PlayOneShot(goingBack ? back : click, goingBack ? UiLevel : UiLevel * 0.75f);
+        instance.uiSource.PlayOneShot(goingBack ? back : click, goingBack ? UiLevel : UiLevel * 0.55f);
     }
 
     #region Clips
@@ -140,14 +140,7 @@ public class MenuAudio : MonoBehaviour
             float f = Mathf.Lerp(1700f, 2100f, t / 0.035f);
             return Mathf.Sin(2f * Mathf.PI * f * t) * Mathf.Exp(-t * 110f) * Mathf.Clamp01(t * 2000f);
         });
-        // A soft, rounded tap: the hover tick's family, a little lower and fuller (the two-note chirp
-        // it replaced was too much for every press)
-        click = Make("Menu Click", rate, 0.07f, t =>
-        {
-            float f = Mathf.Lerp(1250f, 1500f, t / 0.07f);
-            float body = Mathf.Sin(2f * Mathf.PI * f * t) * 0.8f + Mathf.Sin(2f * Mathf.PI * f * 0.5f * t) * 0.3f;
-            return body * Mathf.Exp(-t * 60f) * Mathf.Clamp01(t * 1500f) * 0.8f;
-        });
+        click = hover;
         // The same, going down
         back = Make("Menu Back", rate, 0.13f, t => TwoNotes(t, 1046.5f, 698.5f));
     }
