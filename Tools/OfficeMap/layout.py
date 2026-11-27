@@ -144,12 +144,9 @@ HALL_FURNITURE = [
     ("rings", (901, 254), {}),
     ("counter", (1003, 256, 1050, 266), {"coffee": True}),
     ("bench", (1125, 234, 1160, 250), {}),
-    ("plant", (950, 230), {}),
-    ("plant", (1085, 325), {}),
     # By K, at the south end of the west corridor
     ("counter", (800, 550, 846, 560), {"coffee": True}),
     ("wingbacks", (822, 592), {}),
-    ("plant", (780, 625), {}),
     # East lounge, by Utgang 28
     ("counter", (1263, 520, 1272, 568), {"coffee": True}),
     ("hightable", (1276, 482, 1290, 512), {}),
@@ -160,23 +157,18 @@ HALL_FURNITURE = [
     ("armchair", (1300, 580, 1312, 592), {"back": "w"}),
     ("table", (1316, 556, 1330, 582), {}),
     ("rings", (1323, 569), {}),
-    ("plant", (1340, 625), {}),
-    ("plant", (1340, 465), {}),
     # Between the east lifts and the gym
     ("counter", (1124, 708, 1152, 716), {"coffee": True}),
     ("bench", (1196, 728, 1232, 744), {}),
-    ("plant", (1280, 750), {}),
     # South-west lounge
     ("sofa", (118, 936, 128, 976), {"back": "w"}),
     ("table", (138, 944, 172, 972), {}),
     ("rings", (155, 958), {}),
     ("armchair", (188, 940, 202, 954), {"back": "e"}),
     ("armchair", (188, 962, 202, 976), {"back": "e"}),
-    ("plant", (110, 1000), {}),
     # By the south print room
     ("counter", (446, 936, 456, 976), {"coffee": True}),
     ("roundtable", (486, 962), {}),
-    ("plant", (560, 1000), {}),
     # South lounge between the lift and the east wing
     ("sofa", (1026, 866, 1036, 912), {"back": "e"}),
     ("armchair", (976, 870, 990, 884), {"back": "w"}),
@@ -187,8 +179,6 @@ HALL_FURNITURE = [
     ("counter", (932, 890, 940, 924), {"coffee": True}),
     ("booth", (1043, 932, 1061, 982), {}),
     ("booth", (1061, 932, 1078, 982), {}),
-    ("plant", (1090, 850), {}),
-    ("plant", (860, 850), {}),
 ]
 
 # The courtyard garden, at the same level as the floor and walled in glass that breaks. A gravel

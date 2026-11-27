@@ -36,7 +36,7 @@ DOOR_W = 1.5
 DOOR_H = 2.5
 GARDEN_Y = 0.0     # the courtyard garden is on the same level as the floor
 FLOOR_H = 3.75     # storey height of the floors above, round the courtyard
-FLOORS_ABOVE = 3
+FLOORS_ABOVE = 2
 GROUND_Y = -7.5    # street level, two floors down
 
 MATERIALS = [
@@ -47,7 +47,26 @@ MATERIALS = [
     ("vinyl", 0.78, 0.78, 0.76, 1, "tile", 0.6, 0.3, "opaque"),
     ("rubber", 0.20, 0.21, 0.23, 1, "carpet", 1.0, 0.1, "opaque"),
     ("wall", 0.90, 0.90, 0.89, 1, "none", 1, 0.1, "opaque"),
-    ("grey_wall", 0.42, 0.44, 0.47, 1, "none", 1, 0.1, "opaque"),
+    ("grey_wall", 0.48, 0.50, 0.52, 1, "none", 1, 0.1, "opaque"),
+    # Outside
+    ("roof", 0.36, 0.37, 0.39, 1, "concrete", 3, 0.2, "opaque"),
+    ("concrete", 0.70, 0.70, 0.68, 1, "concrete", 3, 0.1, "opaque"),
+    ("solar", 0.10, 0.14, 0.22, 1, "panels", 1.0, 0.85, "opaque"),
+    ("water", 0.12, 0.22, 0.28, 1, "none", 1, 0.95, "opaque"),
+    ("lawn", 0.36, 0.50, 0.26, 1, "grass", 3, 0.0, "opaque"),
+    ("turf", 0.22, 0.48, 0.26, 1, "checker", 6, 0.1, "opaque"),
+    ("cycle_lane", 0.72, 0.30, 0.24, 1, "concrete", 3, 0.1, "opaque"),
+    ("ballast", 0.42, 0.38, 0.34, 1, "gravel", 2, 0.0, "opaque"),
+    ("rail", 0.30, 0.22, 0.18, 1, "none", 1, 0.5, "opaque"),
+    ("leaves", 0.24, 0.42, 0.20, 1, "grass", 1.5, 0.0, "opaque"),
+    ("leaves2", 0.32, 0.48, 0.22, 1, "grass", 1.5, 0.0, "opaque"),
+    ("render", 0.86, 0.86, 0.84, 1, "concrete", 3, 0.1, "opaque"),
+    ("cladding", 0.50, 0.52, 0.54, 1, "panels", 2.4, 0.2, "opaque"),
+    ("brick", 0.55, 0.30, 0.22, 1, "panels", 1.2, 0.1, "opaque"),
+    ("stand", 0.85, 0.82, 0.72, 1, "concrete", 2, 0.1, "opaque"),
+    ("car_white", 0.88, 0.88, 0.88, 1, "none", 1, 0.8, "opaque"),
+    ("car_grey", 0.45, 0.47, 0.50, 1, "none", 1, 0.8, "opaque"),
+    ("car_blue", 0.18, 0.26, 0.42, 1, "none", 1, 0.8, "opaque"),
     ("ext", 0.72, 0.71, 0.69, 1, "concrete", 3, 0.1, "opaque"),
     ("ceiling", 0.93, 0.93, 0.92, 1, "tile", 0.6, 0.0, "opaque"),
     ("frame", 0.10, 0.10, 0.11, 1, "none", 1, 0.55, "opaque"),
@@ -335,9 +354,15 @@ def glass_wall(axis, edge, outsign, t0, t1, doors, frosted=True):
         frame(c0, c1, DOOR_H - 0.06, DOOR_H)
 
 
-def partition(axis, edge, outsign, t0, t1):
+def partition(axis, edge, outsign, t0, t1, mat="wall"):
     line = edge - outsign * WALL / 2
-    wbox("wall", axis, line, t0, t1, WALL, 0, H)
+    wbox(mat, axis, line, t0, t1, WALL, 0, H)
+
+
+# Solid walls are white in offices (and the other rooms) and grey in meeting rooms; in the
+# corridors the closed blocks are half white, half grey
+def room_wall(room):
+    return "grey_wall" if room.kind == "meeting" else "wall"
 
 
 def choose_doors(room, hall_runs):
@@ -378,8 +403,11 @@ for room in rooms:
                 depth = depth_beyond(axis, fixed, a, b, outv, room)
                 hall_runs.append((waxis, line, t0, t1, outsign, min(depth, 20)))
             elif kind == "room":
-                partition(waxis, line, outsign, t0, t1)
-            # ext: the outside wall is there; core: the block is there; self: same room
+                partition(waxis, line, outsign, t0, t1, room_wall(room))
+            elif kind == "core":
+                # The block is there: a thin lining in the room's own colour on its side
+                wbox(room_wall(room), waxis, line - outsign * 0.01, t0, t1, 0.02, 0.0, H, "n")
+            # ext: the outside wall is there; self: same room
     room.doors = choose_doors(room, hall_runs)
     for waxis, line, t0, t1, outsign, _ in hall_runs:
         ds = [d[3] for d in room.doors if d[0] == waxis and abs(d[1] - line) < 1e-6 and t0 <= d[3] <= t1]
@@ -506,7 +534,7 @@ for k, (axis, line, t0, t1, outsign) in enumerate(outline_walls(L.OUTLINE, H, Fa
     face = line + outsign * EXT_T / 2
     facade(axis, face + outsign * 0.15, outsign, t0, t1, GROUND_Y, 2, k, lit=False)
     wbox("terracotta", axis, face + outsign * 0.07, t0, t1, 0.14, 2.95, H + 0.4, "n")
-    facade(axis, face + outsign * 0.15, outsign, t0, t1, H + 0.4, 1, k + 1, lit=False)
+    facade(axis, face + outsign * 0.15, outsign, t0, t1, H + 0.4, FLOORS_ABOVE, k + 1, lit=False)
     wbox("ext", axis, line, t0, t1, EXT_T, -0.4, 0.0, "n")
 
 
@@ -707,37 +735,213 @@ for px, py in L.GARDEN_LIGHTS:
     cbox("chrome", x, 0.45, z, 0.14, 0.9, 0.14, "n")
     cbox("light", x, 0.84, z, 0.15, 0.08, 0.15, "ns")
 
-# The street two floors down, with hedges and bare trees
-box("ground", -300, 300, GROUND_Y - 0.5, GROUND_Y, -300, 300, "n")
+# The roof, two floors up: dark membrane, rows of solar panels, plant rooms
+ROOF_Y = H + 0.4 + FLOORS_ABOVE * FLOOR_H
+for r in L.SLABS:
+    rbox("roof", wrect(r), ROOF_Y - 0.3, ROOF_Y, "n")
+for r in ((622, 70, 1330, 140), (110, 950, 820, 1075), (1112, 360, 1330, 820)):
+    x0, x1, z0, z1 = wrect(r)
+    long_x = x1 - x0 > z1 - z0
+    for t in frange((z0 if long_x else x0) + 1.0, (z1 if long_x else x1) - 1.0, 2.6):
+        if long_x:
+            box("solar", x0, x1, ROOF_Y + 0.25, ROOF_Y + 0.33, t, t + 1.7, "ns")
+        else:
+            box("solar", t, t + 1.7, ROOF_Y + 0.25, ROOF_Y + 0.33, z0, z1, "ns")
+for px, py, w, d in ((700, 250, 60, 40), (950, 900, 70, 50), (300, 870, 50, 40)):
+    x, z = wx(px), wz(py)
+    cbox("render", x, ROOF_Y + 1.6, z, w * S, 3.2, d * S, "n")
+
+# ---------------------------------------------------------------------------------------------
+# Round the building, two floors down, after the satellite view of the real place: the street
+# with red cycle lanes along the north side, a park and an artificial pitch beyond it, the stadium
+# to the north-east, the harbour with its marina to the north-west, apartment towers to the west,
+# the railway to the east, a park in the corner of the L and car parks and woods to the south.
+# Nothing out here has a collider.
+G = GROUND_Y
 bx0, bx1, bz0, bz1 = wx(96), wx(1347), wz(1090), wz(55)
-box("asphalt", bx0 - 14, bx1 + 14, GROUND_Y, GROUND_Y + 0.02, bz0 - 14, bz1 + 14, "n")
-box("pavement", bx0 - 4, bx1 + 4, GROUND_Y + 0.02, GROUND_Y + 0.12, bz0 - 4, bz1 + 4, "n")
+box("ground", -400, 400, G - 0.6, G - 0.1, -400, 400, "n")
+box("lawn", -400, 400, G - 0.1, G, -400, 400, "s")
+# A pavement right round the building
+for axis, line, t0, t1, outsign in outline_walls(L.OUTLINE, H, False):
+    edge = line + outsign * EXT_T / 2
+    if axis == "x":
+        box("pavement", t0 - 4, t1 + 4, G, G + 0.12, min(edge, edge + outsign * 4.5), max(edge, edge + outsign * 4.5), "ns")
+    else:
+        box("pavement", min(edge, edge + outsign * 4.5), max(edge, edge + outsign * 4.5), G, G + 0.12, t0 - 4, t1 + 4, "ns")
 
 
-def street_tree(x, z, height):
-    cbox("twig", x, GROUND_Y + height * 0.3, z, 0.25, height * 0.6, 0.25, "n")
-    for dx, dz, h in ((1.1, 0.2, 0.55), (-1.0, 0.5, 0.6), (0.3, -1.1, 0.65), (-0.4, 1.0, 0.75), (0.8, 0.9, 0.8), (-0.9, -0.8, 0.7)):
-        y = GROUND_Y + height * h
-        cbox("twig", x + dx / 2, y, z + dz / 2, abs(dx) + 0.06, 0.07, abs(dz) + 0.06, "ns")
-        cbox("twig", x + dx, y + height * 0.18, z + dz, 0.07, height * 0.36, 0.07, "ns")
+def road(x0, x1, z0, z1, cycle=True):
+    """Asphalt with red cycle lanes and grey pavements along both sides"""
+    long_x = x1 - x0 > z1 - z0
+    box("asphalt", x0, x1, G, G + 0.04, z0, z1, "ns")
+    for sgn in (-1, 1):
+        if long_x:
+            e = z0 if sgn < 0 else z1
+            if cycle:
+                box("cycle_lane", x0, x1, G, G + 0.06, e - sgn * 2.2 if sgn > 0 else e, e if sgn > 0 else e + 2.2, "ns")
+            box("pavement", x0, x1, G, G + 0.14, e if sgn > 0 else e - 3, e + 3 if sgn > 0 else e, "ns")
+        else:
+            e = x0 if sgn < 0 else x1
+            if cycle:
+                box("cycle_lane", e - 2.2 if sgn > 0 else e, e if sgn > 0 else e + 2.2, G, G + 0.06, z0, z1, "ns")
+            box("pavement", e if sgn > 0 else e - 3, e + 3 if sgn > 0 else e, G, G + 0.14, z0, z1, "ns")
+    # Dashed centre line
+    if long_x:
+        for t in frange(x0 + 1, x1 - 3, 6):
+            box("render", t, t + 3, G, G + 0.05, (z0 + z1) / 2 - 0.08, (z0 + z1) / 2 + 0.08, "ns")
+    else:
+        for t in frange(z0 + 1, z1 - 3, 6):
+            box("render", (x0 + x1) / 2 - 0.08, (x0 + x1) / 2 + 0.08, G, G + 0.05, t, t + 3, "ns")
+
+
+def tree(x, z, height, mat="leaves"):
+    """A street tree in leaf: a trunk and two layers of crown"""
+    cbox("twig", x, G + height * 0.3, z, 0.3, height * 0.6, 0.3, "ns")
+    w = height * 0.55
+    cbox(mat, x, G + height * 0.62, z, w, height * 0.38, w, "n")
+    cbox(mat, x + 0.2, G + height * 0.86, z - 0.2, w * 0.65, height * 0.26, w * 0.65, "n")
+
+
+def block(x0, x1, z0, z1, height, mat, seed=0, roof_mat="roof", windows=True):
+    """A building: a box with rows of dark windows on its four sides and a roof"""
+    box(mat, x0, x1, G, G + height, z0, z1, "n")
+    box(roof_mat, x0 + 0.3, x1 - 0.3, G + height, G + height + 0.1, z0 + 0.3, z1 - 0.3, "ns")
+    if not windows:
+        return
+    # A band of windows round each floor (one box a side keeps the far scenery cheap)
+    for y in frange(G + 1.2 + (seed % 2) * 0.3, G + height - 2.4, 3.4):
+        box("dark_glass", x0 + 0.8, x1 - 0.8, y, y + 1.9, z0 - 0.04, z1 + 0.04, "ns")
+        box("dark_glass", x0 - 0.04, x1 + 0.04, y, y + 1.9, z0 + 0.8, z1 - 0.8, "ns")
+
+
+# The street along the north side, and one along the west
+NZ0, NZ1 = bz1 + 10, bz1 + 20
+road(-260, 260, NZ0, NZ1)
+WX0, WX1 = bx0 - 30, bx0 - 21
+road(WX0, WX1, -260, NZ0 - 3)
+for x in frange(-250, 250, 12):
+    if not WX0 - 6 < x < WX1 + 6:
+        tree(x, NZ0 - 4.5, 8.0, "leaves" if int(x) % 24 else "leaves2")
+        tree(x + 6, NZ1 + 4.5, 7.0, "leaves2")
+
+# The park in the corner of the L: lawn, paths, trees and a playground
+cx0, cz0, cx1, cz1 = wx(96) + 5, wz(836) + 5, wx(622) - 5, wz(55) - 5
+box("pavement", cx0, cx1, G, G + 0.05, (cz0 + cz1) / 2 - 1.5, (cz0 + cz1) / 2 + 1.5, "ns")
+box("pavement", (cx0 + cx1) / 2 - 1.5, (cx0 + cx1) / 2 + 1.5, G, G + 0.05, cz0, cz1, "ns")
+for i, (fx, fz) in enumerate(((0.15, 0.2), (0.3, 0.75), (0.7, 0.3), (0.85, 0.8), (0.2, 0.55), (0.62, 0.62), (0.88, 0.45), (0.4, 0.15))):
+    tree(cx0 + (cx1 - cx0) * fx, cz0 + (cz1 - cz0) * fz, 7.0 + (i % 3), "leaves" if i % 2 else "leaves2")
+px, pz = cx0 + (cx1 - cx0) * 0.72, cz0 + (cz1 - cz0) * 0.14
+box("rubber", px - 6, px + 6, G, G + 0.06, pz - 4, pz + 4, "ns")
+cbox("red", px - 2, G + 1.6, pz, 2.4, 0.12, 1.6, "n")
+for dx, dz in ((-3.1, -0.7), (-3.1, 0.7), (-0.9, -0.7), (-0.9, 0.7)):
+    cbox("red", px + dx, G + 1.0, pz + dz, 0.1, 2.0, 0.1, "n")
+cbox("render", px + 2.5, G + 0.9, pz, 0.1, 1.8, 3.0, "n")
+
+# North of the street: a park with an artificial pitch, the plaza, and the stadium
+fx0, fx1, fz0, fz1 = -40, 30, NZ1 + 22, NZ1 + 70
+box("turf", fx0, fx1, G, G + 0.05, fz0, fz1, "ns")
+for x in (fx0 + 2, fx1 - 2):
+    box("render", x - 0.06, x + 0.06, G, G + 0.07, fz0 + 2, fz1 - 2, "ns")
+for z in (fz0 + 2, fz1 - 2):
+    box("render", fx0 + 2, fx1 - 2, G, G + 0.07, z - 0.06, z + 0.06, "ns")
+box("render", (fx0 + fx1) / 2 - 0.06, (fx0 + fx1) / 2 + 0.06, G, G + 0.07, fz0 + 2, fz1 - 2, "ns")
+for x in (fx0 + 1, fx1 - 1):
+    for z in (fz0 + 1, fz1 - 1):
+        cbox("chrome", x, G + 7, z, 0.25, 14, 0.25, "ns")
+box("pavement", 40, 75, G, G + 0.06, NZ1 + 3, NZ1 + 40, "ns")
+for x, z in ((48, NZ1 + 12), (66, NZ1 + 30), (45, NZ1 + 33)):
+    tree(x, z, 7.5, "leaves2")
+# The stadium: a ring of stands under a pale roof with solar panels, a pitch inside
+sx0, sx1, sz0, sz1 = 85, 195, NZ1 + 12, NZ1 + 100
+box("stand", sx0, sx1, G, G + 16, sz0, sz0 + 14, "n")
+box("stand", sx0, sx1, G, G + 16, sz1 - 14, sz1, "n")
+box("stand", sx0, sx0 + 14, G, G + 16, sz0 + 14, sz1 - 14, "n")
+box("stand", sx1 - 14, sx1, G, G + 16, sz0 + 14, sz1 - 14, "n")
+box("turf", sx0 + 14, sx1 - 14, G, G + 0.05, sz0 + 14, sz1 - 14, "ns")
+for i in range(4):
+    inset = 14 + i * 3
+    box("car_grey", sx0 + inset - 3, sx1 - inset + 3, G + 4 + i * 3, G + 4.4 + i * 3, sz0 + inset - 0.5, sz0 + inset, "ns")
+    box("car_grey", sx0 + inset - 3, sx1 - inset + 3, G + 4 + i * 3, G + 4.4 + i * 3, sz1 - inset, sz1 - inset + 0.5, "ns")
+box("render", sx0 - 2, sx1 + 2, G + 16, G + 17, sz0 - 2, sz1 + 2, "n")
+for t in frange(sx0 + 4, sx1 - 8, 8):
+    box("solar", t, t + 6, G + 17, G + 17.15, sz0 + 1, sz0 + 11, "ns")
+    box("solar", t, t + 6, G + 17, G + 17.15, sz1 - 11, sz1 - 1, "ns")
+box("turf", sx0 + 14, sx1 - 14, G + 0.05, G + 0.06, sz0 + 14, sz1 - 14, "ns")
+
+# The harbour to the north-west: water, quays, a marina, and apartment blocks on the quay
+hx1, hz0 = -70, NZ1 + 30
+box("water", -400, hx1, G - 1.6, G - 1.5, hz0, 400, "s")
+box("ground", -400, hx1, G - 3, G - 1.6, hz0, 400, "n")
+box("concrete", hx1, hx1 + 4, G - 1.6, G + 0.05, hz0, 400, "n")
+box("concrete", -400, hx1 + 4, G - 1.6, G + 0.05, hz0 - 4, hz0, "n")
+for i, z in enumerate(frange(hz0 + 20, hz0 + 90, 14)):
+    box("weathered", hx1 - 40, hx1, G - 1.4, G - 1.2, z, z + 2, "ns")
+    for k, x in enumerate(frange(hx1 - 36, hx1 - 4, 7)):
+        if (i + k) % 3:
+            box("car_white", x, x + 2.5, G - 1.5, G - 0.6, z + 2.4, z + 9, "ns")
+for i, (x0, z0) in enumerate(((-150, hz0 - 34), (-120, hz0 - 34), (-90, hz0 - 34))):
+    block(x0, x0 + 24, z0, z0 + 16, 16 + 3 * (i % 2), "cladding", i)
+
+# Apartment towers in a row west of the building, south of the street
+for i, x in enumerate(frange(WX0 - 100, WX0 - 10, 18)):
+    block(x, x + 12, NZ0 - 30, NZ0 - 12, 26 + 4 * (i % 3), "cladding" if i % 2 else "render", i)
+# Low blocks with green roofs to the south-west
+for i, (x0, z0, w, d) in enumerate(((WX0 - 80, -90, 46, 34), (WX0 - 30, -100, 28, 50), (WX0 - 80, -150, 40, 40))):
+    block(x0, x0 + w, z0, z0 + d, 14 + 3 * i, "brick" if i % 2 == 0 else "cladding", i, roof_mat="lawn")
+
+# The railway to the east, behind a hedge: two tracks on ballast, poles for the wires
+RX = bx1 + 26
+box("ballast", RX, RX + 11, G, G + 0.3, -400, 400, "ns")
+for x in (RX + 2.2, RX + 3.6, RX + 7.4, RX + 8.8):
+    box("rail", x - 0.04, x + 0.04, G + 0.3, G + 0.45, -400, 400, "ns")
+for z in frange(-390, 390, 40):
+    cbox("chrome", RX + 5.5, G + 3.5, z, 0.25, 7, 0.25, "ns")
+    box("chrome", RX + 1, RX + 10, G + 6.8, G + 7, z - 0.1, z + 0.1, "ns")
+box("shrub", RX - 3, RX - 1.5, G, G + 1.8, -400, 400, "n")
+# The school and offices beyond the railway
+block(RX + 22, RX + 70, -20, 60, 18, "render", 1)
+block(RX + 22, RX + 52, -90, -40, 14, "cladding", 2)
+
+# South: a car park and woods
+cpz0, cpz1 = bz0 - 30, bz0 - 8
+road(bx0 - 21, bx1 + 20, cpz1, cpz1 + 6, cycle=False)
+box("asphalt", wx(700), bx1 + 10, G, G + 0.04, cpz0, cpz1, "ns")
+for i, x in enumerate(frange(wx(700) + 1, bx1 + 8, 2.8)):
+    box("render", x - 0.05, x + 0.05, G, G + 0.05, cpz0, cpz0 + 5, "ns")
+    if i % 3 != 1:
+        mat = ("car_white", "car_grey", "car_blue")[i % 3 if i % 4 else 1]
+        box(mat, x + 0.4, x + 2.2, G + 0.2, G + 1.0, cpz0 + 0.5, cpz0 + 4.8, "ns")
+        box(mat, x + 0.55, x + 2.05, G + 1.0, G + 1.45, cpz0 + 1.5, cpz0 + 3.8, "ns")
+# Woods: trees scattered with a fixed pseudo-random spread, so the map is the same every time
+rnd = 12345
+def rand():
+    global rnd
+    rnd = (rnd * 1103515245 + 12345) & 0x7fffffff
+    return rnd / 0x7fffffff
+for k in range(170):
+    x, z = -240 + 480 * rand(), cpz0 - 70 + 62 * rand()
+    if (x - (WX0 + WX1) / 2) ** 2 < 100 or RX - 4 < x < RX + 14:
+        continue
+    tree(x, z, 7 + 6 * rand(), "leaves" if rand() < 0.5 else "leaves2")
 
 
 for axis, line, t0, t1, outsign in outline_walls(L.OUTLINE, H, False):
-    face = line + outsign * 2.6
-    for t in frange(t0 + 2.0, t1 - 2.0, 7.0):
+    # Hedges and leafy trees along the pavement, crowns kept below the office's windows
+    face = line + outsign * 6.0
+    for t in frange(t0 + 2.0, t1 - 2.0, 9.0):
         if axis == "x":
-            box("shrub", t, t + 4.4, GROUND_Y, GROUND_Y + 1.1, face - 0.6, face + 0.6, "n")
-            street_tree(t + 5.6, face + outsign * 1.2, 8.0)
+            box("shrub", t, t + 5.0, G, G + 1.1, face - 0.6, face + 0.6, "n")
+            tree(t + 7.0, face + outsign * 1.5, 6.5, "leaves2")
         else:
-            box("shrub", face - 0.6, face + 0.6, GROUND_Y, GROUND_Y + 1.1, t, t + 4.4, "n")
-            street_tree(face + outsign * 1.2, t + 5.6, 8.0)
+            box("shrub", face - 0.6, face + 0.6, G, G + 1.1, t, t + 5.0, "n")
+            tree(face + outsign * 1.5, t + 7.0, 6.5, "leaves2")
 
 # ---------------------------------------------------------------------------------------------
 # The closed blocks
 
-CORE_ACCENT = {"stair": "copper", "lift": "copper", "wc": "grey_wall", "store": "grey_wall", "shaft": "ext"}
-for kind, sign, r in cores:
-    rbox("wall", wrect(r), 0.0, H)
+CORE_ACCENT = {"stair": "copper", "lift": "copper", "wc": "frame", "store": "frame", "shaft": "ext"}
+for ci, (kind, sign, r) in enumerate(cores):
+    rbox("wall" if ci % 2 == 0 else "grey_wall", wrect(r), 0.0, H)
     if kind == "shaft":
         continue
     # A door and a sign on the longest side facing a corridor
@@ -753,7 +957,7 @@ for kind, sign, r in cores:
     waxis, line, t0, t1, outsign = world_run(axis, fixed, a, b, outv)
     t = (t0 + t1) / 2
     face = line + outsign * 0.03
-    wbox("grey_wall" if kind != "lift" else "chrome", waxis, face, t - 0.5, t + 0.5, 0.06, 0.0, 2.2)
+    wbox("door" if kind != "lift" else "chrome", waxis, face, t - 0.5, t + 0.5, 0.06, 0.0, 2.2)
     wbox("frame", waxis, face, t - 0.58, t + 0.58, 0.04, 0.0, 2.28, "n")
     wbox(CORE_ACCENT[kind], waxis, line + outsign * 0.01, t - 0.9, t + 0.9, 0.04, 2.35, 3.0, "n")
     if kind == "stair":

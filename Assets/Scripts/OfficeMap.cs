@@ -40,6 +40,8 @@ public class OfficeMap : MonoBehaviour
     public float exposure = 0f;
 
     private const float CellSize = 24f;
+    // How bright glowing materials are: the ceiling panels light the rooms in baked lighting
+    private const float GlowStrength = 2.2f;
     private VolumeProfile lookProfile;
     private const int CollidersPerObject = 256;
 
@@ -165,7 +167,7 @@ public class OfficeMap : MonoBehaviour
         SetColor(material, "_Color", color);
         if (def.kind == OfficeMapData.MaterialKind.Glow)
         {
-            SetColor(material, "_EmissionColor", new Color(color.r, color.g, color.b) * 1.6f);
+            SetColor(material, "_EmissionColor", new Color(color.r, color.g, color.b) * GlowStrength);
         }
         // The ceiling panels are what lights the rooms in the lightmaps, as the ceiling shuts out the sky
         material.globalIlluminationFlags = def.kind == OfficeMapData.MaterialKind.Glow
