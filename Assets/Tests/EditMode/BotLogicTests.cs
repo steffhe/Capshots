@@ -75,8 +75,10 @@ public class BotLogicTests
     {
         BotLogic.Style rusher = BotLogic.StyleFor(BotLogic.Personality.Rusher);
         BotLogic.Style sniper = BotLogic.StyleFor(BotLogic.Personality.Sniper);
-        // At 12 m a rusher still wants the shotgun, and never the scoped form
-        Assert.AreEqual(0, BotLogic.ChooseGun(Loadout(), 12f, rusher.shotgunRange, rusher.sniperRange));
+        // At 10 m a rusher still wants the shotgun (further out than a balanced bot), and never the
+        // scoped form
+        Assert.AreEqual(0, BotLogic.ChooseGun(Loadout(), 10f, rusher.shotgunRange, rusher.sniperRange));
+        Assert.Greater(rusher.shotgunRange, BotLogic.ShotgunRange);
         Assert.AreEqual(1, BotLogic.ChooseGun(Loadout(), 80f, rusher.shotgunRange, rusher.sniperRange));
         // A sniper scopes in from 15 m
         Assert.AreEqual(3, BotLogic.ChooseGun(Loadout(), 20f, sniper.shotgunRange, sniper.sniperRange));

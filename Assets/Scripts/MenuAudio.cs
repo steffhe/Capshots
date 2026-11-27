@@ -7,11 +7,13 @@ using UnityEngine.UI;
 // tick when one is pointed at or picked with a controller, a soft tap when it's pressed, and a
 // falling chirp for BACK, DONE and the like. Everything is made in code, like the game's other sounds.
 // The Launcher creates it with the menu; it goes with the menu scene, fading the music out when a
-// match starts loading. Music volume is its own setting (GameSettings.MusicVolume), under the
-// master volume.
+// match starts loading. The same loop plays again on a match's results and map vote (MatchMusic).
+// Music volume is its own setting, under the master volume (GameSettings.MusicOutput); the button
+// blips follow the sound effects volume.
 public class MenuAudio : MonoBehaviour
 {
-    private const float MusicLevel = 0.42f, UiLevel = 0.5f;
+    internal const float MusicLevel = 0.42f;
+    private const float UiLevel = 0.5f;
     private const float FadeIn = 2.5f, FadeOut = 0.8f;
     // New buttons (panels built later, option lists) are looked for this often
     private const float ScanInterval = 0.3f;
@@ -32,12 +34,14 @@ public class MenuAudio : MonoBehaviour
 
     private void Awake()
     {
-        EnsureListener();
+        EnsureListener(gameObject);
         musicSource = gameObject.AddComponent<AudioSource>();
         musicSource.loop = true;
         musicSource.playOnAwake = false;
         musicSource.spatialBlend = 0f;
         musicSource.volume = 0f;
+        // Under the music volume rather than the sound effects' (GameSettings.MusicOutput)
+        musicSource.ignoreListenerVolume = true;
         uiSource = gameObject.AddComponent<AudioSource>();
         uiSource.playOnAwake = false;
         uiSource.spatialBlend = 0f;
@@ -47,8 +51,8 @@ public class MenuAudio : MonoBehaviour
     }
 
     // Nothing is heard without an enabled AudioListener, and the menu scene's camera has its own
-    // switched off: switch it on (or give the camera, or failing that this object, one)
-    private void EnsureListener()
+    // switched off: switch it on (or give the camera, or failing that the fallback object, one)
+    internal static void EnsureListener(GameObject fallback)
     {
         AudioListener[] listeners = FindObjectsByType<AudioListener>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
         foreach (AudioListener listener in listeners)
@@ -60,19 +64,25 @@ public class MenuAudio : MonoBehaviour
         if (onCamera != null) onCamera.enabled = true;
         else if (listeners.Length > 0) listeners[0].enabled = true;
         else if (main != null) main.gameObject.AddComponent<AudioListener>();
-        else gameObject.AddComponent<AudioListener>();
+        else fallback.AddComponent<AudioListener>();
+    }
+
+    // The menu loop, once BuildMusic has made it (null until then)
+    public static AudioClip MusicClip => music;
+
+    // Makes the menu loop, once a session, a slice each frame so nothing stalls while it's made
+    public static IEnumerator BuildMusic()
+    {
+        if (music != null) yield break;
+        MenuMusic maker = new MenuMusic();
+        IEnumerator steps = maker.Build();
+        while (steps.MoveNext()) yield return null;
+        if (music == null) music = maker.Clip;
     }
 
     private IEnumerator StartMusic()
     {
-        // Made once a session, a slice each frame so the menu doesn't stall while it's made
-        if (music == null)
-        {
-            MenuMusic maker = new MenuMusic();
-            IEnumerator steps = maker.Build();
-            while (steps.MoveNext()) yield return null;
-            music = maker.Clip;
-        }
+        yield return BuildMusic();
         musicSource.clip = music;
         musicSource.Play();
     }
@@ -82,7 +92,7 @@ public class MenuAudio : MonoBehaviour
         // Fades in with the menu, and out under the loading screen when a match starts
         bool leaving = LoadingScreen.Visible;
         fade = Mathf.MoveTowards(fade, leaving ? 0f : 1f, Time.unscaledDeltaTime / (leaving ? FadeOut : FadeIn));
-        musicSource.volume = MusicLevel * GameSettings.MusicVolume * fade;
+        musicSource.volume = MusicLevel * GameSettings.MusicOutput * fade;
 
         if (Time.unscaledTime >= nextScan)
         {

@@ -13,13 +13,13 @@ MonoBehaviour:
   m_Name: Shotgun
   m_EditorClassIdentifier: 
   gunName: Shotgun
-  fireRate: 0.8
-  bloom: 70
+  fireRate: 0.6
+  bloom: 62
   recoil: 25
   kickback: 0.4
   aimSpeed: 8
-  damage: 110
-  energyPerShot: 16
+  damage: 140
+  energyPerShot: 14
   burst: 0
   pellets: 8
   prefab: {fileID: 7466018458602090438, guid: 891055c1fe744ca8be39030a9dc8fd37, type: 3}
@@ -31,5 +31,5 @@ MonoBehaviour:
   minDamageMultiplier: 0.25
   aimBloomDivisor: 1.3
   movingBloomMultiplier: 1.1
-  moveSpeedMultiplier: 0.95
+  moveSpeedMultiplier: 1
   aimMoveSpeedMultiplier: 0.8

@@ -186,6 +186,12 @@ public class Weapon : NetworkBehaviour
                 Image image = weaponimageObject.GetComponent<Image>();
                 Rect rect = new Rect(0, 0, gun.image.width, gun.image.height);
                 image.sprite = Sprite.Create(gun.image, rect, new Vector2(0.5f, 0.5f), 100);
+                // A dark edge so the dimmed icons still read over sky and bright walls (the thin
+                // sniper rifle at the top of the stack all but vanished without one)
+                Outline edge = weaponimageObject.GetComponent<Outline>();
+                if (edge == null) edge = weaponimageObject.AddComponent<Outline>();
+                edge.effectColor = new Color(0f, 0f, 0f, 0.55f);
+                edge.effectDistance = new Vector2(1.5f, -1.5f);
                 arsenalImages.Add(image);
                 ind += 1;
             }
@@ -932,10 +938,10 @@ public class Weapon : NetworkBehaviour
         stateHip = currentWeapon.transform.Find("States/Hip");
 
         // Highlight the equipped gun in the HUD: bright white with an accent bar beside it, the others
-        // dim grey, and its name above the ammo count
+        // dimmer grey (outlined, so they still show over a bright background), and its name above the ammo count
         for (int i = 0; i < arsenalImages.Count; i++)
         {
-            arsenalImages[i].color = i == ind ? new Color(1f, 1f, 1f, 0.95f) : new Color(0.55f, 0.55f, 0.55f, 0.3f);
+            arsenalImages[i].color = i == ind ? new Color(1f, 1f, 1f, 0.95f) : new Color(0.8f, 0.8f, 0.8f, 0.55f);
         }
         if (arsenalMarker != null) arsenalMarker.anchoredPosition = new Vector2(206f, ind * ArsenalIconStep + 50f);
         if (HasInputAuthority) HudFeedback.SetWeapon(loadout[ind].gunName);
@@ -993,17 +999,19 @@ public class Weapon : NetworkBehaviour
         {
             holder = new GameObject("Grenade", typeof(RectTransform)).GetComponent<RectTransform>();
             holder.SetParent(ammo.transform, false);
-            UITheme.Place(holder, new Vector2(1f, 0f), new Vector2(0f, 64f), new Vector2(220f, 26f));
 
-            Image dot = UITheme.NewImage("Dot", holder, Color.white, 10f);
-            UITheme.Place(dot.rectTransform, new Vector2(1f, 0.5f), Vector2.zero, new Vector2(20f, 20f));
+            Image dot = UITheme.NewImage("Dot", holder, Color.white, 9f);
+            UITheme.Place(dot.rectTransform, new Vector2(1f, 0.5f), Vector2.zero, new Vector2(18f, 18f));
             UITheme.AddShadow(dot);
 
             Text label = UITheme.NewText("Label", holder, 16, UITheme.MutedText, TextAnchor.MiddleRight);
-            label.rectTransform.offsetMax = new Vector2(-28f, 0f);
+            label.rectTransform.offsetMax = new Vector2(-26f, 0f);
             label.text = "PLASMA";
             UITheme.AddShadow(label);
         }
+        // Its own row above the gun form's name (UITheme.Hud puts that at 62 to 86 above the ammo
+        // count) and below the gun form icons (110 above the ammo count), so the two never overlap
+        UITheme.Place(holder, new Vector2(1f, 0f), new Vector2(0f, 88f), new Vector2(220f, 22f));
         grenadeDot = holder.Find("Dot")?.GetComponent<Image>();
         grenadeLabel = holder.Find("Label")?.GetComponent<Text>();
         RefreshGrenadeIndicator();

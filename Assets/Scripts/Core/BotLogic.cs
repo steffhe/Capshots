@@ -107,7 +107,9 @@ public static class BotLogic
         switch (personality)
         {
             case Personality.Rusher:
-                style.shotgunRange = 16f;
+                // Further out than the others, but not so far the shotgun's spread wastes the blast
+                // (it kills in one up to about 7 m, and two out to about 12)
+                style.shotgunRange = 11f;
                 style.sniperRange = float.MaxValue;
                 style.distanceScale = 0.5f;
                 style.retreats = false;

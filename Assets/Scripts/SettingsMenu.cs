@@ -4,8 +4,9 @@ using UnityEngine.Events;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
-// Settings panel inside the pause menu: look sensitivity, ADS sensitivity, field of view, volume,
-// graphics quality, colours, the FPS counter and key bindings. Built at runtime from copies of the pause menu's own button,
+// Settings panel inside the pause menu: look sensitivity, ADS sensitivity, field of view, master,
+// effects and music volume, graphics quality, colours, the FPS counter, key bindings, invert Y and
+// screen shake. Built at runtime from copies of the pause menu's own button,
 // slider and label (styled by UITheme.StylePause), so the Pause prefab doesn't need editing.
 // It also adds the pause menu's Customize button and panel (CustomizeMenu), under Settings.
 // The main menu has the same panel (CreateForMainMenu), built from copies of its own button,
@@ -17,11 +18,13 @@ public class SettingsMenu : MenuPanel
     private GameObject sensitivity;
     private GameObject panel;
 
-    private Text xSensValue, ySensValue, fovValue, adsValue, volumeValue, musicValue;
-    private Slider xSensSlider, ySensSlider, fovSlider, adsSlider, volumeSlider, musicSlider;
+    private Text xSensValue, ySensValue, fovValue, adsValue, volumeValue, effectsValue, musicValue;
+    private Slider xSensSlider, ySensSlider, fovSlider, adsSlider, volumeSlider, effectsSlider, musicSlider;
     private Text qualityText;
     private Text coloursText;
     private Text fpsText;
+    private Text invertText;
+    private Text shakeText;
 
     private class BindingRow
     {
@@ -34,11 +37,11 @@ public class SettingsMenu : MenuPanel
 
     // Panel layout, in canvas units from the panel's centre
     private const float PanelWidth = 1040f;
-    private const float PanelHeight = 760f;
+    private const float PanelHeight = 810f;
     private const float LeftColumn = -250f;
     private const float RightColumn = 250f;
     private const float ColumnWidth = 400f;
-    private const float HeaderY = 270f;
+    private const float HeaderY = 295f;
 
     // In the main menu rather than the pause menu
     private bool inMainMenu;
@@ -197,13 +200,20 @@ public class SettingsMenu : MenuPanel
             RefreshLabels();
         });
         y -= rowStep;
-        volumeSlider = SliderRow(rect, "VOLUME", ref volumeValue, y, 0f, 1f, false, GameSettings.Volume, v =>
+        volumeSlider = SliderRow(rect, "MASTER VOLUME", ref volumeValue, y, 0f, 1f, false, GameSettings.Volume, v =>
         {
             GameSettings.Volume = v;
             RefreshLabels();
         });
         y -= rowStep;
-        musicSlider = SliderRow(rect, "MENU MUSIC", ref musicValue, y, 0f, 1f, false, GameSettings.MusicVolume, v =>
+        effectsSlider = SliderRow(rect, "SOUND EFFECTS", ref effectsValue, y, 0f, 1f, false, GameSettings.EffectsVolume, v =>
+        {
+            GameSettings.EffectsVolume = v;
+            RefreshLabels();
+        });
+        y -= rowStep;
+        // The menu's music and the end of a match's
+        musicSlider = SliderRow(rect, "MUSIC", ref musicValue, y, 0f, 1f, false, GameSettings.MusicVolume, v =>
         {
             GameSettings.MusicVolume = v;
             RefreshLabels();
@@ -252,7 +262,7 @@ public class SettingsMenu : MenuPanel
             GameInput.ResetBindings();
             RefreshBindings();
         });
-        // An 8 gap between the buttons, so six sliders fit above them
+        // An 8 gap between the buttons, so seven sliders fit above them
         Place(reset, new Vector2(LeftColumn, y - 234f), new Vector2(ColumnWidth, 48f));
 
         GameObject done = NewButton(rect, "DONE", CloseSettings);
@@ -274,9 +284,29 @@ public class SettingsMenu : MenuPanel
             AddBindingRow(rect, entry.Key, entry.Value, GameInput.KeyboardBindingIndex(entry.Value));
         }
 
-        // Rows share the column's height between them, so a longer list still fits the panel
+        // Under the bindings, level with DONE: screen shake, and invert Y above it
+        float toggleY = -PanelHeight / 2f + 58f;
+        GameObject shake = NewButton(rect, "", () =>
+        {
+            GameSettings.ScreenShake = !GameSettings.ScreenShake;
+            RefreshLabels();
+        });
+        UITheme.StyleSelector(shake.GetComponent<Button>());
+        Place(shake, new Vector2(RightColumn, toggleY), new Vector2(ColumnWidth, 48f));
+        shakeText = shake.GetComponentInChildren<Text>();
+
+        GameObject invert = NewButton(rect, "", () =>
+        {
+            GameSettings.InvertY = !GameSettings.InvertY;
+            RefreshLabels();
+        });
+        UITheme.StyleSelector(invert.GetComponent<Button>());
+        Place(invert, new Vector2(RightColumn, toggleY + 56f), new Vector2(ColumnWidth, 48f));
+        invertText = invert.GetComponentInChildren<Text>();
+
+        // Rows share the column's height above those between them, so a longer list still fits
         float top = HeaderY - 30f;
-        float bottom = -PanelHeight / 2f + 32f;
+        float bottom = toggleY + 56f + 24f + 8f;
         float step = bindingRows.Count > 0 ? Mathf.Min(36f, (top - bottom) / bindingRows.Count) : 0f;
         y = top - step / 2f;
         foreach (BindingRow row in bindingRows)
@@ -344,9 +374,12 @@ public class SettingsMenu : MenuPanel
         fovValue.text = Mathf.RoundToInt(GameSettings.Fov).ToString();
         adsValue.text = GameSettings.AdsSensitivity.ToString("0.00") + "x";
         volumeValue.text = Mathf.RoundToInt(GameSettings.Volume * 100f) + "%";
+        effectsValue.text = Mathf.RoundToInt(GameSettings.EffectsVolume * 100f) + "%";
         musicValue.text = Mathf.RoundToInt(GameSettings.MusicVolume * 100f) + "%";
         qualityText.text = UITheme.Option("GRAPHICS", GameSettings.QualityName.ToUpperInvariant());
         if (fpsText != null) fpsText.text = UITheme.Option("FPS COUNTER", GameSettings.ShowFps ? "ON" : "OFF");
+        if (invertText != null) invertText.text = UITheme.Option("INVERT Y", GameSettings.InvertY ? "ON" : "OFF");
+        if (shakeText != null) shakeText.text = UITheme.Option("SCREEN SHAKE", GameSettings.ScreenShake ? "ON" : "OFF");
         if (coloursText != null) coloursText.text = UITheme.Option("COLOURS", GameSettings.Colourblind ? "COLOUR BLIND" : "STANDARD");
     }
 
@@ -361,6 +394,7 @@ public class SettingsMenu : MenuPanel
         fovSlider.SetValueWithoutNotify(GameSettings.Fov);
         adsSlider.SetValueWithoutNotify(GameSettings.AdsSensitivity);
         volumeSlider.SetValueWithoutNotify(GameSettings.Volume);
+        effectsSlider.SetValueWithoutNotify(GameSettings.EffectsVolume);
         musicSlider.SetValueWithoutNotify(GameSettings.MusicVolume);
         RefreshLabels();
         RefreshBindings();

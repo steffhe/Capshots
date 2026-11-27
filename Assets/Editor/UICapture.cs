@@ -95,7 +95,7 @@ static class UICapture
             {
                 Call(launcher, "ShowRoomsEmptyState", false, null);
                 Call(launcher, "CreateRoomRow", "Friday night frag fest", "3 / 8", "Battlefield  \u00B7  FFA");
-                Call(launcher, "CreateRoomRow", "caps only", "7 / 10", "Nuketown  \u00B7  TDM");
+                Call(launcher, "CreateRoomRow", "caps only", "7 / 10", "Prototype  \u00B7  TDM");
                 Call(launcher, "CreateRoomRow", "USER_482", "1 / 8", "Battlefield  \u00B7  FFA");
                 RenderScene(scene, source, outDir, "menu-rooms", log);
                 if (Dump) File.WriteAllText(Path.Combine(outDir, "tree-rooms.txt"), Tree(launcher.tabRooms.transform));
@@ -114,7 +114,7 @@ static class UICapture
 
     static void CaptureGame(string outDir, List<string> log)
     {
-        Scene scene = OpenPreview("Assets/Scenes/Nuketown.unity");
+        Scene scene = OpenPreview("Assets/Scenes/Prototype.unity");
         try
         {
             Canvas canvas = null;
