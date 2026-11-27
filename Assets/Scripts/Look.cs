@@ -126,9 +126,9 @@ public class Look : MonoBehaviour
         ApplyRecoil();
 
         Vector2 look = LookInput();
-        Yaw = Mathf.Repeat(Yaw + look.x * xSensitivity * SensitivityScale, 360f);
+        Yaw = Mathf.Repeat(Yaw + look.x, 360f);
         if (GameSettings.InvertY) look.y = -look.y;
-        Pitch = Mathf.Clamp(Pitch + look.y * ySensitivity * SensitivityScale, -maxAngle, maxAngle);
+        Pitch = Mathf.Clamp(Pitch + look.y, -maxAngle, maxAngle);
     }
 
     // After Fusion has placed the body for this frame, turn it and the camera to the newest view,
@@ -143,13 +143,18 @@ public class Look : MonoBehaviour
 
     #region Private Methods
 
-    // Gamepad stick: full deflection turns about as fast as 60 units of mouse movement per second
-    private const float StickLookScale = 60f;
+    // Gamepad stick: degrees a second at a full push, times the STICK SENSITIVITY setting, and the
+    // response curve's exponent (LookRules.StickResponse). Independent of the mouse sensitivity.
+    public const float StickYawSpeed = 180f;
+    public const float StickPitchSpeed = 120f;
+    private const float StickCurve = 2f;
 
-    // Mouse and gamepad look combined, in old mouse-axis units, with the ADS multiplier from the settings
+    // This frame's turn in degrees (x yaw, y pitch up) from the mouse, a touch drag and a gamepad stick,
+    // slowed while aiming
     Vector2 LookInput()
     {
-        Vector2 stick = GameInput.StickLookValue * StickLookScale * Time.deltaTime;
+        Vector2 curved = LookRules.StickResponse(GameInput.StickLookValue, StickCurve);
+        Vector2 stick = new Vector2(curved.x * StickYawSpeed, curved.y * StickPitchSpeed) * GameSettings.StickSensitivity * Time.deltaTime;
         Vector2 pointer = GameInput.MouseLookValue;
         // Aim assist for a stick or a thumb (not a mouse): slower turning over an enemy
         bool touch = TouchControls.UsingTouch;
@@ -160,7 +165,7 @@ public class Look : MonoBehaviour
             // With touch controls the drag arrives as pointer movement
             if (touch) pointer *= slowdown;
         }
-        Vector2 look = pointer + stick;
+        Vector2 look = new Vector2(pointer.x * xSensitivity, pointer.y * ySensitivity) * SensitivityScale + stick;
 
         // Aiming zooms in, so turning slows by as much as the view narrows (the same mouse movement
         // sweeps the same distance on screen), then the player's own aim multiplier on top

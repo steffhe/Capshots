@@ -30,6 +30,29 @@ public class LookRulesTests
     }
 
     [Test]
+    public void StickResponse_SlowsSmallPushesAndKeepsFullOnes()
+    {
+        Assert.AreEqual(0.25f, LookRules.StickResponse(new Vector2(0.5f, 0f), 2f).x, 1e-5f);
+        Assert.AreEqual(1f, LookRules.StickResponse(new Vector2(0f, 1f), 2f).y, 1e-5f);
+        Assert.AreEqual(Vector2.zero, LookRules.StickResponse(Vector2.zero, 2f));
+    }
+
+    [Test]
+    public void StickResponse_KeepsTheDirection()
+    {
+        Vector2 stick = new Vector2(0.3f, 0.4f); // a push of 0.5 up and to the right
+        Vector2 curved = LookRules.StickResponse(stick, 2f);
+        Assert.AreEqual(0.25f, curved.magnitude, 1e-5f);
+        Assert.AreEqual(0f, Vector2.Angle(stick, curved), 1e-3f);
+    }
+
+    [Test]
+    public void StickResponse_NeverGoesPastAFullPush()
+    {
+        Assert.AreEqual(1f, LookRules.StickResponse(new Vector2(1f, 1f), 2f).magnitude, 1e-5f);
+    }
+
+    [Test]
     public void CentimetresPer360_MatchesAKnownSetting()
     {
         // 0.1 degrees per count: 3600 counts a turn, 4.5 inches at 800 DPI

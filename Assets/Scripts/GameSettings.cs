@@ -25,6 +25,9 @@ public static class GameSettings
     private const string EffectsVolumeKey = "settings.effectsVolume";
     private const string InvertYKey = "settings.invertY";
     private const string ToggleSprintKey = "settings.toggleSprint";
+    private const string StickSensitivityKey = "settings.stickSensitivity";
+    public const float MinStickSensitivity = 0.3f;
+    public const float MaxStickSensitivity = 2.5f;
     private const string ScreenShakeKey = "settings.screenShake";
     private const string QualityKey = "settings.quality";
     private const string AdsSensitivityKey = "settings.adsSensitivity";
@@ -198,6 +201,14 @@ public static class GameSettings
     public static event System.Action ShowFpsChanged;
 
     // Pushing the stick or mouse up looks down, and the other way round
+    // Gamepad look speed, as a multiple of Look.StickYawSpeed/StickPitchSpeed at a full push. Separate
+    // from the mouse sensitivity, which means mouse distance per turn.
+    public static float StickSensitivity
+    {
+        get => Mathf.Clamp(PlayerPrefs.GetFloat(StickSensitivityKey, 1f), MinStickSensitivity, MaxStickSensitivity);
+        set { PlayerPrefs.SetFloat(StickSensitivityKey, Mathf.Clamp(value, MinStickSensitivity, MaxStickSensitivity)); PlayerPrefs.Save(); }
+    }
+
     // Sprint by pressing once instead of holding (GameInput.SprintWanted); off by default
     public static bool ToggleSprint
     {
