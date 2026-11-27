@@ -33,8 +33,11 @@ public class Gun : ScriptableObject
     [Range(0f, 1f)] public float minDamageMultiplier = 1f;
 
     [Header("Accuracy")]
-    // Spread is divided by this while aiming
+    // Spread is divided by this while aiming...
     public float aimBloomDivisor = 2f;
+    // ...once the gun has been aimed for this many seconds; it tightens steadily until then
+    // (see ShotRules.AimProgress), so aiming and firing at the same moment isn't fully accurate
+    public float adsTime = 0.15f;
     // Spread multiplier at full running speed (scaled by how fast you move)
     public float movingBloomMultiplier = 1.5f;
 

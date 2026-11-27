@@ -235,8 +235,10 @@ public class BotBrain : MonoBehaviour
                 // Automatic guns hold the trigger; the others need a fresh pull for each shot
                 trigger = gun.burst == 1 || !triggerWasDown;
             }
-            // Scoped and far away: aim down the sights (steadier, slower)
+            // Scoped and far away: aim down the sights (steadier, slower), and only fire once the
+            // scope has steadied (aiming tightens the spread over the gun's adsTime)
             aim = gun.scopeFov > 0f && targetDistance > 20f;
+            if (aim && weapon.AimProgress < 1f) trigger = false;
         }
         // Now and then a plasma grenade at an enemy in the middle distance, where the arc still reaches
         // them, while looking right at them

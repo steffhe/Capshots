@@ -971,9 +971,9 @@ MonoBehaviour:
   Type: 1
   SphereRadius: 0
   CapsuleRadius: 0
-  BoxExtents: {x: 0.5, y: 0.61387, z: 0.5}
+  BoxExtents: {x: 0.5, y: 0.5748, z: 0.5}
   CapsuleExtents: 0
-  Offset: {x: 0, y: 0, z: 0}
+  Offset: {x: 0, y: -0.0391, z: 0}
   Root: {fileID: 8435529450531941606}
   GizmosColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
 --- !u!1 &5358432229766207361
@@ -1023,9 +1023,9 @@ MonoBehaviour:
   Type: 1
   SphereRadius: 0
   CapsuleRadius: 0
-  BoxExtents: {x: 0.5, y: 0.3635406, z: 0.5}
+  BoxExtents: {x: 0.5, y: 0.2946, z: 0.5}
   CapsuleExtents: 0
-  Offset: {x: 0, y: 0, z: 0}
+  Offset: {x: 0, y: -0.0689, z: 0}
   Root: {fileID: 8435529450531941606}
   GizmosColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
 --- !u!1 &5677168894907175363

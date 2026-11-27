@@ -116,6 +116,9 @@ public class Weapon : NetworkBehaviour
     [Networked] private TickTimer BurstTimer { get; set; }
     [Networked] private int BurstLeft { get; set; }
     [Networked] private NetworkBool Aiming { get; set; }
+    // The tick the sights went up, or 0 while they're down (also while swapping the cell or changing
+    // form). The spread tightens over the gun's adsTime from then. Set once per aim, not every tick.
+    [Networked] private int AimStartTick { get; set; }
     [Networked] private NetworkButtons PreviousButtons { get; set; }
     // Counts every shot, so each one gets its own (but on every machine the same) random spread
     [Networked] private int ShotCount { get; set; }
@@ -245,6 +248,7 @@ public class Weapon : NetworkBehaviour
         if (Manager.Instance != null && Manager.Instance.Ending)
         {
             Aiming = false;
+            AimStartTick = 0;
             BurstLeft = 0;
             return;
         }
@@ -279,6 +283,11 @@ public class Weapon : NetworkBehaviour
             ReloadTimer = TickTimer.None;
             Energy = maxEnergy;
         }
+
+        // The gun steadies while the sights are up; swapping the cell or changing form lowers them
+        bool sightsUp = Aiming && !ReloadTimer.IsRunning && !MorphTimer.IsRunning;
+        if (!sightsUp) AimStartTick = 0;
+        else if (AimStartTick == 0) AimStartTick = Runner.Tick.Raw;
 
         // The energy refills by itself a little after the last shot
         if (!ReloadTimer.IsRunning && Energy < maxEnergy && RegenDelay.ExpiredOrNotRunning(Runner))
@@ -376,6 +385,21 @@ public class Weapon : NetworkBehaviour
     #endregion
 
     #region Public Methods
+
+    // How steady aiming down the sights has made the gun, 0 (not aiming, or just raised) to 1 (as
+    // accurate as aiming gets). The tick the sights go up counts as 0, so aiming and firing together
+    // fires with the hip spread. Bots wait for 1 before a scoped shot.
+    public float AimProgress
+    {
+        get
+        {
+            if (Object == null || !Object.IsValid || AimStartTick == 0) return 0f;
+            Gun gun = CurrentGun;
+            if (gun == null) return 0f;
+            int ticks = Mathf.Max(0, Runner.Tick.Raw - AimStartTick);
+            return ShotRules.AimProgress(ticks * Runner.DeltaTime, gun.adsTime);
+        }
+    }
 
     // How full the energy is, 0 to 1 (bots use it to decide when to swap the cell)
     public float EnergyFraction => Object != null && Object.IsValid && maxEnergy > 0f ? Energy / maxEnergy : 1f;
@@ -538,8 +562,8 @@ public class Weapon : NetworkBehaviour
     float CurrentBloom()
     {
         Gun gun = loadout[Equipped];
-        float bloom = gun.bloom;
-        if (Aiming) bloom /= Mathf.Max(1f, gun.aimBloomDivisor);
+        // Aiming tightens the spread over the gun's adsTime, not instantly
+        float bloom = ShotRules.AimedBloom(gun.bloom, gun.aimBloomDivisor, AimProgress);
 
         // Less accurate while moving, and much less while in the air
         if (player != null)
@@ -552,7 +576,8 @@ public class Weapon : NetworkBehaviour
 
     // One shot. Runs on the host (which decides hits and damage) and is predicted on the shooter's
     // own game (ammo, cooldown, tracer and sound without waiting for the host).
-    // A shotgun fires several pellets; the ones that hit the same player add up into one hit.
+    // A shotgun fires several pellets; the ones that hit the same player add up into one hit, which is
+    // a cap shot when at least half of its damage came from pellets that hit the head.
     void Fire(PlayerInputData input)
     {
         Gun gun = loadout[Equipped];
@@ -641,12 +666,14 @@ public class Weapon : NetworkBehaviour
         {
             if (h.target == null || h.target.IsDead) continue;
             bool wasProtected = h.target.IsProtected;
-            bool killed = h.target.TakeDamage(h.damage, player.Owner, gun.gunName, h.headshot, h.direction, h.point - h.target.transform.position);
+            // A cap shot when the head took at least half of this shot's damage (see ShotRules.IsCapshot)
+            bool capshot = ShotRules.IsCapshot(h.headDamage, h.damage);
+            bool killed = h.target.TakeDamage(h.damage, player.Owner, gun.gunName, capshot, h.direction, h.point - h.target.transform.position);
             // Bots have no screen. A spawn-protected player gets a shield marker: the shot landed but
             // did nothing, so it doesn't look like a miss.
             if (player.IsBot) continue;
             if (wasProtected) RPC_ShieldHit();
-            else RPC_HitConfirm(h.headshot, killed);
+            else RPC_HitConfirm(capshot, killed);
         }
         pelletHits.Clear();
 
@@ -682,12 +709,12 @@ public class Weapon : NetworkBehaviour
     }
     static readonly List<LagCompensatedHit> botHits = new List<LagCompensatedHit>();
 
-    // Damage from this shot's pellets, per player hit
+    // Damage from this shot's pellets, per player hit: in all, and from the pellets that hit the head
     struct PelletHit
     {
         public Player target;
         public int damage;
-        public bool headshot;
+        public int headDamage;
         public Vector3 direction;
         public Vector3 point;
     }
@@ -700,11 +727,11 @@ public class Weapon : NetworkBehaviour
             if (pelletHits[i].target != target) continue;
             PelletHit h = pelletHits[i];
             h.damage += damage;
-            h.headshot |= headshot;
+            if (headshot) h.headDamage += damage;
             pelletHits[i] = h;
             return;
         }
-        pelletHits.Add(new PelletHit { target = target, damage = damage, headshot = headshot, direction = direction, point = point });
+        pelletHits.Add(new PelletHit { target = target, damage = damage, headDamage = headshot ? damage : 0, direction = direction, point = point });
     }
 
     // A number from -1 to 1 that only depends on the seed

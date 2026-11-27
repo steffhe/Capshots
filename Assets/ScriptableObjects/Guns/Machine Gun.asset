@@ -29,6 +29,7 @@ MonoBehaviour:
   falloffEnd: 40
   minDamageMultiplier: 0.55
   aimBloomDivisor: 2
+  adsTime: 0.15
   movingBloomMultiplier: 1.6
   moveSpeedMultiplier: 0.92
   aimMoveSpeedMultiplier: 0.65
