@@ -3,6 +3,7 @@ using Fusion;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
+using Assert = NUnit.Framework.Assert;
 
 // The player's hitboxes in Assets/Resources/Player.prefab. A body box that reaches into the head
 // sphere sticks out in front of it (the box is wider than the head), so shots at the bottom of the
