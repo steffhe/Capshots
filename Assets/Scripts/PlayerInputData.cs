@@ -12,6 +12,9 @@ public enum InputButton
     Aim = 5,
     Reload = 6,
     Grenade = 7,
+    // WeaponSlot is the automatic starting form for a new body, not the player's own choice: the host
+    // may take it instantly (GunTransform.Decide)
+    StartingForm = 8,
 }
 
 // Everything a player sends the host each tick. The host runs the player's movement and weapon
@@ -23,7 +26,8 @@ public struct PlayerInputData : INetworkInput
     // Where the player looks, in degrees: yaw turns the body, pitch tilts the camera and gun
     public float Yaw;
     public float Pitch;
-    // The weapon the player wants, as loadout index + 1. 0 = no change.
+    // The gun form the player wants, as loadout index + 1, sent with every input until they pick
+    // another (so one lost input can't lose a change of form). 0 = no preference (bots between changes).
     public byte WeaponSlot;
 }
 
@@ -32,14 +36,29 @@ public struct PlayerInputData : INetworkInput
 public class InputCollector
 {
     private bool jump, crouch, slide, fire, reload, grenade;
-    private int weaponSlot;
-    // The body the last input was for: the first input for a new one asks for the starting form
+    // The gun form asked for, kept between inputs (GunFormRequest)
+    private readonly GunFormRequest form = new GunFormRequest();
+    // The body the request is for: a new one starts by asking for the starting form
     private Player inputBody;
+
+    // A new body (just spawned) starts by asking for the form picked in the settings
+    private Weapon SyncBody(Player local)
+    {
+        Weapon weapon = local.GetComponent<Weapon>();
+        if (local != inputBody)
+        {
+            inputBody = local;
+            if (weapon != null) form.NewBody(weapon.PreferredStartingSlot);
+            else form.Clear();
+        }
+        return weapon;
+    }
 
     public void Update()
     {
         Player local = Player.Local;
-        if (local == null) { Clear(); return; }
+        if (local == null) { Clear(); form.Clear(); inputBody = null; return; }
+        Weapon weapon = SyncBody(local);
 
         if (GameInput.Pressed(GameInput.Jump)) jump = true;
         if (GameInput.Pressed(GameInput.Crouch)) crouch = true;
@@ -48,25 +67,24 @@ public class InputCollector
         if (GameInput.Pressed(GameInput.Reload)) reload = true;
         if (GameInput.Pressed(GameInput.Grenade)) grenade = true;
 
-        Weapon weapon = local.GetComponent<Weapon>();
         if (weapon == null) return;
 
-        int current = weaponSlot > 0 ? weaponSlot - 1 : weapon.EquippedIndex;
-        int last = weapon.loadout.Length - 1;
-        // Next and previous wrap round, so the touch SWAP button (next only) reaches every form
-        int switchBy = GameInput.WeaponSwitch;
-        if (switchBy != 0) weaponSlot = GunForms.Step(current, switchBy, weapon.loadout.Length) + 1;
-        if (GameInput.Pressed(GameInput.Weapon1)) weaponSlot = 1;
-        if (GameInput.Pressed(GameInput.Weapon2) && last >= 1) weaponSlot = 2;
-        if (GameInput.Pressed(GameInput.Weapon3) && last >= 2) weaponSlot = 3;
-        if (GameInput.Pressed(GameInput.Weapon4) && last >= 3) weaponSlot = 4;
+        int count = weapon.loadout.Length;
+        // Next and previous wrap round, so the touch SWAP button (next only) reaches every form. They
+        // step from the form asked for, so quick notches mid-transformation all count.
+        form.Step(GameInput.WeaponSwitch, weapon.EquippedIndex, count);
+        if (GameInput.Pressed(GameInput.Weapon1)) form.Pick(0);
+        if (GameInput.Pressed(GameInput.Weapon2) && count >= 2) form.Pick(1);
+        if (GameInput.Pressed(GameInput.Weapon3) && count >= 3) form.Pick(2);
+        if (GameInput.Pressed(GameInput.Weapon4) && count >= 4) form.Pick(3);
     }
 
     public PlayerInputData Take()
     {
         PlayerInputData data = default;
         Player local = Player.Local;
-        if (local == null) { Clear(); return data; }
+        if (local == null) { Clear(); form.Clear(); inputBody = null; return data; }
+        SyncBody(local);
 
         data.Move = GameInput.MoveValue;
         data.Buttons.Set(InputButton.Jump, jump);
@@ -77,15 +95,8 @@ public class InputCollector
         data.Buttons.Set(InputButton.Aim, GameInput.Held(GameInput.Aim));
         data.Buttons.Set(InputButton.Reload, reload);
         data.Buttons.Set(InputButton.Grenade, grenade || GameInput.Held(GameInput.Grenade));
-        // A new body (just spawned) starts in the form picked in the settings, unless a form was
-        // just picked by hand
-        if (local != inputBody)
-        {
-            inputBody = local;
-            Weapon weapon = local.GetComponent<Weapon>();
-            if (weaponSlot == 0 && weapon != null) weaponSlot = weapon.PreferredStartingSlot + 1;
-        }
-        data.WeaponSlot = (byte)weaponSlot;
+        data.WeaponSlot = form.Slot;
+        data.Buttons.Set(InputButton.StartingForm, form.IsStartingPick);
 
         Look look = local.GetComponent<Look>();
         if (look != null)
@@ -100,7 +111,7 @@ public class InputCollector
 
     private void Clear()
     {
+        // The form asked for stays: it's sent with every input
         jump = crouch = slide = fire = reload = grenade = false;
-        weaponSlot = 0;
     }
 }

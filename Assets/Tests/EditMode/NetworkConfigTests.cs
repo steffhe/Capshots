@@ -51,4 +51,14 @@ public class NetworkConfigTests
             Assert.AreEqual(Mathf.Round(ticks), ticks, 0.001f, $"{Path.GetFileName(gun)}: {seconds} s is {ticks} ticks at {rate} ticks a second");
         }
     }
+
+    // Shots are checked against where players were on the shooter's screen, which in host mode is
+    // about one round trip plus the interpolation delay ago. The hitbox history must reach that far
+    // back for players with a high ping (browsers over Photon's relay), or their hits are checked
+    // against the wrong positions.
+    [Test]
+    public void LagCompensation_ReachesBackFarEnoughForHighPing()
+    {
+        Assert.GreaterOrEqual(Value(ConfigText, "HitboxBufferLengthInMs"), 400);
+    }
 }

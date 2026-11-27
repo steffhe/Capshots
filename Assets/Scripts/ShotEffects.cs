@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 // Reuses scorch marks, laser beams and impact sparks instead of making and destroying them for every shot. A
-// shotgun blast is 8 of each and the machine gun fires 40 times a second, so in a full room that
+// shotgun blast is 8 of each and the machine gun fires over 13 times a second, so in a full room that
 // churn of objects (and the garbage it leaves) cost frames, most of all in the browser.
 // It's made on the first shot and belongs to the map's scene, so it goes with the map and the next
 // map starts with a fresh one.

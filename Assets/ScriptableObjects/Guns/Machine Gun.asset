@@ -15,20 +15,35 @@ MonoBehaviour:
   gunName: Machine Gun
   fireRate: 0.075
   bloom: 30
-  recoil: 8
+  recoil: 4
   kickback: 0.2
   aimSpeed: 8
   damage: 200
-  energyPerShot: 3.4
+  energyPerShot: 4
   burst: 1
   prefab: {fileID: 7466018458602090438, guid: e5bc1f9ffea6f394484f709da7d12aee, type: 3}
   image: {fileID: 2800000, guid: 1185ea86286b3124c9185a90f60b0c3d, type: 3}
   shootingSound: {fileID: 0}
   headshotMultiplier: 1.75
-  falloffStart: 15
-  falloffEnd: 40
-  minDamageMultiplier: 0.55
+  falloffStart: 12
+  falloffEnd: 30
+  minDamageMultiplier: 0.35
   aimBloomDivisor: 2
+  adsTime: 0.15
   movingBloomMultiplier: 1.6
+  kickUp: 0.9
+  kickSide: 0.45
+  kickRecovery: 4.5
+  patternedRecoil: 1
+  shake: 0.12
+  fovPunch: 0.25
+  crosshairKick: 3
+  flashIntensity: 3.2
+  flashRange: 5
+  flashTime: 0.035
+  flashSize: 0.08
+  beamWidth: 0.8
+  beamTime: 0.12
+  impactSparks: 3
   moveSpeedMultiplier: 0.92
   aimMoveSpeedMultiplier: 0.65

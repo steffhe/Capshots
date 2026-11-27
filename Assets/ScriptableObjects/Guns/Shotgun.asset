@@ -14,8 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   gunName: Shotgun
   fireRate: 0.6
-  bloom: 62
-  recoil: 25
+  bloom: 78
+  recoil: 22
   kickback: 0.4
   aimSpeed: 8
   damage: 140
@@ -30,6 +30,21 @@ MonoBehaviour:
   falloffEnd: 18
   minDamageMultiplier: 0.25
   aimBloomDivisor: 1.3
+  adsTime: 0.15
   movingBloomMultiplier: 1.1
+  kickUp: 4.5
+  kickSide: 1.2
+  kickRecovery: 6
+  patternedRecoil: 0
+  shake: 0.9
+  fovPunch: 3.5
+  crosshairKick: 12
+  flashIntensity: 8
+  flashRange: 9
+  flashTime: 0.08
+  flashSize: 0.22
+  beamWidth: 0.55
+  beamTime: 0.2
+  impactSparks: 3
   moveSpeedMultiplier: 1
   aimMoveSpeedMultiplier: 0.8

@@ -51,7 +51,9 @@ public class BotLogicTests
     }
 
     [TestCase(3f, 0)]
-    [TestCase(20f, 1)]
+    [TestCase(12f, 1)]
+    [TestCase(20f, 2)]
+    [TestCase(35f, 2)]
     [TestCase(80f, 3)]
     [TestCase(-1f, 1)]
     public void ChooseGun_PicksTheFormForTheDistance(float distance, int expected)
@@ -79,7 +81,9 @@ public class BotLogicTests
         // scoped form
         Assert.AreEqual(0, BotLogic.ChooseGun(Loadout(), 10f, rusher.shotgunRange, rusher.sniperRange));
         Assert.Greater(rusher.shotgunRange, BotLogic.ShotgunRange);
-        Assert.AreEqual(1, BotLogic.ChooseGun(Loadout(), 80f, rusher.shotgunRange, rusher.sniperRange));
+        // Far away it takes the pistol, which out-kills the machine gun there
+        Assert.AreEqual(2, BotLogic.ChooseGun(Loadout(), 80f, rusher.shotgunRange, rusher.sniperRange));
+        Assert.AreEqual(1, BotLogic.ChooseGun(Loadout(), 14f, rusher.shotgunRange, rusher.sniperRange));
         // A sniper scopes in from 15 m
         Assert.AreEqual(3, BotLogic.ChooseGun(Loadout(), 20f, sniper.shotgunRange, sniper.sniperRange));
         Assert.IsFalse(rusher.retreats);

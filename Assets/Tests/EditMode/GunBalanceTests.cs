@@ -72,9 +72,54 @@ public class GunBalanceTests
         Assert.Less(Load("Sniper Rifle").DamageAt(0f, false), Health);
     }
 
-    [Test]
-    public void SniperRifle_OutKillsThePistolAtLongRange()
+    // The bands each form owns (see the balance pass in pull request 79): shotgun to about 8 m, machine
+    // gun about 10 to 15 m, pistol about 18 to 40 m, sniper rifle from about 45 m
+
+    [TestCase(45f)]
+    [TestCase(60f)]
+    [TestCase(80f)]
+    public void SniperRifle_OutKillsThePistolAtLongRange(float distance)
     {
-        Assert.Less(KillTime(Load("Sniper Rifle"), 80f), KillTime(Load("Pistol"), 80f));
+        Assert.Less(KillTime(Load("Sniper Rifle"), distance), KillTime(Load("Pistol"), distance));
+    }
+
+    [TestCase(10f)]
+    [TestCase(12f)]
+    [TestCase(15f)]
+    public void MachineGun_IsTheFastestKillAtCloseToMidRange(float distance)
+    {
+        float machineGun = KillTime(Load("Machine Gun"), distance);
+        foreach (string other in new[] { "Shotgun", "Pistol", "Sniper Rifle" })
+            Assert.Less(machineGun, KillTime(Load(other), distance), other + " at " + distance + " m");
+    }
+
+    [TestCase(18f)]
+    [TestCase(25f)]
+    [TestCase(30f)]
+    [TestCase(40f)]
+    public void Pistol_IsTheFastestKillAtMidToLongRange(float distance)
+    {
+        float pistol = KillTime(Load("Pistol"), distance);
+        foreach (string other in new[] { "Shotgun", "Machine Gun", "Sniper Rifle" })
+            Assert.Less(pistol, KillTime(Load(other), distance), other + " at " + distance + " m");
+    }
+
+    [Test]
+    public void Shotgun_KillsInOneBlastToSevenMetres()
+    {
+        Assert.GreaterOrEqual(ShotDamage(Load("Shotgun"), 7f, false), Health);
+    }
+
+    // Every form gets at least two body-shot kills up close out of one energy cell (100), so swapping
+    // form mid-fight is a choice, not a forced cell swap
+    [TestCase("Shotgun")]
+    [TestCase("Machine Gun")]
+    [TestCase("Pistol")]
+    [TestCase("Sniper Rifle")]
+    public void EveryForm_GetsTwoKillsFromOneCell(string name)
+    {
+        Gun gun = Load(name);
+        int shotsPerKill = Mathf.CeilToInt((float)Health / ShotDamage(gun, 3f, false));
+        Assert.GreaterOrEqual(GunEnergy.ShotsLeft(100f, gun.energyPerShot), shotsPerKill * 2, name);
     }
 }
