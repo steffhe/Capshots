@@ -6,6 +6,8 @@ name: Build
 #    The tag (without the "v") becomes the game's version, which is also Photon's
 #    matchmaking version, so different releases never share a room (and Windows and
 #    browser players on the same release can play together).
+#  - Pull requests that don't touch the project (Assets, Packages, ProjectSettings or this file)
+#    still run every job, so the required checks report, but skip Unity and pass in seconds.
 #  - Pull requests that touch the project get a browser (WebGL) test build, downloadable from
 #    the run. It's built for build speed rather than runtime speed (see the build job). They
 #    don't build Windows; use "Run workflow" on the branch for a Windows test build.
@@ -45,13 +47,12 @@ on:
       - 'ProjectSettings/**'
       - '.github/workflows/build.yml'
   pull_request:
-    # The default types, plus ready_for_review to build a draft once it's marked ready
+    # The default types, plus ready_for_review to build a draft once it's marked ready.
+    # No path filter here: the test and build checks are required to merge, and a workflow that
+    # never starts leaves them pending forever. Instead the setup job checks whether the pull
+    # request touches the project, and if it doesn't (docs only, say) the test and build jobs
+    # pass in seconds without starting Unity.
     types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - 'Assets/**'
-      - 'Packages/**'
-      - 'ProjectSettings/**'
-      - '.github/workflows/build.yml'
   workflow_dispatch:
 
 concurrency:
@@ -66,11 +67,35 @@ jobs:
   setup:
     name: Setup
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # lists a pull request's changed files
     outputs:
       available: ${{ steps.license.outputs.available }}
       version: ${{ steps.version.outputs.version }}
       platforms: ${{ steps.platforms.outputs.platforms }}
+      project: ${{ steps.changes.outputs.project }}
     steps:
+      # Whether Unity needs to run: always, except for a pull request that changes nothing in the
+      # project (the same paths the push trigger filters on)
+      - name: Check for project changes
+        id: changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
+            echo "project=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename')
+          if grep -qE '^(Assets/|Packages/|ProjectSettings/|\.github/workflows/build\.yml$)' <<< "$files"; then
+            echo "project=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No project changes in this pull request: tests and builds pass without running Unity."
+            echo "project=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Check for Unity license
         id: license
         env:
@@ -124,11 +149,20 @@ jobs:
     permissions:
       contents: read
       checks: write # lets the test runner post a test results check
+    env:
+      # false for a pull request that doesn't touch the project: the job then passes without Unity
+      PROJECT_CHANGED: ${{ needs.setup.outputs.project }}
     steps:
+      - name: No project changes
+        if: env.PROJECT_CHANGED != 'true'
+        run: echo "No project changes in this pull request, so there is nothing to test."
+
       - name: Check out repository
+        if: env.PROJECT_CHANGED == 'true'
         uses: actions/checkout@v5
 
       - name: Cache Unity Library folder
+        if: env.PROJECT_CHANGED == 'true'
         uses: actions/cache@v5
         with:
           path: Library
@@ -138,6 +172,7 @@ jobs:
 
       - name: Run EditMode tests
         id: tests
+        if: env.PROJECT_CHANGED == 'true'
         uses: game-ci/unity-test-runner@v4
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
@@ -150,7 +185,7 @@ jobs:
           checkName: EditMode test results
 
       - name: Upload test results
-        if: always()
+        if: always() && env.PROJECT_CHANGED == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: test-results
@@ -177,9 +212,18 @@ jobs:
       contents: read
     env:
       VERSION: ${{ needs.setup.outputs.version }}
+      # false for a pull request that doesn't touch the project: the job then passes without
+      # Unity. The job itself still runs (rather than being skipped) so the matrix expands and
+      # the required "Build for WebGL" check reports under its real name.
+      PROJECT_CHANGED: ${{ needs.setup.outputs.project }}
 
     steps:
+      - name: No project changes
+        if: env.PROJECT_CHANGED != 'true'
+        run: echo "No project changes in this pull request, so there is nothing to build."
+
       - name: Check out repository
+        if: env.PROJECT_CHANGED == 'true'
         uses: actions/checkout@v5
 
       # Builds always start from a clean Library. A cached Library didn't make them any faster:
@@ -187,6 +231,7 @@ jobs:
       # on runs #50 and #53), and builds from a restored Library were sometimes killed with
       # exit code 137. The tests job still caches its Library.
       - name: Build with Unity
+        if: env.PROJECT_CHANGED == 'true'
         uses: game-ci/unity-builder@v5
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
@@ -224,7 +269,7 @@ jobs:
 
       # ---- WebGL: upload for testing, and hand the site to GitHub Pages on tags ----
       - name: Upload browser build artifact
-        if: matrix.targetPlatform == 'WebGL'
+        if: env.PROJECT_CHANGED == 'true' && matrix.targetPlatform == 'WebGL'
         uses: actions/upload-artifact@v6
         with:
           name: ${{ env.BUILD_NAME }}-${{ env.VERSION }}-WebGL
