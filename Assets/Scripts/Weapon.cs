@@ -1260,10 +1260,10 @@ public class Weapon : NetworkBehaviour
         // the core would sit right in front of it
         bool scoped = HasInputAuthority && isAiming && gun.scopeViewmodelFov > 0f;
         flashCoreSize = scoped ? 0f : gun.flashSize;
-        bool core = flashCoreSize > 0f;
-        flashCore.gameObject.SetActive(core);
+        bool showCore = flashCoreSize > 0f;
+        flashCore.gameObject.SetActive(showCore);
         // Drawn with the gun: the viewmodel camera's layer for your own, so walls never cut it off
-        if (core) flashCore.gameObject.layer = currentWeapon.layer;
+        if (showCore) flashCore.gameObject.layer = currentWeapon.layer;
         UpdateMuzzleFlash();
     }
 
