@@ -119,6 +119,7 @@ public class CustomizeMenu : MenuPanel
     {
         pinned = -1;
         Preview(-1);
+        if (inMainMenu) Launcher.PreviewFace(GameSettings.Face);
         if (panel != null) panel.SetActive(false);
         if (inMainMenu) MenuScenery.Turnable = false;
         if (turnHint != null) turnHint.gameObject.SetActive(false);
@@ -358,7 +359,11 @@ public class CustomizeMenu : MenuPanel
         {
             options[i] = Faces.IsUnlocked(i, level) ? Faces.Name(i) : UITheme.Option(Faces.Name(i), "LEVEL " + Faces.UnlockLevel(i));
         }
-        OptionPicker.Open(button, options, GameSettings.Face, i => GameSettings.Face = i);
+        OptionPicker.Open(button, options, GameSettings.Face, i =>
+        {
+            if (Faces.IsUnlocked(i, level)) GameSettings.Face = i;
+            if (inMainMenu) Launcher.PreviewFace(i);
+        });
     }
 
     private Weapon PlayerWeapon()
