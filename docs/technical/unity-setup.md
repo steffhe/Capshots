@@ -41,7 +41,7 @@
 
 GameCI builds Windows (`StandaloneWindows64`) and WebGL.
 
-- **Pull requests** (changes under `Assets/`, `Packages/`, `ProjectSettings/` or the workflow): EditMode tests plus a WebGL test build (artifact on the run). PR WebGL builds use "Shorter Build Time" code optimization (`CIWebGLCodeOptimization.cs`); releases use "Runtime Speed". Draft PRs only run tests until marked ready.
+- **Pull requests** that change `Assets/`, `Packages/`, `ProjectSettings/` or the workflow: EditMode tests plus a WebGL test build (artifact on the run). Other pull requests (e.g. docs only) still run every job so the required checks report, but the setup job's `project` output skips Unity and they pass in seconds. PR WebGL builds use "Shorter Build Time" code optimization (`CIWebGLCodeOptimization.cs`); releases use "Runtime Speed". Draft PRs only run tests until marked ready.
 - **Pushes to `main`**: tests only (also warms the Library cache). Builds always start from a clean Library.
 - **Tags `v*`**: tests, both builds, a GitHub Release with the Windows build, and the WebGL build published to GitHub Pages. The tag without `v` becomes the game version.
 - **Manual**: Actions → Build → Run workflow (use this for a Windows test build of a branch).
