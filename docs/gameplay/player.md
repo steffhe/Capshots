@@ -6,11 +6,34 @@ Main script: `Assets/Scripts/Player.cs` (`NetworkBehaviour`, `[RequireComponent(
 
 - Unity `CharacterController` driven per tick with `Runner.DeltaTime`, synced by `NetworkTransform`; the owner predicts it.
 - States: walk, sprint (forward + grounded), crouch (toggle), slide (sprint + Slide button, lasts `lengthOfSlide`), jump. Velocity is kept in `[Networked] Velocity`.
-- Speeds are legacy values multiplied by `LegacyStep` (0.02) to get m/s. Prefab values: `speed` 500 (10 m/s), `sprintModifier` 2, `crouchModifier` 0.5, `slideModifier` 2.5, `lengthOfSlide` 0.75 s, `jumpForce` 650 (13 m/s).
+- Speeds are legacy values multiplied by `LegacyStep` (0.02) to get m/s (`Player.WalkSpeed`, `Player.SprintSpeed`). Prefab values: `speed` 500 (10 m/s), `sprintModifier` 1.5 (15 m/s), `crouchModifier` 0.5, `slideModifier` 2.5 (25 m/s), `lengthOfSlide` 0.75 s, `jumpForce` 520 (10.4 m/s, a jump rises about 2.6 m with the project's gravity of -20 and lasts about 1 s).
 - `Weapon.MoveSpeedMultiplier()` scales speed by the gun form (`Gun.moveSpeedMultiplier`) and while aiming (`Gun.aimMoveSpeedMultiplier`).
-- When the match is `Ending`, input is zeroed but gravity still applies.
+- How far the move input is pushed scales the speed (a half-pushed stick walks at half speed). Keyboard input is always full; touch reaches full speed at 70% of the stick (`TouchControls.MoveStick`).
+- When the match is `Ending`, input is zeroed (the body brakes to a stop) but gravity still applies.
 - Crouching swaps the capsule (`standingHeight`/`crouchingHeight`) and the active hitbox set.
-- Players hover visually (`HoverVisuals`, added at runtime, local only). Movement sounds: `PlayerSounds`.
+- Players hover visually (`HoverVisuals`, added at runtime, local only). Movement sounds: `PlayerSounds` (the hover sound's pitch follows `WalkSpeed`/`SprintSpeed`).
+
+### Acceleration, braking and air control (`Core/MovementRules`)
+
+Horizontal speed is not set directly from input; each tick it moves towards what the input asks for. Rates are Inspector fields under *Movement feel* (script defaults; not overridden in the prefab), in m/s per second:
+
+| Field | Default | Effect |
+| --- | --- | --- |
+| `groundAcceleration` | 140 | Standing to walking speed in 3 ticks |
+| `groundBraking` | 160 | Walking to a stop with no input in 3 ticks |
+| (both together) | 300 | Pushing against the current movement (counter-strafe, sideways drift after turning): stops in 2 ticks, A to D reversal in 4 |
+| `slowDownRate` | 40 | Dropping to a lower speed while moving (letting go of sprint, crouching, aiming, a slide ending) |
+| `sprintAcceleration` | 20 | Walking to sprinting speed in about 0.25 s |
+| `airAcceleration` | 25 | Steering in the air; it never takes the speed above the larger of the wanted speed and the current speed |
+| `airDrag` | 8 | In the air, speed above sprinting speed (with the current gun) bleeds off |
+
+- In the air momentum is kept: a sprint jump carries sprinting speed, and no input means no braking.
+- A slide ignores these rules while it lasts (`SlideDirection` x slide speed); afterwards the speed slows down at `slowDownRate` on the ground or `airDrag` in the air.
+- When the controller hits something sideways, the horizontal velocity is cut to what the body actually moved (`MovementRules.LimitToActual`), so pushing into a wall stores no speed and the gun's spread (`Player.MoveSpeedRatio`) follows the real speed.
+- **Ground snapping:** a body that was grounded, isn't jumping and ends a move off the ground is moved down onto ground found within `groundSnapDistance` (0.5 m) by a sphere cast (`Player.SnapToGround`), so running down stairs and ramps stays grounded.
+- **Players don't collide with each other.** `Player.LetPlayersPassThrough` turns off collisions between the `LocalPlayer` and `RemotePlayer` layers at runtime (`Physics.IgnoreLayerCollision`). Shots are unaffected (hitboxes). Ragdolls (`DeadPlayer`, layer 0) still block players.
+
+Tests: `MovementRulesTests` (rates, air rules, and that the prefab's jump reaches the Prototype decks but not its crates).
 
 ## Health, damage and death
 

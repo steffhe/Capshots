@@ -40,6 +40,24 @@ public class Player : NetworkBehaviour
     public float standingHeight = 2f;
     public float crouchingHeight = 1.5f;
 
+    [Header("Movement feel")]
+    // How fast speed changes, in m/s per second (see Core/MovementRules). Thrust up to walking speed:
+    // about 3 ticks from standing to a walk.
+    public float groundAcceleration = 140f;
+    // Slowing to a stop with no input: about 2.5 ticks from a walk. Pushing the opposite way brakes
+    // with this and groundAcceleration together, so a counter-strafe stops a tick sooner.
+    public float groundBraking = 160f;
+    // Slowing to a lower speed while still moving (letting go of sprint, crouching, aiming, a slide ending)
+    public float slowDownRate = 40f;
+    // Thrust from walking up to sprinting speed: about a quarter of a second
+    public float sprintAcceleration = 20f;
+    // Steering in the air. Momentum is kept; this can turn it but never make it faster.
+    public float airAcceleration = 25f;
+    // In the air, speed above sprinting speed (a slide jump) bleeds off this fast
+    public float airDrag = 8f;
+    // Running down stairs and ramps keeps the body on the ground if the ground is at most this far below
+    public float groundSnapDistance = 0.5f;
+
     public ProfileData playerProfile;
     public TextMeshPro playerUsername;
 
@@ -215,6 +233,10 @@ public class Player : NetworkBehaviour
         }
     }
 
+    // Normal walking and sprinting speed in m/s, before the gun's own multiplier
+    public float WalkSpeed => speed * LegacyStep;
+    public float SprintSpeed => speed * sprintModifier * LegacyStep;
+
     // How fast the body is moving (a thrown grenade carries some of it)
     public Vector3 CurrentVelocity => Object != null && Object.IsValid ? Velocity : Vector3.zero;
 
@@ -248,6 +270,7 @@ public class Player : NetworkBehaviour
         origin = normalCam.transform.localPosition;
         weaponParentorigin = weaponParent.localPosition;
         weaponParentCurrentPosition = weaponParentorigin;
+        LetPlayersPassThrough();
 
         standingHitboxes = HitboxesUnder(standingCollider, standingColliderHead);
         crouchingHitboxes = HitboxesUnder(crouchingCollider, crouchingColliderHead);
@@ -465,11 +488,18 @@ public class Player : NetworkBehaviour
 
         Vector3 direction;
         float adjustedSpeed = speed;
+        // How hard the input pushes, 0 to 1: a stick pushed halfway moves at half speed
+        float push = 1f;
+        // Heavier guns, and aiming, slow you down
+        float gunMultiplier = weapon.MoveSpeedMultiplier();
+        // A slide goes straight at its own speed; everything else thrusts and brakes (MovementRules)
+        bool slideMove = Sliding;
 
         //Movement
         if (!Sliding)
         {
             direction = new Vector3(hmove, 0, vmove);
+            push = Mathf.Clamp01(direction.magnitude);
             direction.Normalize();
             direction = transform.TransformDirection(direction);
 
@@ -483,8 +513,7 @@ public class Player : NetworkBehaviour
                 adjustedSpeed *= crouchModifier;
             }
 
-            // Heavier guns, and aiming, slow you down
-            adjustedSpeed *= weapon.MoveSpeedMultiplier();
+            adjustedSpeed *= gunMultiplier;
         }
         else
         {
@@ -507,20 +536,100 @@ public class Player : NetworkBehaviour
             if (!Crouched) SetCrouch(true);
         }
 
-        Vector3 horizontal = direction * adjustedSpeed * LegacyStep;
+        Vector2 horizontal = new Vector2(velocity.x, velocity.z);
+        if (slideMove)
+        {
+            Vector3 slideVelocity = direction * adjustedSpeed * LegacyStep;
+            horizontal = new Vector2(slideVelocity.x, slideVelocity.z);
+        }
+        else
+        {
+            Vector2 wish = new Vector2(direction.x, direction.z);
+            float wishSpeed = adjustedSpeed * LegacyStep * push;
+            MovementRules.Tuning tuning = MoveTuning(gunMultiplier);
+            if (isgrounded)
+            {
+                // Above walking speed (sprinting) the thrust is gentler
+                float normalSpeed = speed * LegacyStep * gunMultiplier * push;
+                horizontal = MovementRules.GroundStep(horizontal, wish, wishSpeed, normalSpeed, tuning, dt);
+            }
+            else
+            {
+                horizontal = MovementRules.AirStep(horizontal, wish, wishSpeed, tuning, dt);
+            }
+        }
         velocity.x = horizontal.x;
-        velocity.z = horizontal.z;
+        velocity.z = horizontal.y;
 
         // Gravity, with a small push down while standing so the controller stays on slopes and steps
         if (isgrounded && velocity.y < 0f) velocity.y = -2f;
         else velocity.y += Physics.gravity.y * dt;
 
+        Vector3 before = transform.position;
         controller.Move(velocity * dt);
+        CollisionFlags flags = controller.collisionFlags;
+        Vector3 moved = transform.position - before;
+
+        // Was on the ground and still heading down (stairs, a ramp, a small step): stay on it instead
+        // of flying off for a tick or two, which dropped sprint and doubled the gun's spread
+        if (isgrounded && !isJumping && velocity.y <= 0f && !controller.isGrounded) SnapToGround();
+
         if (controller.isGrounded && velocity.y < 0f) velocity.y = -2f;
         // Hitting a ceiling stops the jump
-        if ((controller.collisionFlags & CollisionFlags.Above) != 0 && velocity.y > 0f) velocity.y = 0f;
+        if ((flags & CollisionFlags.Above) != 0 && velocity.y > 0f) velocity.y = 0f;
+        // Pushing into a wall doesn't store speed: only what the body actually managed counts
+        if ((flags & CollisionFlags.Sides) != 0)
+        {
+            horizontal = MovementRules.LimitToActual(horizontal, new Vector2(moved.x, moved.z), dt);
+            velocity.x = horizontal.x;
+            velocity.z = horizontal.y;
+        }
 
         Velocity = velocity;
+    }
+
+    // This body's movement tuning, from the Inspector fields
+    private MovementRules.Tuning MoveTuning(float gunMultiplier)
+    {
+        return new MovementRules.Tuning
+        {
+            accel = groundAcceleration,
+            brake = groundBraking,
+            overspeedBrake = slowDownRate,
+            sprintAccel = sprintAcceleration,
+            airAccel = airAcceleration,
+            airDrag = airDrag,
+            // Sprinting speed with this gun: a sprint jump keeps its speed, a slide jump bleeds the extra off
+            airSoftCap = speed * sprintModifier * LegacyStep * gunMultiplier,
+        };
+    }
+
+    // What the body can stand on: everything but players, guns and hitboxes
+    private static readonly int SnapMask = Physics.DefaultRaycastLayers & ~((1 << Layers.LocalPlayer) | (1 << Layers.RemotePlayer) | (1 << Layers.Gun) | (1 << Layers.LocalGun) | (1 << Layers.Hitbox));
+
+    // Moves the body down onto the ground if there is ground within groundSnapDistance below it.
+    // Same scenery and maths on every machine, so the predicted and the host's body agree.
+    private void SnapToGround()
+    {
+        if (groundSnapDistance <= 0f) return;
+        // The bottom sphere of the capsule, a little narrower so it doesn't start inside a wall
+        float radius = controller.radius * 0.9f;
+        Vector3 center = transform.TransformPoint(controller.center);
+        Vector3 bottom = center + Vector3.down * Mathf.Max(0f, controller.height * 0.5f - controller.radius);
+        float reach = groundSnapDistance + controller.skinWidth;
+        if (!Physics.SphereCast(bottom, radius, Vector3.down, out RaycastHit hit, reach, SnapMask, QueryTriggerInteraction.Ignore)) return;
+        // The controller stops when it touches the ground, so moving the full distance is safe
+        controller.Move(Vector3.down * (hit.distance + controller.skinWidth));
+    }
+
+    // Players fly through each other instead of blocking: no blocking doorways, and no disagreement
+    // between a client (which sees the others slightly in the past) and the host about who bumped whom.
+    // Shots still hit, as they use hitboxes. Only player bodies are on these layers.
+    private static void LetPlayersPassThrough()
+    {
+        Physics.IgnoreLayerCollision(Layers.LocalPlayer, Layers.LocalPlayer, true);
+        Physics.IgnoreLayerCollision(Layers.LocalPlayer, Layers.RemotePlayer, true);
+        Physics.IgnoreLayerCollision(Layers.RemotePlayer, Layers.RemotePlayer, true);
     }
 
     void SetCrouch(bool state)

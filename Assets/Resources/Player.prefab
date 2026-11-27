@@ -459,9 +459,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   speed: 500
-  sprintModifier: 2
+  sprintModifier: 1.5
   crouchModifier: 0.5
-  jumpForce: 650
+  jumpForce: 520
   maxHealth: 1000
   normalCam: {fileID: 2799757468592270336}
   cameraParent: {fileID: 2799757468203411518}

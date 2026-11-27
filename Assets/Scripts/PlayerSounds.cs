@@ -117,7 +117,6 @@ public class PlayerSounds : MonoBehaviour
     }
 
     private const float HoverPitchSlow = 0.85f, HoverPitchFast = 1.15f;
-    private const float WalkSpeed = 9f, SprintSpeed = 19f;
 
     // The hover sound keeps playing in the air too, since the characters float anyway.
     // Crouching (and sliding, which crouches) is silent, so sneaking up on someone still works.
@@ -128,8 +127,8 @@ public class PlayerSounds : MonoBehaviour
         smoothedSpeed = Mathf.Lerp(smoothedSpeed, horizontalSpeed, 1f - Mathf.Exp(-dt / SpeedSmoothing));
 
         float target = player.IsCrouched ? 0f : Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(MinHoverSpeed, FullHoverSpeed, smoothedSpeed));
-        // Walking is about 10 m/s and sprinting about 20
-        float fast = Mathf.InverseLerp(WalkSpeed, SprintSpeed, smoothedSpeed);
+        // From just under walking speed to just under sprinting speed (Player's own speeds)
+        float fast = Mathf.InverseLerp(player.WalkSpeed * 0.9f, player.SprintSpeed * 0.95f, smoothedSpeed);
 
         // Smoothed, so jittery speeds (especially for remote players) don't make the sound flutter
         hoverIntensity = Mathf.Lerp(hoverIntensity, target, 1f - Mathf.Exp(-dt / (target > hoverIntensity ? HoverAttack : HoverRelease)));

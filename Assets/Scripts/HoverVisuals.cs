@@ -9,7 +9,7 @@ using UnityEngine;
 // Only the body model moves: the hitboxes stay put, so the lean is kept small to keep them lined up.
 public class HoverVisuals : MonoBehaviour
 {
-    // Degrees of lean per m/s, and the most it leans (walking is about 10 m/s, sprinting about 20)
+    // Degrees of lean per m/s, and the most it leans (walking is about 10 m/s, sprinting about 15)
     public float leanPerSpeed = 0.5f;
     public float maxLean = 8f;
     // How high the body floats above where it used to stand, and how far it bobs up and down
