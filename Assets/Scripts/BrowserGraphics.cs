@@ -83,7 +83,7 @@ public class BrowserGraphics : MonoBehaviour
     private static void Lighten(UniversalRenderPipelineAsset asset)
     {
         asset.shadowDistance = Mathf.Min(asset.shadowDistance, 30f);
-        asset.shadowCascadeCount = 1;
+        asset.shadowCascadeCount = QualitySettings.GetQualityLevel() >= 2 ? Mathf.Min(asset.shadowCascadeCount, 2) : 1;
         asset.mainLightShadowmapResolution = Mathf.Min(asset.mainLightShadowmapResolution, 1024);
     }
 
