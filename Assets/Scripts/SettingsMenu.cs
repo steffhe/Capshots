@@ -26,6 +26,8 @@ public class SettingsMenu : MenuPanel
     private Text invertText;
     private Text sprintText;
     private Text shakeText;
+    // The on / off settings' buttons, for their switches (UITheme.SetSwitch)
+    private Button fpsButton, invertButton, shakeButton;
 
     private class BindingRow
     {
@@ -183,14 +185,15 @@ public class SettingsMenu : MenuPanel
         rect.anchoredPosition = Vector2.zero;
         rect.sizeDelta = new Vector2(PanelWidth, PanelHeight);
         Image background = panel.GetComponent<Image>();
-        UITheme.Round(background, 14f);
-        background.color = UITheme.Panel;
+        UITheme.PanelChrome(background);
+        // Fades in each time it opens
+        UITheme.Reveal(panel);
 
-        Text title = NewLabel(rect, "SETTINGS", new Vector2(0f, PanelHeight / 2f - 48f), PanelWidth, 34, TextAnchor.MiddleCenter);
+        Text title = NewLabel(rect, "SETTINGS", new Vector2(0f, PanelHeight / 2f - 48f), PanelWidth, UITheme.MenuTitleSize, TextAnchor.MiddleCenter);
         title.color = UITheme.TextColor;
 
         // Left column: sliders, then the graphics and reset buttons
-        NewLabel(rect, "GENERAL", new Vector2(LeftColumn, HeaderY), ColumnWidth, 16, TextAnchor.MiddleLeft).color = UITheme.AccentText;
+        UITheme.SectionHeader(NewLabel(rect, "GENERAL", new Vector2(LeftColumn, HeaderY), ColumnWidth, UITheme.MenuCaptionSize, TextAnchor.MiddleLeft));
 
         float y = HeaderY - 44f;
         const float rowStep = 50f;
@@ -268,7 +271,7 @@ public class SettingsMenu : MenuPanel
             GameSettings.Colourblind = !GameSettings.Colourblind;
             RefreshLabels();
         });
-        UITheme.StyleSelector(colours.GetComponent<Button>());
+        UITheme.StyleCycle(colours.GetComponent<Button>());
         Place(colours, new Vector2(LeftColumn, y - 122f), new Vector2(ColumnWidth, 48f));
         coloursText = colours.GetComponentInChildren<Text>();
 
@@ -279,14 +282,18 @@ public class SettingsMenu : MenuPanel
             RefreshLabels();
         });
         UITheme.StyleSelector(fps.GetComponent<Button>());
+        UITheme.AddSwitch(fps.GetComponent<Button>());
         Place(fps, new Vector2(LeftColumn, y - 178f), new Vector2(ColumnWidth, 48f));
         fpsText = fps.GetComponentInChildren<Text>();
+        fpsButton = fps.GetComponent<Button>();
 
         GameObject reset = NewButton(rect, "RESET CONTROLS", () =>
         {
             GameInput.ResetBindings();
             RefreshBindings();
         });
+        // A quiet ghost button: it undoes your bindings
+        UITheme.StyleButton(reset.GetComponent<Button>(), UITheme.ButtonStyle.Ghost, 18);
         // An 8 gap between the buttons, so eight sliders fit above them
         Place(reset, new Vector2(LeftColumn, y - 234f), new Vector2(ColumnWidth, 48f));
 
@@ -295,8 +302,10 @@ public class SettingsMenu : MenuPanel
         Place(done, new Vector2(LeftColumn, -PanelHeight / 2f + 58f), new Vector2(ColumnWidth, 52f));
 
         // Right column: key bindings
-        NewLabel(rect, "CONTROLS", new Vector2(RightColumn, HeaderY), ColumnWidth, 16, TextAnchor.MiddleLeft).color = UITheme.AccentText;
-        NewLabel(rect, "CLICK TO CHANGE", new Vector2(RightColumn, HeaderY), ColumnWidth, 14, TextAnchor.MiddleRight).color = UITheme.MutedText;
+        // Its rule stops short of the hint on the right
+        Text controls = NewLabel(rect, "CONTROLS", new Vector2(RightColumn - 70f, HeaderY), ColumnWidth - 140f, UITheme.MenuCaptionSize, TextAnchor.MiddleLeft);
+        UITheme.SectionHeader(controls);
+        NewLabel(rect, "CLICK TO CHANGE", new Vector2(RightColumn, HeaderY), ColumnWidth, UITheme.MenuCaptionSize, TextAnchor.MiddleRight).color = UITheme.MutedText;
 
         int[] moveParts = GameInput.MovePartIndices();
         string[] moveNames = { "MOVE FORWARD", "MOVE BACK", "MOVE LEFT", "MOVE RIGHT" };
@@ -318,8 +327,10 @@ public class SettingsMenu : MenuPanel
             RefreshLabels();
         });
         UITheme.StyleSelector(shake.GetComponent<Button>());
+        UITheme.AddSwitch(shake.GetComponent<Button>());
         Place(shake, new Vector2(RightColumn, toggleY), new Vector2(ColumnWidth, 48f));
         shakeText = shake.GetComponentInChildren<Text>();
+        shakeButton = shake.GetComponent<Button>();
 
         GameObject invert = NewButton(rect, "", () =>
         {
@@ -327,15 +338,17 @@ public class SettingsMenu : MenuPanel
             RefreshLabels();
         });
         UITheme.StyleSelector(invert.GetComponent<Button>());
+        UITheme.AddSwitch(invert.GetComponent<Button>());
         Place(invert, new Vector2(RightColumn, toggleY + 56f), new Vector2(ColumnWidth, 48f));
         invertText = invert.GetComponentInChildren<Text>();
+        invertButton = invert.GetComponent<Button>();
 
         GameObject sprintMode = NewButton(rect, "", () =>
         {
             GameSettings.ToggleSprint = !GameSettings.ToggleSprint;
             RefreshLabels();
         });
-        UITheme.StyleSelector(sprintMode.GetComponent<Button>());
+        UITheme.StyleCycle(sprintMode.GetComponent<Button>());
         Place(sprintMode, new Vector2(RightColumn, toggleY + 112f), new Vector2(ColumnWidth, 48f));
         sprintText = sprintMode.GetComponentInChildren<Text>();
 
@@ -415,10 +428,14 @@ public class SettingsMenu : MenuPanel
         effectsValue.text = Mathf.RoundToInt(GameSettings.EffectsVolume * 100f) + "%";
         musicValue.text = Mathf.RoundToInt(GameSettings.MusicVolume * 100f) + "%";
         qualityText.text = UITheme.Option("GRAPHICS", GameSettings.QualityName.ToUpperInvariant());
-        if (fpsText != null) fpsText.text = UITheme.Option("FPS COUNTER", GameSettings.ShowFps ? "ON" : "OFF");
+        // On / off settings: the name, and a switch showing the state
+        if (fpsText != null) fpsText.text = "FPS COUNTER";
+        UITheme.SetSwitch(fpsButton, GameSettings.ShowFps);
         if (sprintText != null) sprintText.text = UITheme.Option("SPRINT", GameSettings.ToggleSprint ? "TOGGLE" : "HOLD");
-        if (invertText != null) invertText.text = UITheme.Option("INVERT Y", GameSettings.InvertY ? "ON" : "OFF");
-        if (shakeText != null) shakeText.text = UITheme.Option("CAMERA EFFECTS", GameSettings.ScreenShake ? "ON" : "OFF");
+        if (invertText != null) invertText.text = "INVERT Y";
+        UITheme.SetSwitch(invertButton, GameSettings.InvertY);
+        if (shakeText != null) shakeText.text = "CAMERA EFFECTS";
+        UITheme.SetSwitch(shakeButton, GameSettings.ScreenShake);
         if (coloursText != null) coloursText.text = UITheme.Option("COLOURS", GameSettings.Colourblind ? "COLOUR BLIND" : "STANDARD");
     }
 

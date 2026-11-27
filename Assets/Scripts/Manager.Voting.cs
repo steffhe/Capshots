@@ -167,9 +167,16 @@ public partial class Manager
         RectTransform panel = NewLayer("Vote", new Vector2(1f, 0.5f), new Vector2(width, height), parent);
         panel.anchoredPosition = new Vector2(-48f, 0f);
 
-        Text header = UITheme.NewText("Header", panel, 18, UITheme.MutedText, TextAnchor.MiddleLeft);
+        // On a panel like the XP summary's, a little bigger than the buttons
+        Image background = UITheme.NewImage("Background", panel, UITheme.Panel, UITheme.PanelRadius);
+        UITheme.Stretch(background.rectTransform);
+        background.rectTransform.offsetMin = new Vector2(-18f, -18f);
+        background.rectTransform.offsetMax = new Vector2(18f, 14f);
+        UITheme.PanelChrome(background);
+
+        Text header = UITheme.NewText("Header", panel, UITheme.MenuCaptionSize, UITheme.AccentText, TextAnchor.MiddleLeft);
         UITheme.Row(header.rectTransform, 0f, 26f);
-        header.text = "VOTE FOR THE NEXT MAP";
+        UITheme.SectionHeader(header, "VOTE FOR THE NEXT MAP");
 
         MapData[] maps = Launcher.Maps;
         float top = 34f;
@@ -185,14 +192,19 @@ public partial class Manager
         }
 
         VoteButton leave = NewVoteButton(panel, "LEAVE TO MENU", top + 12f, rowHeight, () => NetworkSession.Leave());
-        leave.count.text = HasStateAuthority ? "<size=13>ENDS IT FOR ALL</size>" : "";
+        // Quiet for everyone; a danger button for the host, for whom it ends the session for all
+        UITheme.StyleButtonBackground(leave.button, HasStateAuthority ? UITheme.ButtonStyle.Danger : UITheme.ButtonStyle.Ghost);
+        Text leaveName = leave.background.transform.Find("Name")?.GetComponent<Text>();
+        if (leaveName != null) leaveName.color = HasStateAuthority ? UITheme.DangerText : new Color(1f, 1f, 1f, 0.78f);
+        leave.count.color = UITheme.MutedText;
+        leave.count.text = HasStateAuthority ? $"<size={UITheme.MenuCaptionSize}>ENDS IT FOR ALL</size>" : "";
 
         RefreshVotes();
     }
 
     private VoteButton NewVoteButton(RectTransform panel, string label, float top, float height, UnityEngine.Events.UnityAction onClick)
     {
-        Image background = UITheme.NewImage("Choice", panel, UITheme.Surface, 8f);
+        Image background = UITheme.NewImage("Choice", panel, UITheme.Surface, UITheme.ControlRadius);
         background.raycastTarget = true;
         UITheme.Row(background.rectTransform, top, height);
         Button button = background.gameObject.AddComponent<Button>();

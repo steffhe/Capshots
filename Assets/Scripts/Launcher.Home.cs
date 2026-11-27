@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 
 // The main menu's front page, rearranged at runtime on top of the scene's column:
-//  - QUICK PLAY first, big and in the logo's blue with a soft pulse, so a new player's eye goes
+//  - QUICK PLAY first, big and the only primary (accent) button, so a new player's eye goes
 //    straight to it. Under it, "play with friends": the room list and creating a match, side by side.
 //  - PRACTICE VS BOTS, with a line saying what it is, then Settings and Quit (not in a browser).
 //  - CUSTOMIZE DRONE under the drone in the scene, saying what it changes, with a NEW badge while
@@ -19,7 +19,6 @@ public partial class Launcher
     private const float PracticeHeight = 66f;
 
     private Button quickPlayButton;
-    private Image quickPlayPulse;
     private GameObject newHatsBadge;
     private RectTransform profileCard;
     private Button editNameButton;
@@ -60,20 +59,14 @@ public partial class Launcher
         ((RectTransform)quickPlayButton.transform).sizeDelta = new Vector2(ColumnWidth, QuickPlayHeight);
         UITheme.StyleButton(quickPlayButton, UITheme.ButtonStyle.Primary, 30);
         TwoLineLabel(quickPlayButton, "QUICK PLAY", "JOIN A MATCH, OR START ONE WITH BOTS", 30);
-        Outline glow = quickPlayButton.gameObject.AddComponent<Outline>();
-        glow.effectColor = new Color(UITheme.AccentText.r, UITheme.AccentText.g, UITheme.AccentText.b, 0.55f);
-        glow.effectDistance = new Vector2(2f, -2f);
-        // A soft light over the button that slowly brightens and fades (see Update)
-        quickPlayPulse = UITheme.NewImage("Pulse", quickPlayButton.transform, new Color(1f, 1f, 1f, 0f), 8f);
-        UITheme.Stretch(quickPlayPulse.rectTransform);
-        quickPlayPulse.transform.SetAsFirstSibling();
 
         // "Or play with friends": the room list and creating a match, side by side
         if (roomList != null && create != null)
         {
             RectTransform caption = ColumnBlock(tabMain, "Friends Caption", index++, 18f);
-            Text captionText = UITheme.NewText("Text", caption, 14, UITheme.MutedText, TextAnchor.MiddleLeft);
+            Text captionText = UITheme.NewText("Text", caption, UITheme.MenuCaptionSize, UITheme.MutedText, TextAnchor.MiddleLeft);
             captionText.text = "OR PLAY WITH FRIENDS";
+            UITheme.AddRule(captionText);
 
             RectTransform row = ColumnBlock(tabMain, "Friends", index++, FriendsRowHeight);
             HalfOf(roomList, row, 0f, 0.5f, "ROOM LIST");
@@ -188,7 +181,7 @@ public partial class Launcher
         label.lineSpacing = 0.9f;
         label.horizontalOverflow = HorizontalWrapMode.Overflow;
         label.verticalOverflow = VerticalWrapMode.Overflow;
-        label.text = $"{title}\n<size=13><color={UITheme.Hex(new Color(1f, 1f, 1f, 0.72f))}>{subtitle}</color></size>";
+        label.text = $"{title}\n<size={UITheme.MenuCaptionSize}><color={UITheme.Hex(new Color(1f, 1f, 1f, 0.72f))}>{subtitle}</color></size>";
     }
 
     // Moves a column button into a side-by-side row, filling part of its width
@@ -210,15 +203,12 @@ public partial class Launcher
         }
     }
 
-    // A small glowing pill on the right of a button, like "NEW"
+    // A small accent tag on the right of a button, like "NEW"
     private static GameObject AddBadge(Button button, string text)
     {
-        Image pill = UITheme.NewImage("Badge", button.transform, UITheme.AccentText, 11f);
+        Image pill = UITheme.NewImage("Badge", button.transform, UITheme.AccentText, 4f);
         UITheme.Place(pill.rectTransform, new Vector2(1f, 0.5f), new Vector2(-14f, 0f), new Vector2(52f, 22f));
-        Outline glow = pill.gameObject.AddComponent<Outline>();
-        glow.effectColor = new Color(UITheme.AccentText.r, UITheme.AccentText.g, UITheme.AccentText.b, 0.4f);
-        glow.effectDistance = new Vector2(2f, -2f);
-        Text label = UITheme.NewText("Text", pill.transform, 13, new Color(0.02f, 0.05f, 0.1f), TextAnchor.MiddleCenter);
+        Text label = UITheme.NewText("Text", pill.transform, UITheme.MenuCaptionSize, new Color(0.02f, 0.05f, 0.1f), TextAnchor.MiddleCenter);
         label.fontStyle = FontStyle.Bold;
         label.text = text;
         pill.gameObject.SetActive(false);
@@ -321,8 +311,8 @@ public partial class Launcher
         if (profile == null || usernameField == null) return;
         Transform canvas = tabMain.transform.parent;
 
-        Image cardImage = UITheme.NewImage("Profile Card", canvas, UITheme.Panel, 12f);
-        UITheme.AddShadow(cardImage, 0.4f);
+        Image cardImage = UITheme.NewImage("Profile Card", canvas, UITheme.Panel, UITheme.PanelRadius);
+        UITheme.PanelChrome(cardImage);
         profileCard = cardImage.rectTransform;
         UITheme.Place(profileCard, new Vector2(1f, 1f), new Vector2(-32f, -28f), new Vector2(360f, 112f));
         RectTransform content = new GameObject("Content", typeof(RectTransform)).GetComponent<RectTransform>();
@@ -394,7 +384,7 @@ public partial class Launcher
         background.raycastTarget = true;
         UITheme.Place(background.rectTransform, new Vector2(1f, 1f), new Vector2(0f, -2f), new Vector2(36f, 36f));
         Button button = background.gameObject.AddComponent<Button>();
-        UITheme.StyleButtonBackground(button, UITheme.ButtonStyle.Secondary, 8f);
+        UITheme.StyleButtonBackground(button, UITheme.ButtonStyle.Secondary);
 
         // The pencil: a body, a pointed tip and an eraser end, at 45 degrees
         RectTransform pencil = new GameObject("Pencil", typeof(RectTransform)).GetComponent<RectTransform>();
@@ -431,13 +421,6 @@ public partial class Launcher
         {
             bool fresh = GameSettings.HasNewHats;
             if (newHatsBadge.activeSelf != fresh) newHatsBadge.SetActive(fresh);
-            if (fresh) newHatsBadge.transform.localScale = Vector3.one * (1f + 0.06f * Mathf.Sin(Time.unscaledTime * 4f));
-        }
-
-        if (quickPlayPulse != null)
-        {
-            float pulse = 0.5f - 0.5f * Mathf.Cos(Time.unscaledTime * 2f);
-            quickPlayPulse.color = new Color(1f, 1f, 1f, 0.12f * pulse);
         }
 
         // Back to the front page from the room list or the create tab: Esc, or a controller's B

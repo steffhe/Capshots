@@ -414,8 +414,9 @@ public partial class Manager
         RectTransform panel = NewLayer("XP", new Vector2(0.5f, 0f), new Vector2(620f, (newHats != null ? 124f : 92f) + summaryRow), parent);
         // A row taller for the new hats, grown downwards (towards the countdown) to keep clear of the leaderboard
         panel.anchoredPosition = new Vector2(0f, newHats != null ? 40f : 56f);
-        Image bg = UITheme.NewImage("Background", panel, UITheme.Panel, 10f);
+        Image bg = UITheme.NewImage("Background", panel, UITheme.Panel, UITheme.PanelRadius);
         UITheme.Stretch(bg.rectTransform);
+        UITheme.PanelChrome(bg);
 
         Text summary = UITheme.NewText("Summary", panel, 16, UITheme.TextColor, TextAnchor.MiddleCenter);
         UITheme.Row(summary.rectTransform, 12f, 24f);

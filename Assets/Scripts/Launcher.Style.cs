@@ -1,9 +1,10 @@
 using UnityEngine;
 using UnityEngine.UI;
 
-// Main menu look: a dark sidebar behind the menu column, a profile card with level and XP (Launcher.Home.cs),
-// a styled room list and option rows in the create tab. Applied at runtime on top of the menu
-// scene's original layout, so the scene needn't change.
+// Main menu look, in the menus' design system (UITheme.Menu): a dark sidebar behind the menu column,
+// a profile card with level and XP (Launcher.Home.cs), a styled room list and option rows in the
+// create tab, ruled section headings, BACK and QUIT as quiet ghost buttons, and each tab fading in as
+// it opens. Applied at runtime on top of the menu scene's original layout, so the scene needn't change.
 public partial class Launcher
 {
     private const float ColumnWidth = 300f;
@@ -93,8 +94,15 @@ public partial class Launcher
             Button button = child.GetComponent<Button>();
             if (button == null) continue;
             ((RectTransform)child).sizeDelta = new Vector2(ColumnWidth, RowHeight);
-            UITheme.StyleButton(button, UITheme.ButtonStyle.Secondary);
+            // Going back or quitting is quiet: a ghost button, so the ways to play stand out
+            Text label = button.GetComponentInChildren<Text>(true);
+            string text = label != null ? label.text.Trim().ToUpperInvariant() : "";
+            bool quiet = text == "BACK" || text == "QUIT";
+            UITheme.StyleButton(button, quiet ? UITheme.ButtonStyle.Ghost : UITheme.ButtonStyle.Secondary);
         }
+
+        // Each tab fades in and settles as it opens (the column is shown again after a panel too)
+        UITheme.Reveal(anchor.gameObject, true);
     }
 
     // Groups loose elements into a fixed-size block that sits in a tab's column
@@ -111,13 +119,13 @@ public partial class Launcher
         return rect;
     }
 
-    // A small heading in the accent colour over a group of rows ("MATCH SETUP", "OPEN MATCHES")
+    // A small heading in the accent colour with a hairline after it, over a group of rows
+    // ("MATCH SETUP", "OPEN MATCHES")
     private static Text SectionCaption(GameObject tab, int index, string caption)
     {
         RectTransform block = ColumnBlock(tab, caption, index, 18f);
-        Text text = UITheme.NewText("Text", block, 14, UITheme.AccentText, TextAnchor.LowerLeft);
-        text.text = caption;
-        return text;
+        Text text = UITheme.NewText("Text", block, UITheme.MenuCaptionSize, UITheme.AccentText, TextAnchor.LowerLeft);
+        return UITheme.SectionHeader(text, caption);
     }
 
     // Space before a tab's Back button
@@ -175,7 +183,7 @@ public partial class Launcher
         roomListView = view;
         // A dark card, so the list (and its empty message) reads over the bright street behind
         Image viewImage = view.GetComponent<Image>();
-        UITheme.Round(viewImage, 10f);
+        UITheme.Round(viewImage, UITheme.PanelRadius);
         if (viewImage != null) viewImage.color = UITheme.Panel;
 
         // Thin, quiet scrollbar
@@ -264,9 +272,9 @@ public partial class Launcher
         block.pivot = new Vector2(0.5f, 0.5f);
         block.sizeDelta = new Vector2(RoomListWidth, 70f);
 
-        Text caption = UITheme.NewText("Caption", block, 14, UITheme.AccentText, TextAnchor.LowerLeft);
+        Text caption = UITheme.NewText("Caption", block, UITheme.MenuCaptionSize, UITheme.AccentText, TextAnchor.LowerLeft);
         UITheme.Row(caption.rectTransform, 0f, 18f);
-        caption.text = "HAVE A ROOM CODE?";
+        UITheme.SectionHeader(caption, "HAVE A ROOM CODE?");
 
         // A text field built from scratch (the menu's own fields carry the scene's listeners)
         GameObject fieldObject = new GameObject("Code", typeof(RectTransform), typeof(Image), typeof(InputField));
@@ -470,7 +478,7 @@ public partial class Launcher
     {
         row.sizeDelta = new Vector2(ColumnWidth, height);
         Image background = row.GetComponent<Image>();
-        UITheme.Round(background, 8f);
+        UITheme.Round(background, UITheme.ControlRadius);
         if (background != null) background.color = UITheme.Surface;
 
         Text name = row.Find("Text")?.GetComponent<Text>();

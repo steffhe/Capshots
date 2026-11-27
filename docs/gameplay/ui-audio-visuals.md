@@ -19,11 +19,25 @@ When adding UI, follow this pattern and `UITheme` helpers instead of adding new 
 | --- | --- |
 | Main menu | `Launcher.cs` (rooms, create/join, settings fields wired in `Menu.unity`), `Launcher.Home.cs`, `Launcher.Style.cs`, `MainMenu`, `MenuScenery`, `MenuBattle` (cosmetic bots), `RotateTowards` |
 | In-match menus | `Pause.cs`, `SettingsMenu`, `CustomizeMenu`, `Manager.Scoreboard`, `Manager.Voting`, `AwardStage` |
+| Menu design system | `UITheme.Menu` (tokens, panel chrome, section headers, switches), `UITheme.StyleButton*` (button styles), `MenuButtonFx` (hover / focus rail), `MenuReveal` (screen fade-in), `MenuNavigation` (controller focus brackets) |
 | HUD and feedback | `UITheme.Hud` (layout and tokens), `HudFeedback` (health, weapon cluster, crosshair, kill confirmation), `FeedbackUI` (damage flash, kill feed, death screen), `Manager.ScoreStrip`, `Manager.CapArrows`, `Manager.Lobby` (lobby card), `Core/HudRules` |
 | Controller / touch / browser | `MenuNavigation` (controller menus), `TouchControls`, `BrowserGamepad`, `Browser` + `Assets/Plugins/WebGL/Browser.jslib`, `BrowserGraphics` |
 | Cameras | `Look` (player view), `DeathCam`, `MapCamera` (directed spectator/results camera) |
 | Effects | `ShotEffects` (pooled), `BeamFade`, `KillSpark`, `CapshotBurst`, `NeckSparks`, `HoverVisuals` |
 | Settings and saves | `GameSettings` (PlayerPrefs), `Data` (profile JSON; PlayerPrefs on WebGL), `GameInput` (rebinds in PlayerPrefs `input.bindings`) |
+
+## Menu design system
+
+Every menu (main menu and its tabs, settings, customize, option lists, pause menu, lobby card, results and the vote) is styled from `UITheme` at runtime, so the look lives in code, not in scenes:
+
+- **Tokens** (`UITheme.Menu`): type scale `MenuDisplaySize` 56 / `MenuTitleSize` 34 / `MenuHeadingSize` 20 / `MenuBodySize` 18 / `MenuLabelSize` 15 / `MenuCaptionSize` 13; spacing `Space1`-`Space6` on a 4-unit grid; `ControlRadius` 6 and `PanelRadius` 10. Colours are the palette in `UITheme` plus `Hairline`, `Bracket`, `SurfaceHover`, `DangerText` and `DangerSurface`. Accent blue means interface and "you"; gold stays for cap shots.
+- **Buttons** (`UITheme.ButtonStyle`): `Primary` (accent; the one main action on a screen: QUICK PLAY, CREATE MATCH, DONE, BACK TO MATCH), `Secondary` (dark surface, lighter on hover), `Ghost` (quiet: BACK, QUIT, RESET CONTROLS, leaving the results) and `Danger` (red text and hover: LEAVE MATCH, the host leaving the results). Every styled button gets an accent rail on its left edge while pointed at, or selected with a controller (`MenuButtonFx`; a mouse click's leftover selection doesn't show it). Selectors that open a list keep a downward chevron; buttons that step through values (`UITheme.StyleCycle`) point onwards; on / off settings show a switch (`UITheme.AddSwitch` / `SetSwitch`).
+- **Panels** (`UITheme.PanelChrome`): the dark plate with corner brackets just inside each corner and a short accent tab on its top edge. Settings, Customize, the profile card, the XP summary and the vote have it; the lobby card and option lists have the brackets only. The controller's selection is shown with the same brackets in the accent (`MenuNavigation`).
+- **Section headings** (`UITheme.SectionHeader`): caption size, accent, with a hairline running on to the right.
+- **Transitions** (`MenuReveal`, added with `UITheme.Reveal`): the main menu's tabs, Settings, Customize and the pause menu fade in over 0.16 s as they open (the tabs also settle from 98.5% scale), in unscaled time. Only alpha and scale change, so input works throughout; scale is left off where code sets the scale (the settings panel's fit to the screen).
+- Removed for restraint: the Quick Play glow outline and pulse, and the NEW badge's pulse.
+
+Not yet in the system: the loading screen (its own look), the award stage, and the scoreboard's rows.
 
 ## Combat HUD
 

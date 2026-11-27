@@ -64,9 +64,10 @@ public class OptionPicker : MonoBehaviour
         if (top - height < screen.yMin && max.y + Gap + height <= screen.yMax) top = max.y + Gap + height;
         top = Mathf.Clamp(top, screen.yMin + height, screen.yMax);
 
-        Image panel = UITheme.NewImage("List", cover.transform, UITheme.Panel, 10f);
+        Image panel = UITheme.NewImage("List", cover.transform, UITheme.Panel, UITheme.PanelRadius);
         panel.raycastTarget = true; // clicks on the list's edges don't fall through to the cover
         UITheme.AddShadow(panel, 0.5f);
+        UITheme.PanelChrome(panel, false);
         RectTransform panelRect = panel.rectTransform;
         panelRect.anchorMin = panelRect.anchorMax = new Vector2(0.5f, 0.5f);
         panelRect.pivot = new Vector2(0f, 1f);

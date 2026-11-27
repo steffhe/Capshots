@@ -297,7 +297,7 @@ public static partial class UITheme
         if (header != null)
         {
             Image image = header.GetComponent<Image>();
-            Round(image, 8f);
+            Round(image, ControlRadius);
             if (image != null) image.color = Panel;
             StyleText(header.Find("Mode")?.GetComponent<Text>(), 22, TextColor);
             StyleText(header.Find("Map")?.GetComponent<Text>(), 15, MutedText);
@@ -344,13 +344,15 @@ public static partial class UITheme
 
     #region Pause menu
 
-    // Dims the match behind the menu and styles its buttons. The settings panel copies the
-    // pause menu's button, slider and label, so it picks up this style too.
+    // Dims the match behind the menu and styles its buttons: BACK TO MATCH primary, LEAVE MATCH as a
+    // danger button, the rest secondary, all one text size. It fades in as it opens. The settings
+    // panel copies the pause menu's button, slider and label, so it picks up this style too.
     public static void StylePause(Transform pause)
     {
         if (pause == null || pause.childCount == 0) return;
         UseFontIn(pause.root);
         Transform anchor = pause.GetChild(0);
+        Reveal(anchor.gameObject);
 
         Image overlay = anchor.Find("Overlay")?.GetComponent<Image>();
         if (overlay != null) overlay.color = Dim;
@@ -373,7 +375,7 @@ public static partial class UITheme
             Text title = buttons.Find("Logo")?.GetComponent<Text>();
             if (title != null)
             {
-                StyleText(title, 56, TextColor, TextAnchor.MiddleCenter);
+                StyleText(title, MenuDisplaySize, TextColor, TextAnchor.MiddleCenter);
                 // The match carries on behind it, so it isn't "paused": just the menu
                 title.text = "MENU";
                 title.rectTransform.sizeDelta = new Vector2(300f, 120f);
@@ -384,7 +386,9 @@ public static partial class UITheme
                 Button button = child.GetComponent<Button>();
                 if (button == null) continue;
                 ((RectTransform)child).sizeDelta = new Vector2(300f, 52f);
-                StyleButton(button, child.name == "Button (1)" ? ButtonStyle.Primary : ButtonStyle.Secondary);
+                // "Button (1)" is Resume, "Button" is Quit (leave the match)
+                ButtonStyle style = child.name == "Button (1)" ? ButtonStyle.Primary : child.name == "Button" ? ButtonStyle.Danger : ButtonStyle.Secondary;
+                StyleButton(button, style, 20);
                 Text label = button.GetComponentInChildren<Text>(true);
                 if (label != null && label.text == "QUIT") label.text = "LEAVE MATCH";
                 if (label != null && label.text == "RESUME") label.text = "BACK TO MATCH";

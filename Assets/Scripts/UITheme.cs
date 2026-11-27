@@ -203,10 +203,13 @@ public static partial class UITheme
         shadow.effectDistance = new Vector2(1.5f, -1.5f);
     }
 
-    public enum ButtonStyle { Primary, Secondary }
+    // Primary: the one main action on a screen, in the accent. Secondary: everything else, on a dark
+    // surface. Ghost: quiet actions like BACK, text on a see-through plate. Danger: leaving or quitting.
+    // Every style gets the accent rail on hover and controller focus (MenuButtonFx).
+    public enum ButtonStyle { Primary, Secondary, Ghost, Danger }
 
     // Rounded background and hover / press colours. Leaves the button's text alone.
-    public static void StyleButtonBackground(Selectable selectable, ButtonStyle style, float radius = 8f)
+    public static void StyleButtonBackground(Selectable selectable, ButtonStyle style, float radius = ControlRadius)
     {
         if (selectable == null) return;
         Image image = selectable.targetGraphic as Image;
@@ -219,9 +222,29 @@ public static partial class UITheme
         }
 
         ColorBlock colors = selectable.colors;
-        colors.normalColor = style == ButtonStyle.Primary ? Accent : Surface;
-        colors.highlightedColor = AccentHover;
-        colors.pressedColor = AccentPressed;
+        switch (style)
+        {
+            case ButtonStyle.Primary:
+                colors.normalColor = Accent;
+                colors.highlightedColor = AccentHover;
+                colors.pressedColor = AccentPressed;
+                break;
+            case ButtonStyle.Ghost:
+                colors.normalColor = new Color(1f, 1f, 1f, 0.04f);
+                colors.highlightedColor = Field;
+                colors.pressedColor = new Color(1f, 1f, 1f, 0.16f);
+                break;
+            case ButtonStyle.Danger:
+                colors.normalColor = Surface;
+                colors.highlightedColor = DangerSurface;
+                colors.pressedColor = new Color(0.45f, 0.1f, 0.1f, 0.95f);
+                break;
+            default:
+                colors.normalColor = Surface;
+                colors.highlightedColor = SurfaceHover;
+                colors.pressedColor = AccentPressed;
+                break;
+        }
         // After a click the button stays selected: keep it looking normal rather than highlighted
         colors.selectedColor = colors.normalColor;
         colors.disabledColor = new Color(0.3f, 0.3f, 0.3f, 0.5f);
@@ -229,16 +252,21 @@ public static partial class UITheme
         colors.fadeDuration = 0.08f;
         selectable.colors = colors;
         selectable.transition = Selectable.Transition.ColorTint;
+
+        MenuButtonFx fx = selectable.GetComponent<MenuButtonFx>();
+        if (fx == null) fx = selectable.gameObject.AddComponent<MenuButtonFx>();
+        fx.SetColor(style == ButtonStyle.Primary ? Color.white : style == ButtonStyle.Danger ? DangerText : AccentText);
     }
 
-    // Background plus a centred, upper-case label
+    // Background plus a centred, upper-case label (muted for Ghost, red for Danger)
     public static void StyleButton(Button button, ButtonStyle style, int fontSize = 22)
     {
         if (button == null) return;
         StyleButtonBackground(button, style);
         Text label = button.GetComponentInChildren<Text>(true);
         if (label == null) return;
-        StyleText(label, fontSize, TextColor, TextAnchor.MiddleCenter);
+        Color color = style == ButtonStyle.Ghost ? new Color(1f, 1f, 1f, 0.78f) : style == ButtonStyle.Danger ? DangerText : TextColor;
+        StyleText(label, fontSize, color, TextAnchor.MiddleCenter);
         // Leave rich text alone: upper-casing would break its tags
         if (!label.text.Contains("<")) label.text = label.text.ToUpperInvariant();
     }

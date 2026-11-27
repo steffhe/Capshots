@@ -127,8 +127,10 @@ public partial class Manager
         if (Hud != null && Hud.transform.parent == canvas) lobbyPanel.SetSiblingIndex(Hud.transform.GetSiblingIndex() + 1);
         UITheme.Place(lobbyPanel, new Vector2(0f, 1f), new Vector2(28f, -28f), new Vector2(LobbyWidth, 200f));
 
-        Image background = UITheme.NewImage("Background", lobbyPanel, UITheme.Panel, 12f);
+        Image background = UITheme.NewImage("Background", lobbyPanel, UITheme.Panel, UITheme.PanelRadius);
         UITheme.Stretch(background.rectTransform);
+        // The menus' corner brackets (its own accent line, below, stands in for the panel's tab)
+        UITheme.PanelChrome(background, false);
         // A thin accent line along the top, like the match clock's
         Image accent = UITheme.NewImage("Accent", lobbyPanel, UITheme.Accent, 1.5f);
         LobbyPlace(accent.rectTransform, 0f, 3f, 12f, 12f);

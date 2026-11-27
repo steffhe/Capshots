@@ -3,6 +3,12 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
+// The in-match menu (the Pause prefab in each map scene). It doesn't pause the match, which carries
+// on behind it: BACK TO MATCH, Settings and Customize (SettingsMenu adds them), LEAVE MATCH, the
+// room code with an invite link, and in a lobby READY UP and the host's START MATCH NOW. Styled by
+// UITheme.StylePause; opened with Esc / Start by Player while alive and by this script while dead or
+// on the end screens. Local only: Ready goes to the host by RPC (Manager.ToggleReady); Start is
+// only shown to the host and runs there (Manager.ForceStart).
 public class Pause : MonoBehaviour
 {
     public static bool paused = false;
@@ -141,7 +147,7 @@ public class Pause : MonoBehaviour
         if (button == null || label == null) { Destroy(copy); return null; }
         for (int i = 0; i < button.onClick.GetPersistentEventCount(); i++)
             button.onClick.SetPersistentListenerState(i, UnityEngine.Events.UnityEventCallState.Off);
-        UITheme.StyleButton(button, UITheme.ButtonStyle.Secondary, 18);
+        UITheme.StyleButton(button, UITheme.ButtonStyle.Secondary, 20);
         return button;
     }
 
@@ -161,7 +167,7 @@ public class Pause : MonoBehaviour
         UnityEngine.UI.Button start = CopyMenuButton(buttons, "Start Match", resume.GetSiblingIndex() + 1, out startLabel);
         if (start != null)
         {
-            UITheme.StyleButton(start, UITheme.ButtonStyle.Primary, 18);
+            UITheme.StyleButton(start, UITheme.ButtonStyle.Primary, 20);
             startLabel.text = "START MATCH NOW";
             start.onClick.AddListener(() =>
             {
