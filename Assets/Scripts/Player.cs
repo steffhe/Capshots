@@ -57,6 +57,17 @@ public class Player : NetworkBehaviour
     public float airDrag = 8f;
     // Running down stairs and ramps keeps the body on the ground if the ground is at most this far below
     public float groundSnapDistance = 0.5f;
+    // Seconds after running off an edge that jump still works, and before landing that a jump press is kept
+    public float coyoteTime = 0.1f;
+    public float jumpBufferTime = 0.1f;
+
+    [Header("Slide")]
+    // A slide starts at slideModifier x walking speed (with the gun's multiplier), or faster if already
+    // going faster, slows by this much (m/s per second) down to crouching speed, and turns towards the
+    // input at up to slideSteering degrees a second. Then slideCooldown seconds before the next one.
+    public float slideFriction = 17f;
+    public float slideSteering = 90f;
+    public float slideCooldown = 0.6f;
 
     public ProfileData playerProfile;
     public TextMeshPro playerUsername;
@@ -166,6 +177,10 @@ public class Player : NetworkBehaviour
     [Networked] private Vector3 SlideDirection { get; set; }
     [Networked] private Vector3 Velocity { get; set; }
     [Networked] private NetworkBool Grounded { get; set; }
+    // The last tick the body stood on something, and the last tick jump was pressed (0 = none, or used
+    // up by a jump): coyote time and the jump buffer
+    [Networked] private int LastGroundedTick { get; set; }
+    [Networked] private int JumpPressTick { get; set; }
     // Where this player looks up or down, in degrees (positive = up). Other players see the gun tilt with it.
     [Networked] public float Pitch { get; set; }
     [Networked] private TickTimer ProtectionTimer { get; set; }
@@ -498,93 +513,101 @@ public class Player : NetworkBehaviour
     private void Move(PlayerInputData input, NetworkButtons pressed)
     {
         float dt = Runner.DeltaTime;
+        int tick = Runner.Tick.Raw;
 
         float hmove = input.Move.x;
         float vmove = input.Move.y;
 
         bool sprint = input.Buttons.IsSet(InputButton.Sprint);
-        bool jump = pressed.IsSet(InputButton.Jump);
         bool crouch = pressed.IsSet(InputButton.Crouch);
         bool slide = pressed.IsSet(InputButton.Slide);
 
         //States
         bool isgrounded = OnGround();
-        bool isJumping = jump && isgrounded;
+        if (isgrounded) LastGroundedTick = tick;
+        // A jump pressed a moment before landing still happens (the buffer), and one pressed a moment
+        // after running off an edge too (coyote time)
+        if (pressed.IsSet(InputButton.Jump)) JumpPressTick = tick;
+        bool jumpWanted = MovementRules.WithinTicks(tick, JumpPressTick, SecondsToTicks(jumpBufferTime));
+        bool canJump = isgrounded || MovementRules.WithinTicks(tick, LastGroundedTick, SecondsToTicks(coyoteTime));
+        bool isJumping = jumpWanted && canJump;
         bool isSprinting = sprint && vmove > 0 && !isJumping && isgrounded;
-        bool isCrouching = crouch && !isJumping && !isSprinting && isgrounded;
-        bool isSliding = isSprinting && slide && !Sliding;
+        bool isCrouching = crouch && !isJumping && !isSprinting && isgrounded && !Sliding;
 
         Vector3 velocity = Velocity;
+        // Heavier guns, and aiming, slow you down
+        float gunMultiplier = weapon.MoveSpeedMultiplier();
 
-        //Crouching
-        if (isCrouching) SetCrouch(!Crouched);
+        //Crouching (standing up only where there's room)
+        if (isCrouching)
+        {
+            if (Crouched) TryStand();
+            else SetCrouch(true);
+        }
 
         //Jumping
         if (isJumping)
         {
-            if (Crouched) SetCrouch(false);
+            TryStand();
             velocity.y = jumpForce * LegacyStep;
+            // Used up: no second jump from the same press or the same ground
+            JumpPressTick = 0;
+            LastGroundedTick = 0;
         }
 
-        Vector3 direction;
-        float adjustedSpeed = speed;
-        // How hard the input pushes, 0 to 1: a stick pushed halfway moves at half speed
-        float push = 1f;
-        // Heavier guns, and aiming, slow you down
-        float gunMultiplier = weapon.MoveSpeedMultiplier();
-        // A slide goes straight at its own speed; everything else thrusts and brakes (MovementRules)
-        bool slideMove = Sliding;
+        // Where the input points, flat, and how hard it pushes (0 to 1: a stick pushed halfway moves at half speed)
+        Vector3 direction = new Vector3(hmove, 0, vmove);
+        float push = Mathf.Clamp01(direction.magnitude);
+        direction.Normalize();
+        direction = transform.TransformDirection(direction);
 
-        //Movement
-        if (!Sliding)
+        //Sliding: ends when its time is up, on leaving the ground or jumping, or when it has slowed to a
+        //crouch (a wall stops it). Then SlideTimer runs the cooldown before the next one.
+        float crouchSpeed = speed * crouchModifier * LegacyStep * gunMultiplier;
+        if (Sliding)
         {
-            direction = new Vector3(hmove, 0, vmove);
-            push = Mathf.Clamp01(direction.magnitude);
-            direction.Normalize();
-            direction = transform.TransformDirection(direction);
-
-            if (isSprinting)
+            float slideSpeedNow = new Vector2(velocity.x, velocity.z).magnitude;
+            if (SlideTimer.Expired(Runner) || !isgrounded || isJumping || slideSpeedNow <= crouchSpeed + 0.01f)
             {
-                if (Crouched) SetCrouch(false);
-                adjustedSpeed *= sprintModifier;
+                Sliding = false;
+                SlideTimer = slideCooldown > 0f ? TickTimer.CreateFromSeconds(Runner, slideCooldown) : TickTimer.None;
+                TryStand();
             }
-            else if (Crouched)
-            {
-                adjustedSpeed *= crouchModifier;
-            }
+        }
 
+        bool isSliding = isSprinting && slide && !Sliding && SlideTimer.ExpiredOrNotRunning(Runner);
+        float adjustedSpeed = speed;
+        if (!Sliding && !isSliding)
+        {
+            if (isSprinting && Crouched) TryStand();
+            // Sprinting needs room to stand up; under a desk it stays a crouch
+            if (isSprinting && !Crouched) adjustedSpeed *= sprintModifier;
+            else if (Crouched) adjustedSpeed *= crouchModifier;
             adjustedSpeed *= gunMultiplier;
         }
-        else
-        {
-            direction = SlideDirection;
-            adjustedSpeed *= slideModifier;
-            if (SlideTimer.ExpiredOrNotRunning(Runner))
-            {
-                if (Crouched) SetCrouch(false);
-                Sliding = false;
-                SlideTimer = TickTimer.None;
-            }
-        }
 
-        //Sliding
+        Vector2 horizontal = new Vector2(velocity.x, velocity.z);
+        Vector2 wish = new Vector2(direction.x, direction.z);
         if (isSliding)
         {
             Sliding = true;
             SlideDirection = direction;
             SlideTimer = TickTimer.CreateFromSeconds(Runner, lengthOfSlide);
             if (!Crouched) SetCrouch(true);
+            // A burst: at least the slide's own speed (with this gun), or faster if already going faster
+            float slideStart = speed * slideModifier * LegacyStep * gunMultiplier;
+            horizontal = wish * Mathf.Max(horizontal.magnitude, slideStart);
         }
 
-        Vector2 horizontal = new Vector2(velocity.x, velocity.z);
-        if (slideMove)
+        if (Sliding)
         {
-            Vector3 slideVelocity = direction * adjustedSpeed * LegacyStep;
-            horizontal = new Vector2(slideVelocity.x, slideVelocity.z);
+            // Slows down, and turns a little towards where the input points
+            Vector2 slideDirection = new Vector2(SlideDirection.x, SlideDirection.z);
+            horizontal = MovementRules.SlideStep(slideDirection, horizontal.magnitude, wish, slideSteering, slideFriction, crouchSpeed, dt);
+            if (horizontal.sqrMagnitude > 0.0001f) SlideDirection = new Vector3(horizontal.x, 0f, horizontal.y).normalized;
         }
         else
         {
-            Vector2 wish = new Vector2(direction.x, direction.z);
             float wishSpeed = adjustedSpeed * LegacyStep * push;
             MovementRules.Tuning tuning = MoveTuning(gunMultiplier);
             if (isgrounded)
@@ -703,6 +726,28 @@ public class Player : NetworkBehaviour
         Physics.IgnoreLayerCollision(Layers.Ragdoll, Layers.RemotePlayer, true);
     }
 
+    // Seconds as a whole number of ticks
+    private int SecondsToTicks(float seconds) => Mathf.Max(0, Mathf.RoundToInt(seconds * Runner.TickRate));
+
+    // Stands up if there's room above the crouched body; returns whether it's standing. The check is
+    // against scenery only (the same on every machine), so predicting it is safe.
+    private bool TryStand()
+    {
+        if (!Crouched) return true;
+        if (!HasHeadroom()) return false;
+        SetCrouch(false);
+        return true;
+    }
+
+    // Room for the standing capsule's top part (the part the crouched one doesn't have)
+    private bool HasHeadroom()
+    {
+        float radius = controller.radius;
+        Vector3 low = transform.position + Vector3.up * (bodyBottom + crouchingHeight - radius);
+        Vector3 high = transform.position + Vector3.up * (bodyBottom + standingHeight - radius);
+        return !Physics.CheckCapsule(low, high, radius * 0.95f, WorldMask, QueryTriggerInteraction.Ignore);
+    }
+
     void SetCrouch(bool state)
     {
         if (Crouched == state) return;
@@ -773,7 +818,7 @@ public class Player : NetworkBehaviour
         float vmove = moveInput.y;
 
         //Controls
-        bool sprint = GameInput.Held(GameInput.Sprint);
+        bool sprint = GameInput.SprintWanted;
         bool pause = GameInput.PausePressed;
 
         //States

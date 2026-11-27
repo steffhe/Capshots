@@ -61,6 +61,8 @@ public class InputCollector
         Weapon weapon = SyncBody(local);
 
         if (GameInput.Pressed(GameInput.Jump)) jump = true;
+        // Keeps a toggled sprint up to date every frame, so its presses are never missed
+        _ = GameInput.SprintWanted;
         if (GameInput.Pressed(GameInput.Crouch)) crouch = true;
         if (GameInput.Pressed(GameInput.Slide)) slide = true;
         if (GameInput.Pressed(GameInput.Fire)) fire = true;
@@ -88,7 +90,7 @@ public class InputCollector
 
         data.Move = GameInput.MoveValue;
         data.Buttons.Set(InputButton.Jump, jump);
-        data.Buttons.Set(InputButton.Sprint, GameInput.Held(GameInput.Sprint));
+        data.Buttons.Set(InputButton.Sprint, GameInput.SprintWanted);
         data.Buttons.Set(InputButton.Crouch, crouch);
         data.Buttons.Set(InputButton.Slide, slide);
         data.Buttons.Set(InputButton.Fire, fire || GameInput.Held(GameInput.Fire));

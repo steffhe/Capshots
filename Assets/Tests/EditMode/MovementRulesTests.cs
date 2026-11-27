@@ -109,6 +109,48 @@ public class MovementRulesTests
         Assert.AreEqual(velocity, MovementRules.LimitToActual(velocity, new Vector2(20f * Dt, 0f), Dt));
     }
 
+    [Test]
+    public void Slide_SlowsToCrouchingSpeedButNoLower()
+    {
+        Vector2 v = MovementRules.SlideStep(Vector2.up, 18f, Vector2.up, 90f, 17f, 5f, Dt);
+        Assert.AreEqual(18f - 17f * Dt, v.magnitude, 1e-4f);
+        Vector2 slow = MovementRules.SlideStep(Vector2.up, 5.1f, Vector2.up, 90f, 17f, 5f, Dt);
+        Assert.AreEqual(5f, slow.magnitude, 1e-4f);
+    }
+
+    [Test]
+    public void Slide_TurnsTowardsTheInputAtMostItsSteering()
+    {
+        // Wanting to go right while sliding forward: one tick turns 90 degrees/s x 1/40 s
+        Vector2 v = MovementRules.SlideStep(Vector2.up, 10f, Vector2.right, 90f, 0f, 0f, Dt);
+        Assert.AreEqual(90f * Dt, Vector2.Angle(Vector2.up, v), 1e-3f);
+        Assert.Greater(v.x, 0f);
+        Assert.AreEqual(10f, v.magnitude, 1e-4f);
+    }
+
+    [Test]
+    public void Slide_WithTheseRatesIsSlowerThanSprintingOnAverage()
+    {
+        // A slide from 18 m/s for 0.75 s (30 ticks) at 17 m/s per second, down to 5
+        float distance = 0f, speed = 18f;
+        for (int i = 0; i < 30; i++)
+        {
+            speed = MovementRules.SlideStep(Vector2.up, speed, Vector2.up, 90f, 17f, 5f, Dt).magnitude;
+            distance += speed * Dt;
+        }
+        Assert.Less(distance / 0.75f, Sprint);
+    }
+
+    [Test]
+    public void WithinTicks_CoversTheWindowAndNothingElse()
+    {
+        Assert.IsTrue(MovementRules.WithinTicks(100, 100, 4));
+        Assert.IsTrue(MovementRules.WithinTicks(104, 100, 4));
+        Assert.IsFalse(MovementRules.WithinTicks(105, 100, 4));
+        Assert.IsFalse(MovementRules.WithinTicks(99, 100, 4));
+        Assert.IsFalse(MovementRules.WithinTicks(100, 0, 4));
+    }
+
     // The Player prefab's jump, with the project's gravity: high enough to get onto the Prototype map's
     // 2.5 m decks (DECK), not onto its 3 m crates, and well short of its 4.5 m lane walls (LANE_WALL).
     // The capsule also steps up 0.3 m (STEP) on top of the jump.

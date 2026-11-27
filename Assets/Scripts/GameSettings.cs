@@ -24,6 +24,7 @@ public static class GameSettings
     private const string MusicVolumeKey = "settings.musicVolume";
     private const string EffectsVolumeKey = "settings.effectsVolume";
     private const string InvertYKey = "settings.invertY";
+    private const string ToggleSprintKey = "settings.toggleSprint";
     private const string ScreenShakeKey = "settings.screenShake";
     private const string QualityKey = "settings.quality";
     private const string AdsSensitivityKey = "settings.adsSensitivity";
@@ -197,6 +198,13 @@ public static class GameSettings
     public static event System.Action ShowFpsChanged;
 
     // Pushing the stick or mouse up looks down, and the other way round
+    // Sprint by pressing once instead of holding (GameInput.SprintWanted); off by default
+    public static bool ToggleSprint
+    {
+        get => PlayerPrefs.GetInt(ToggleSprintKey, 0) == 1;
+        set { PlayerPrefs.SetInt(ToggleSprintKey, value ? 1 : 0); PlayerPrefs.Save(); }
+    }
+
     public static bool InvertY
     {
         get => PlayerPrefs.GetInt(InvertYKey, 0) == 1;

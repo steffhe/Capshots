@@ -83,6 +83,28 @@ public static class MovementRules
         return velocity;
     }
 
+    // One tick of a slide: speed falls by friction (never below minSpeed) and the direction turns
+    // towards wish by at most steering degrees a second. Returns the new velocity.
+    public static Vector2 SlideStep(Vector2 direction, float speed, Vector2 wish, float steering, float friction, float minSpeed, float dt)
+    {
+        Vector2 dir = direction.sqrMagnitude > 0.000001f ? direction.normalized : Vector2.zero;
+        if (dir != Vector2.zero && wish.sqrMagnitude > 0.000001f && steering > 0f)
+        {
+            float angle = Vector2.SignedAngle(dir, wish.normalized);
+            float turn = Mathf.Clamp(angle, -steering * dt, steering * dt) * Mathf.Deg2Rad;
+            float cos = Mathf.Cos(turn), sin = Mathf.Sin(turn);
+            dir = new Vector2(dir.x * cos - dir.y * sin, dir.x * sin + dir.y * cos);
+        }
+        float newSpeed = Mathf.Max(minSpeed, speed - friction * dt);
+        return dir * newSpeed;
+    }
+
+    // Whether markTick (0 = none) was at most window ticks before tick: coyote time and the jump buffer
+    public static bool WithinTicks(int tick, int markTick, int window)
+    {
+        return markTick != 0 && tick >= markTick && tick - markTick <= window;
+    }
+
     // After the body has moved: if it moved less than its velocity said (a wall), the velocity
     // becomes what it actually did, so pushing into a wall doesn't store speed. Never increases it.
     public static Vector2 LimitToActual(Vector2 velocity, Vector2 moved, float dt)

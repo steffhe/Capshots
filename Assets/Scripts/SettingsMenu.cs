@@ -6,7 +6,7 @@ using UnityEngine.UI;
 
 // Settings panel inside the pause menu: look sensitivity, ADS sensitivity, field of view, master,
 // effects and music volume, graphics quality, colours, the FPS counter, key bindings, invert Y and
-// camera effects (screen shake and speed FOV). Built at runtime from copies of the pause menu's own button,
+// camera effects (screen shake and speed FOV) and the sprint mode. Built at runtime from copies of the pause menu's own button,
 // slider and label (styled by UITheme.StylePause), so the Pause prefab doesn't need editing.
 // It also adds the pause menu's Customize button and panel (CustomizeMenu), under Settings.
 // The main menu has the same panel (CreateForMainMenu), built from copies of its own button,
@@ -24,6 +24,7 @@ public class SettingsMenu : MenuPanel
     private Text coloursText;
     private Text fpsText;
     private Text invertText;
+    private Text sprintText;
     private Text shakeText;
 
     private class BindingRow
@@ -284,7 +285,8 @@ public class SettingsMenu : MenuPanel
             AddBindingRow(rect, entry.Key, entry.Value, GameInput.KeyboardBindingIndex(entry.Value));
         }
 
-        // Under the bindings, level with DONE: camera effects (screen shake and speed FOV), and invert Y above it
+        // Under the bindings, level with DONE: camera effects (screen shake and speed FOV), invert Y above it
+        // and the sprint mode above that
         float toggleY = -PanelHeight / 2f + 58f;
         GameObject shake = NewButton(rect, "", () =>
         {
@@ -304,9 +306,18 @@ public class SettingsMenu : MenuPanel
         Place(invert, new Vector2(RightColumn, toggleY + 56f), new Vector2(ColumnWidth, 48f));
         invertText = invert.GetComponentInChildren<Text>();
 
+        GameObject sprintMode = NewButton(rect, "", () =>
+        {
+            GameSettings.ToggleSprint = !GameSettings.ToggleSprint;
+            RefreshLabels();
+        });
+        UITheme.StyleSelector(sprintMode.GetComponent<Button>());
+        Place(sprintMode, new Vector2(RightColumn, toggleY + 112f), new Vector2(ColumnWidth, 48f));
+        sprintText = sprintMode.GetComponentInChildren<Text>();
+
         // Rows share the column's height above those between them, so a longer list still fits
         float top = HeaderY - 30f;
-        float bottom = toggleY + 56f + 24f + 8f;
+        float bottom = toggleY + 112f + 24f + 8f;
         float step = bindingRows.Count > 0 ? Mathf.Min(36f, (top - bottom) / bindingRows.Count) : 0f;
         y = top - step / 2f;
         foreach (BindingRow row in bindingRows)
@@ -380,6 +391,7 @@ public class SettingsMenu : MenuPanel
         musicValue.text = Mathf.RoundToInt(GameSettings.MusicVolume * 100f) + "%";
         qualityText.text = UITheme.Option("GRAPHICS", GameSettings.QualityName.ToUpperInvariant());
         if (fpsText != null) fpsText.text = UITheme.Option("FPS COUNTER", GameSettings.ShowFps ? "ON" : "OFF");
+        if (sprintText != null) sprintText.text = UITheme.Option("SPRINT", GameSettings.ToggleSprint ? "TOGGLE" : "HOLD");
         if (invertText != null) invertText.text = UITheme.Option("INVERT Y", GameSettings.InvertY ? "ON" : "OFF");
         if (shakeText != null) shakeText.text = UITheme.Option("CAMERA EFFECTS", GameSettings.ScreenShake ? "ON" : "OFF");
         if (coloursText != null) coloursText.text = UITheme.Option("COLOURS", GameSettings.Colourblind ? "COLOUR BLIND" : "STANDARD");

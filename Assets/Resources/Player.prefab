@@ -471,7 +471,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 8
   lengthOfSlide: 0.75
-  slideModifier: 2.5
+  slideModifier: 1.8
   crouchAmount: 0.5
   slideAmount: 0.5
   standingCollider: {fileID: 2594016786546293284}
