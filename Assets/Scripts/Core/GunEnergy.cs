@@ -23,4 +23,16 @@ public static class GunEnergy
     {
         return Mathf.Min(max, energy + Mathf.Max(0f, rate) * Mathf.Max(0f, seconds));
     }
+
+    // Out of energy for a shot: whether to swap the cell (true) or just wait for the shot's energy to
+    // refill (false). Waiting wins when the refill, starting 'secondsUntilRegen' from now at 'rate' a
+    // second, covers the shot within 'patience' seconds, so a sniper rifle a sliver short of a shot
+    // doesn't start a whole cell swap.
+    public static bool ShouldSwapCell(float energy, float costPerShot, float rate, float secondsUntilRegen, float patience)
+    {
+        if (CanFire(energy, costPerShot)) return false;
+        if (rate <= 0f) return true;
+        float wait = Mathf.Max(0f, secondsUntilRegen) + (costPerShot - energy) / rate;
+        return wait > patience;
+    }
 }

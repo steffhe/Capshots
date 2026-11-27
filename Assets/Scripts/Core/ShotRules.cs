@@ -51,4 +51,28 @@ public static class ShotRules
         if (damage <= 0 || maxHealth <= 0) return 0;
         return (byte)Mathf.Clamp(Mathf.RoundToInt(255f * damage / maxHealth), 1, 255);
     }
+
+    // Where a shot lands inside its spread, from two random numbers 0 to 1: evenly over a disc of
+    // radius 1 (times the spread), so the spread is round, as the HUD's ticks show it. (It used to be
+    // a square, whose corners reached 41% further than the ticks.)
+    public static Vector2 DiskPoint(float u1, float u2)
+    {
+        float r = Mathf.Sqrt(Mathf.Clamp01(u1));
+        float a = u2 * Mathf.PI * 2f;
+        return new Vector2(r * Mathf.Cos(a), r * Mathf.Sin(a));
+    }
+
+    // The shotgun's pellets keep a pattern, so a blast lands about the same every time: one in the
+    // middle and the rest in a ring at PelletRing of the spread, the ring turned by 'rotation'
+    // (radians, different every blast) and each pellet nudged by 'jitter' (up to PelletJitter).
+    public const float PelletRing = 0.7f;
+    public const float PelletJitter = 0.3f;
+
+    public static Vector2 PelletOffset(int pellet, int pellets, float rotation, Vector2 jitter)
+    {
+        Vector2 nudge = Vector2.ClampMagnitude(jitter, PelletJitter);
+        if (pellet <= 0 || pellets <= 1) return nudge;
+        float a = rotation + Mathf.PI * 2f * (pellet - 1) / (pellets - 1);
+        return new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * PelletRing + nudge;
+    }
 }

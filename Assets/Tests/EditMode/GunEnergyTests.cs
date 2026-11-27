@@ -34,4 +34,19 @@ public class GunEnergyTests
         Assert.AreEqual(100f, GunEnergy.Regenerate(95f, 100f, 30f, 1f), 1e-4f);
         Assert.AreEqual(10f, GunEnergy.Regenerate(10f, 100f, -5f, 1f), 1e-4f);
     }
+
+    [Test]
+    public void ShouldSwapCell_WaitsWhenTheRefillIsMomentsAway()
+    {
+        // A sniper rifle (20 a shot) at 19.5, refilling at 40 a second already: an eighth of a tick
+        Assert.IsFalse(GunEnergy.ShouldSwapCell(19.5f, 20f, 40f, 0f, 0.25f));
+        // ...but not if the refill only starts in a second
+        Assert.IsTrue(GunEnergy.ShouldSwapCell(19.5f, 20f, 40f, 1f, 0.25f));
+        // Empty: swap
+        Assert.IsTrue(GunEnergy.ShouldSwapCell(0f, 4f, 40f, 0.9f, 0.25f));
+        // Enough energy: nothing to swap for
+        Assert.IsFalse(GunEnergy.ShouldSwapCell(50f, 20f, 40f, 0.9f, 0.25f));
+        // No refill at all: swap
+        Assert.IsTrue(GunEnergy.ShouldSwapCell(19.5f, 20f, 0f, 0f, 0.25f));
+    }
 }

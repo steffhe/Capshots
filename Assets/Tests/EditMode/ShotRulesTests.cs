@@ -86,4 +86,39 @@ public class ShotRulesTests
         // Even a scratch shows
         Assert.AreEqual(1, ShotRules.HitWeightByte(1, 1000));
     }
+
+    [Test]
+    public void DiskPoint_StaysInsideTheCircleAndReachesItsEdge()
+    {
+        float furthest = 0f;
+        for (int i = 0; i <= 20; i++)
+            for (int j = 0; j <= 20; j++)
+            {
+                UnityEngine.Vector2 p = ShotRules.DiskPoint(i / 20f, j / 20f);
+                Assert.LessOrEqual(p.magnitude, 1f + 1e-5f);
+                furthest = UnityEngine.Mathf.Max(furthest, p.magnitude);
+            }
+        Assert.AreEqual(1f, furthest, 1e-4f);
+        Assert.AreEqual(0f, ShotRules.DiskPoint(0f, 0.3f).magnitude, 1e-5f);
+    }
+
+    [Test]
+    public void PelletOffset_IsACentrePelletAndARing()
+    {
+        UnityEngine.Vector2 none = UnityEngine.Vector2.zero;
+        Assert.AreEqual(0f, ShotRules.PelletOffset(0, 8, 1.2f, none).magnitude, 1e-5f);
+        for (int p = 1; p < 8; p++)
+            Assert.AreEqual(ShotRules.PelletRing, ShotRules.PelletOffset(p, 8, 1.2f, none).magnitude, 1e-4f, "pellet " + p);
+        // Ring pellets are spread evenly round it
+        float step = UnityEngine.Vector2.Angle(ShotRules.PelletOffset(1, 8, 0f, none), ShotRules.PelletOffset(2, 8, 0f, none));
+        Assert.AreEqual(360f / 7f, step, 0.01f);
+    }
+
+    [Test]
+    public void PelletOffset_StaysWithinTheSpread()
+    {
+        UnityEngine.Vector2 big = new UnityEngine.Vector2(5f, 5f);
+        for (int p = 0; p < 8; p++)
+            Assert.LessOrEqual(ShotRules.PelletOffset(p, 8, 0.4f, big).magnitude, 1f + 1e-4f, "pellet " + p);
+    }
 }

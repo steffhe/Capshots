@@ -11,7 +11,7 @@ using Fusion;
 // settings (GameSettings.StartingGun). All forms draw on one shared pool of energy,
 // which refills by itself shortly after the last shot; each shot costs its form's energyPerShot.
 // Trying to fire without enough energy swaps the energy cell (a full refill, which the reload key
-// also does). Changing form takes a moment, during which the gun can't fire or aim (GunMorph
+// also does), unless the refill is about to cover the shot anyway. Changing form takes a moment, during which the gun can't fire or aim (GunMorph
 // animates it).
 // Firing, energy and switching run in FixedUpdateNetwork from the player's input: the host decides
 // what is hit (with lag compensation, so shots are checked against where targets were on the
@@ -44,11 +44,15 @@ public class Weapon : NetworkBehaviour
     // The shared pool every form fires from
     public float maxEnergy = 100f;
     // Refilling starts this long after the last shot...
-    public float regenDelay = 1.2f;
+    public float regenDelay = 0.9f;
     // ...at this many points a second
-    public float regenRate = 30f;
-    // Swapping the energy cell (a full refill) takes this long
-    public float cellSwapTime = 1.5f;
+    public float regenRate = 40f;
+    // Swapping the energy cell (a full refill) takes this long. Waiting for the refill is quicker
+    // above about 64% energy, so both are worth doing.
+    public float cellSwapTime = 1.8f;
+    // Firing a sliver short of a shot's energy waits up to this long for the refill to cover it
+    // instead of swapping the cell (see GunEnergy.ShouldSwapCell)
+    public float autoSwapPatience = 0.25f;
 
     [Header("Transforming")]
     // How long the gun takes to change form; it can't fire or aim meanwhile
@@ -358,7 +362,11 @@ public class Weapon : NetworkBehaviour
                 FireQueue = TickTimer.None;
                 if (!GunEnergy.CanFire(Energy, gun.energyPerShot))
                 {
-                    StartReload();
+                    // Swap the cell, unless the refill is about to cover the shot: then a click waits
+                    // for it (held fire just keeps trying)
+                    float untilRegen = RegenDelay.ExpiredOrNotRunning(Runner) ? 0f : RegenDelay.RemainingTime(Runner) ?? 0f;
+                    if (GunEnergy.ShouldSwapCell(Energy, gun.energyPerShot, regenRate, untilRegen, autoSwapPatience)) StartReload();
+                    else if (gun.burst != 1) FireQueue = TickTimer.CreateFromSeconds(Runner, autoSwapPatience + Runner.DeltaTime);
                 }
                 else if (gun.burst == 2)
                 {
@@ -625,13 +633,20 @@ public class Weapon : NetworkBehaviour
         pelletHits.Clear();
         // The shooter's own count for the results screen (once per shot, not on resimulation)
         if (Runner.IsForward && HasInputAuthority && Manager.Instance != null && Manager.Instance.CountsForSummary) Manager.Summary.Shot();
+        // The same random spread on every machine, from the shot and pellet number. A shotgun's ring of
+        // pellets is turned differently every blast.
+        int shotSeed = ShotCount * 7919 + (int)Object.Id.Raw * 104729;
+        float ringTurn = Unit(shotSeed + 997) * Mathf.PI * 2f;
         for (int p = 0; p < pellets; p++)
         {
-            //bloom: the same random spread on every machine, from the shot and pellet number
-            int seed = ShotCount * 7919 + (int)Object.Id.Raw * 104729 + p * 2;
+            int seed = shotSeed + p * 2;
+            Vector2 random = ShotRules.DiskPoint(Unit(seed), Unit(seed + 1));
+            // Round spread for a single shot; the shotgun's pattern (a centre pellet and a ring, each
+            // nudged a little) for pellets
+            Vector2 offset = pellets > 1 ? ShotRules.PelletOffset(p, pellets, ringTurn, random * ShotRules.PelletJitter) : random;
             Vector3 bloom = view * Vector3.forward * 1000f;
-            bloom += Spread(seed) * spread * (view * Vector3.up);
-            bloom += Spread(seed + 1) * spread * (view * Vector3.right);
+            bloom += offset.y * spread * (view * Vector3.up);
+            bloom += offset.x * spread * (view * Vector3.right);
             bloom.Normalize();
 
             Vector3 endPoint = origin + bloom * 1000f;
@@ -772,6 +787,9 @@ public class Weapon : NetworkBehaviour
         }
         pelletHits.Add(new PelletHit { target = target, damage = damage, headDamage = headshot ? damage : 0, direction = direction, point = point });
     }
+
+    // A number from 0 to 1 that only depends on the seed
+    static float Unit(int seed) => (Spread(seed) + 1f) * 0.5f;
 
     // A number from -1 to 1 that only depends on the seed
     static float Spread(int seed)

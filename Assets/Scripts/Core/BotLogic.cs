@@ -165,9 +165,13 @@ public static class BotLogic
     // Distances (metres) where a bot changes from the shotgun, and to the sniper
     public const float ShotgunRange = 9f;
     public const float SniperRange = 40f;
+    // From here out the pistol out-kills the machine gun (the machine gun's damage falls off from 12 m
+    // to a third by 30 m), so a bot takes the pistol until its sniper range
+    public const float PistolRange = 18f;
 
     // The loadout index of the form a bot wants at this distance to its target: shotgun up close,
-    // the scoped form far away, otherwise an automatic one (or failing that the first ordinary form).
+    // the scoped form far away, the pistol (an ordinary form) in the middle distance, otherwise an
+    // automatic one (or failing that the first ordinary form).
     // distance < 0 means no target: the all-round form.
     public static int ChooseGun(Gun[] loadout, float distance)
     {
@@ -194,6 +198,7 @@ public static class BotLogic
         if (distance < 0f) return allRound;
         if (distance < shotgunRange && shotgun >= 0) return shotgun;
         if (distance > sniperRange && sniper >= 0) return sniper;
+        if (distance >= PistolRange && plain >= 0) return plain;
         return allRound;
     }
 

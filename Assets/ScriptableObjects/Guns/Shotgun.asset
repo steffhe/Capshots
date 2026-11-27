@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   gunName: Shotgun
   fireRate: 0.6
-  bloom: 62
+  bloom: 78
   recoil: 22
   kickback: 0.4
   aimSpeed: 8

@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   gunName: Sniper Rifle
   fireRate: 1
-  bloom: 40
+  bloom: 110
   recoil: 30
   kickback: 0.5
   aimSpeed: 7
@@ -28,7 +28,7 @@ MonoBehaviour:
   falloffStart: 100
   falloffEnd: 200
   minDamageMultiplier: 1
-  aimBloomDivisor: 10
+  aimBloomDivisor: 27.5
   adsTime: 0.25
   movingBloomMultiplier: 3
   kickUp: 5.5
