@@ -39,7 +39,9 @@ public class OfficeMap : MonoBehaviour
     [Tooltip("Brightens (+) or darkens (-) the whole picture, in stops")]
     public float exposure = 0f;
 
-    private const float CellSize = 24f;
+    // Boxes are merged into one mesh per material per square this size, so frustum (and occlusion)
+    // culling can still leave out what's out of sight; far scenery in bigger squares (fewer draw calls)
+    private const float CellSize = 32f, FarCellSize = 160f;
     // How bright glowing materials are: the ceiling panels light the rooms in baked lighting
     private const float GlowStrength = 2.2f;
     private VolumeProfile lookProfile;
@@ -367,13 +369,14 @@ public class OfficeMap : MonoBehaviour
     private void BuildMeshes(OfficeMapData data, Material[] materials, Transform root, bool upload)
     {
         // Merge boxes by material, shadow casting and 24 m square
-        var groups = new Dictionary<(int material, bool shadows, int cx, int cz), MeshBuilder>();
+        var groups = new Dictionary<(int material, bool shadows, bool far, int cx, int cz), MeshBuilder>();
         foreach (OfficeMapData.Box box in data.boxes)
         {
             if (box.material < 0) continue;
-            var key = (box.material, box.castShadows, Mathf.FloorToInt(box.center.x / CellSize), Mathf.FloorToInt(box.center.z / CellSize));
+            float cell = box.far ? FarCellSize : CellSize;
+            var key = (box.material, box.castShadows, box.far, Mathf.FloorToInt(box.center.x / cell), Mathf.FloorToInt(box.center.z / cell));
             if (!groups.TryGetValue(key, out MeshBuilder builder)) groups[key] = builder = new MeshBuilder();
-            AddBox(builder, box.center, box.size, data.materials[box.material].tile);
+            AddBox(builder, box.center, box.size, data.materials[box.material].tile, box.drawBottom, box.drawTop);
         }
 
         Transform parent = new GameObject("Meshes").transform;
@@ -388,7 +391,6 @@ public class OfficeMap : MonoBehaviour
             mesh.SetUVs(0, b.uvs);
             mesh.SetTriangles(b.triangles, 0);
             mesh.RecalculateBounds();
-            mesh.RecalculateTangents();
             if (upload) mesh.UploadMeshData(true);
 
             var go = new GameObject(mesh.name);
@@ -405,13 +407,15 @@ public class OfficeMap : MonoBehaviour
 
     // Six faces, each with UVs taken from world position along the face (divided by the tile size),
     // or running 0 to 1 across each face when tile is 0
-    internal static void AddBox(MeshBuilder b, Vector3 c, Vector3 s, float tile)
+    // (No tangents: the map's materials have no normal maps.) bottom/top: false leaves out a face that
+    // can never be seen.
+    internal static void AddBox(MeshBuilder b, Vector3 c, Vector3 s, float tile, bool bottom = true, bool top = true)
     {
         Vector3 h = s * 0.5f;
         Vector3 min = c - h, max = c + h;
         // normal, then two corners spanning the face via its u and v axes
-        AddFace(b, Vector3.up, new Vector3(min.x, max.y, min.z), Vector3.right * s.x, Vector3.forward * s.z, tile);
-        AddFace(b, Vector3.down, new Vector3(min.x, min.y, max.z), Vector3.right * s.x, Vector3.back * s.z, tile);
+        if (top) AddFace(b, Vector3.up, new Vector3(min.x, max.y, min.z), Vector3.right * s.x, Vector3.forward * s.z, tile);
+        if (bottom) AddFace(b, Vector3.down, new Vector3(min.x, min.y, max.z), Vector3.right * s.x, Vector3.back * s.z, tile);
         AddFace(b, Vector3.forward, new Vector3(max.x, min.y, max.z), Vector3.left * s.x, Vector3.up * s.y, tile);
         AddFace(b, Vector3.back, new Vector3(min.x, min.y, min.z), Vector3.right * s.x, Vector3.up * s.y, tile);
         AddFace(b, Vector3.right, new Vector3(max.x, min.y, min.z), Vector3.forward * s.z, Vector3.up * s.y, tile);

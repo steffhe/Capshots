@@ -70,6 +70,16 @@ Taken from photos of the real offices:
   `Office.unity`, and the glow of the ceiling panels (`OfficeMap.GlowStrength`), which light the
   rooms once lighting is baked.
 
+## Performance
+
+`OfficeMap` merges the boxes into one mesh per material per 32 m square (far scenery, flagged `f`,
+per 160 m square), so there are about 500 meshes rather than one per box, and frustum and occlusion
+culling still leave out what's out of sight. The generator flags bottom and top faces that lie
+against a floor or the ceiling (`b`, `t`) and the builder leaves them out: about 3,400 faces that
+can never be seen. A face is only left out when the floor or ceiling reaches at least 2 cm past it
+all round, since where edges meet exactly it fills hairline cracks along the seam; renders with and
+without them are identical. The meshes have no tangents (no normal maps).
+
 ## Glass
 
 Glass is on the `Glass` layer: players can't walk through it, but shots go through, and it

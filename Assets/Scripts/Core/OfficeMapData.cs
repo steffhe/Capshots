@@ -35,6 +35,11 @@ public class OfficeMapData
         // Collider on the Glass layer: blocks players but not shots
         public bool glass;
         public bool castShadows;
+        // Whether its bottom and top faces are drawn: not when they can never be seen (standing on a
+        // floor, or pressed against the ceiling)
+        public bool drawBottom, drawTop;
+        // Scenery far from the play area: merged into bigger meshes
+        public bool far;
         public Bounds Bounds => new Bounds(center, size);
     }
 
@@ -112,6 +117,9 @@ public class OfficeMapData
                             collider = colliderOnly || !flags.Contains("n"),
                             glass = flags.Contains("g"),
                             castShadows = !flags.Contains("s"),
+                            drawBottom = !flags.Contains("b"),
+                            drawTop = !flags.Contains("t"),
+                            far = flags.Contains("f"),
                         });
                         break;
                     case "p":
